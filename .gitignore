@@ -1,0 +1,17 @@
+# Secrets — never commit your real token
+.env
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Editor/OS junk
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Private character data -- names, avatars, stats tied to real people
+data/
