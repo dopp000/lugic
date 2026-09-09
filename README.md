@@ -1,4 +1,4 @@
-# Limbattle Bot
+# Lugic
 
 A Discord bot for running Limbus Company–style coin-flip combat, built around a
 custom ruleset. Owner-operated project, developed in a GitHub Codespace.
