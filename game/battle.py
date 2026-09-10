@@ -125,6 +125,10 @@ class Fighter:
                 character.speed_max if character.speed_max is not None else character.speed_min
             )
             fighter.roll_slot_speeds()
+        if character.stagger_thresholds is not None:
+            fighter.stagger_thresholds = list(character.stagger_thresholds)
+        if character.stagger_tiers_enabled is not None:
+            fighter.stagger_tiers_enabled = list(character.stagger_tiers_enabled)
         return fighter
 
     def roll_slot_speeds(self):
@@ -217,6 +221,9 @@ class Fighter:
 
     def get_skill(self, name: str) -> Skill | None:
         return self.skills.get(name.lower())
+
+    def remove_skill(self, name: str) -> bool:
+        return self.skills.pop(name.lower(), None) is not None
 
     def declare_in_slot(
         self, slot: int, skill: Skill, target: "Fighter", target_slot: int,

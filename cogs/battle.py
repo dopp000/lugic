@@ -1513,6 +1513,60 @@ class BattleCog(commands.GroupCog, name="battle"):
         # The ONLY response for this interaction -- everything about the skill (name, stats, damage type, statuses, triggers) is now collected in... See docs/ENGINEERING_NOTES.md#battle-comment-1345.
         await interaction.response.send_modal(AddSkillModal(target_fighter))
 
+    @app_commands.command(name="skills", description="List everything a fighter currently knows")
+    @app_commands.describe(fighter="Which fighter's skills to show")
+    async def skills(self, interaction: discord.Interaction, fighter: str):
+        battle = self.battles.get(interaction.channel_id)
+        if battle is None:
+            await interaction.response.send_message("No active battle here.", ephemeral=True)
+            return
+
+        target_fighter = battle.get_fighter(fighter)
+        if target_fighter is None:
+            await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            return
+
+        if not target_fighter.skills:
+            await interaction.response.send_message(
+                f"{target_fighter.name} doesn't know any skills yet.", ephemeral=True
+            )
+            return
+
+        blocks = [_skill_preview_text(skill) for skill in target_fighter.skills.values()]
+        text = f"**{target_fighter.name}** knows {len(blocks)} skill(s):\n\n" + "\n\n".join(blocks)
+        if len(text) > 1900:
+            text = text[:1900] + "\n...(truncated, too many/long skills to show at once)"
+        await interaction.response.send_message(text, ephemeral=True)
+
+    @app_commands.command(name="removeskill", description="Remove a skill from a fighter's known skills")
+    @app_commands.describe(fighter="Which fighter to remove a skill from", skill_name="Which skill to remove")
+    async def removeskill(self, interaction: discord.Interaction, fighter: str, skill_name: str):
+        battle = self.battles.get(interaction.channel_id)
+        if battle is None:
+            await interaction.response.send_message("No active battle here.", ephemeral=True)
+            return
+
+        target_fighter = battle.get_fighter(fighter)
+        if target_fighter is None:
+            await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            return
+
+        if not _can_manage_fighter(interaction, target_fighter):
+            await interaction.response.send_message(
+                "Only this fighter's own owner or an admin can remove one of their skills.",
+                ephemeral=True,
+            )
+            return
+
+        if target_fighter.remove_skill(skill_name):
+            await interaction.response.send_message(
+                f"Removed **{skill_name}** from {target_fighter.name}.", ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"{target_fighter.name} doesn't know a skill called '{skill_name}'.", ephemeral=True
+            )
+
     @app_commands.command(
         name="declare",
         description="Assign a skill to one of your slots, aimed at a specific slot on your target",

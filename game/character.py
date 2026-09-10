@@ -28,6 +28,12 @@ class Character:
     speed_max: int | None = None  # highest a skill slot's Speed can roll, per round
     power: int = 6
     resistances: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_RESISTANCES))
+    # Both None means "use Fighter's own defaults" (DEFAULT_STAGGER_THRESHOLDS,
+    # all 3 tiers enabled) -- only set here if a character has a
+    # customized Stagger setup that should persist across battles. See
+    # Fighter.from_character in game/battle.py for how these apply.
+    stagger_thresholds: list[float] | None = None
+    stagger_tiers_enabled: list[bool] | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -41,6 +47,8 @@ class Character:
             "speed_max": self.speed_max,
             "power": self.power,
             "resistances": self.resistances,
+            "stagger_thresholds": self.stagger_thresholds,
+            "stagger_tiers_enabled": self.stagger_tiers_enabled,
         }
 
     @classmethod

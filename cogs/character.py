@@ -186,6 +186,8 @@ class CharacterCog(commands.GroupCog, name="character"):
         power="New Power",
         resistance_types="Resistance(s) to set, comma-separated for several, e.g. 'slash,burn' (needs values too)",
         values="Percent for each type above, same order, comma-separated, e.g. '20,-10' (needs resistance_types too)",
+        stagger_thresholds="3 HP% values for Tier 1/2/3, comma-separated, descending, e.g. '55,40,25'",
+        stagger_disabled_tiers="Which Stagger tiers to strip, comma-separated (only 2 and/or 3 -- Tier 1 can't be removed), or 'none' to re-enable all",
     )
     async def edit(
         self,
@@ -199,6 +201,8 @@ class CharacterCog(commands.GroupCog, name="character"):
         power: int | None = None,
         resistance_types: str | None = None,
         values: str | None = None,
+        stagger_thresholds: str | None = None,
+        stagger_disabled_tiers: str | None = None,
     ):
         character = load_character(name)
         if character is None:
@@ -232,6 +236,63 @@ class CharacterCog(commands.GroupCog, name="character"):
             if error:
                 await interaction.response.send_message(error, ephemeral=True)
                 return
+
+        # Same up-front, all-or-nothing validation pattern as
+        # resistances above, and as /battle setstatus's own
+        # stagger_thresholds/stagger_disabled_tiers -- parsed and
+        # checked before anything gets mutated.
+        parsed_stagger_thresholds: list[float] | None = None
+        if stagger_thresholds is not None:
+            parts = [p.strip() for p in stagger_thresholds.split(",")]
+            if len(parts) != 3:
+                await interaction.response.send_message(
+                    "stagger_thresholds needs exactly 3 comma-separated values (Tier 1/2/3), "
+                    "e.g. '55,40,25'.",
+                    ephemeral=True,
+                )
+                return
+            try:
+                pct_values = [int(p) for p in parts]
+            except ValueError:
+                await interaction.response.send_message(
+                    "stagger_thresholds values must be whole numbers (percentages).",
+                    ephemeral=True,
+                )
+                return
+            if not (pct_values[0] > pct_values[1] > pct_values[2]):
+                await interaction.response.send_message(
+                    f"stagger_thresholds must be strictly descending (Tier 1 > Tier 2 > Tier 3), "
+                    f"got {pct_values[0]}, {pct_values[1]}, {pct_values[2]}.",
+                    ephemeral=True,
+                )
+                return
+            parsed_stagger_thresholds = [v / 100 for v in pct_values]
+
+        parsed_disabled_tiers: set[int] | None = None
+        if stagger_disabled_tiers is not None:
+            if stagger_disabled_tiers.strip().lower() == "none":
+                parsed_disabled_tiers = set()
+            else:
+                try:
+                    parsed_disabled_tiers = {
+                        int(t.strip()) for t in stagger_disabled_tiers.split(",") if t.strip()
+                    }
+                except ValueError:
+                    await interaction.response.send_message(
+                        "stagger_disabled_tiers must be whole numbers (2 and/or 3), or 'none'.",
+                        ephemeral=True,
+                    )
+                    return
+                if 1 in parsed_disabled_tiers:
+                    await interaction.response.send_message(
+                        "Tier 1 Stagger can never be removed.", ephemeral=True
+                    )
+                    return
+                if not parsed_disabled_tiers.issubset({2, 3}):
+                    await interaction.response.send_message(
+                        "stagger_disabled_tiers can only contain 2 and/or 3.", ephemeral=True
+                    )
+                    return
 
         changes = []
 
@@ -267,6 +328,23 @@ class CharacterCog(commands.GroupCog, name="character"):
             character.resistances.update(parsed_resistances)
             summary = ", ".join(f"{t.capitalize()} {v}%" for t, v in parsed_resistances.items())
             changes.append(f"resistances -> {summary}")
+
+        if parsed_stagger_thresholds is not None:
+            character.stagger_thresholds = parsed_stagger_thresholds
+            changes.append(
+                f"Stagger thresholds -> {pct_values[0]}%/{pct_values[1]}%/{pct_values[2]}%"
+            )
+
+        if parsed_disabled_tiers is not None:
+            character.stagger_tiers_enabled = [
+                True,
+                2 not in parsed_disabled_tiers,
+                3 not in parsed_disabled_tiers,
+            ]
+            enabled_desc = ", ".join(
+                f"Tier {t}" for t in (1, 2, 3) if t not in parsed_disabled_tiers
+            )
+            changes.append(f"Stagger tiers active -> {enabled_desc}")
 
         if not changes:
             await interaction.response.send_message(
