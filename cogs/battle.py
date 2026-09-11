@@ -1671,6 +1671,22 @@ class BattleCog(commands.GroupCog, name="battle"):
             )
             return
 
+        # Same one-way door as everywhere else eliminated is checked
+        # (see Fighter.eliminated's docstring) -- an eliminated fighter
+        # is gone for the rest of this battle, on both sides of an
+        # action: they already can't act as a caster (is_alive() above
+        # covers that, since elimination only ever happens at 0 HP),
+        # but nothing was stopping someone from still aiming a skill AT
+        # one. Checked before target_slot validation below, since an
+        # eliminated fighter's own skill_slots are irrelevant once
+        # they're out of the fight.
+        if target_fighter.eliminated:
+            await interaction.response.send_message(
+                f"{target_fighter.name} has been eliminated and can't be targeted.",
+                ephemeral=True,
+            )
+            return
+
         # Indiscriminate skills hit a random enemy slot, not one the
         # caster chooses -- whatever target_slot was typed in gets
         # thrown out and replaced here, before it's ever validated.
