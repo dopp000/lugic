@@ -266,6 +266,20 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
             )
             return
 
+        # Guard, Evade, and Clashable Guard are all fixed to exactly 1
+        # coin -- the whole defense-skill cascade (find_eligible_evade,
+        # the Clashable Guard/Counter interception passes) assumes one
+        # clean win/lose roll per declared defense skill.
+        ONE_COIN_ONLY_TAGS = {"guard", "evade", "clashable_guard"}
+        offending_tags = flags & ONE_COIN_ONLY_TAGS
+        if offending_tags and coins != 1:
+            await interaction.response.send_message(
+                f"{', '.join(t.replace('_', ' ').title() for t in sorted(offending_tags))} "
+                f"must be exactly 1 coin (got {coins}).",
+                ephemeral=True,
+            )
+            return
+
         skill = Skill(
             name=self.skill_name.value,
             base_power=base_power,
@@ -647,33 +661,63 @@ async def sync_battle_message(bot: commands.Bot, battle: Battle):
     await message.edit(embed=build_battle_embed(battle))
 
 
+def resolve_evade(
+    defender: Fighter, attacker: Fighter, attacker_slot: int, battle: Battle, skip_evade: bool = False,
+) -> tuple[bool, list[str]]:
+    """Rolls the ONE deciding coin for whichever declared [Evade] the
+    defender has aimed at this exact (attacker, attacker_slot), if
+    any. Called BEFORE apply_incoming_hit at every hit-resolution call
+    site -- Evade no longer lives inside apply_incoming_hit's own
+    per-coin loop, it's a real declared skill with its own win/lose
+    roll now.
+
+    Whole-hit, not per-coin: a successful Evade dodges the ENTIRE
+    incoming hit, a failed one dodges nothing. Splitting a multi-coin
+    attack across a partial Evade failure is a separate, later piece.
+
+    Marks the Evade's own slot used in evade_used_slots regardless of
+    win or lose -- rolling the coin at all spends it for the round.
+
+    skip_evade mirrors the old skip_evasion behavior for a Counter
+    retaliation strike, which bypasses the target's Evade entirely.
+    """
+    if skip_evade:
+        return False, []
+    found = find_eligible_evade(defender, attacker, attacker_slot)
+    if found is None:
+        return False, []
+    evade_slot, evade_skill = found
+    defender.evade_used_slots.add(evade_slot)
+
+    evade_result = resolve_skill(evade_skill, defender.heads_chance())
+    won = evade_result.coin_results[0].heads
+    log = [
+        f"{status_emoji('evasion')} {defender.name}'s Evade (Slot {evade_slot}) "
+        + ("succeeds! The hit is fully dodged." if won else "fails, the hit lands.")
+    ]
+    return won, log
+
+
 def apply_incoming_hit(
     attacker_skill: Skill, result: SkillResult, target: Fighter, caster: Fighter,
-    skip_evasion: bool = False,
-) -> tuple[int, list[str], list[Trigger], int]:
-    """Applies each landed coin's damage/status, and collects whichever per-coin Triggers (on_hit/heads_hit/tails_hit) fired on that coin (see... See docs/ENGINEERING_NOTES.md#battle-apply-incoming-hit for the full rationale."""
+) -> tuple[int, list[str], list[Trigger]]:
+    """Applies each landed coin's damage/status, and collects whichever
+    per-coin Triggers (on_hit/heads_hit/tails_hit) fired on that coin.
+    Whether this hit is evaded at all is decided BEFORE this function
+    is ever called, via resolve_evade above -- this always applies
+    full damage/status, the caller skips the call entirely on a
+    successful Evade.
+    """
     log: list[str] = []
     total_damage = 0
     per_coin_triggers: list[Trigger] = []
-    evade_count = 0
     poise = caster.get_status("poise")
-    evasion = None if skip_evasion else target.get_status("evasion")
     stagger_multiplier = (
         STAGGER_MULTIPLIERS[target.current_stagger_tier - 1]
         if target.current_stagger_tier > 0 else 1.0
     )
 
     for i, coin in enumerate(result.coin_results):
-        if coin.is_evaded and not skip_evasion:
-            evade_count += 1
-            log.append(
-                f"Coin {i + 1}: {status_emoji('evasion')} {target.name} evades the hit."
-            )
-            if evasion is not None:
-                evasion = decay_after_trigger(evasion)
-                target.set_status_instance(evasion)
-            continue
-
         per_coin_triggers.extend(coin.fired_triggers)
         raw = coin.damage_dealt + (coin.crit_bonus_damage if coin.is_crit else 0)
         resisted = apply_resistance(raw, target.resistances.get(attacker_skill.damage_type, 0))
@@ -736,19 +780,19 @@ def apply_incoming_hit(
         )
         total_damage = boosted
 
-    return total_damage, log, per_coin_triggers, evade_count
+    return total_damage, log, per_coin_triggers
 
 
-def fire_evade_triggers(defender: Fighter, attacker: Fighter, battle: Battle, evade_count: int) -> list[str]:
-    """Fires [On Evade] once per coin the defender actually evaded this hit (evade_count, from apply_incoming_hit above), swept across ALL of... See docs/ENGINEERING_NOTES.md#battle-fire-evade-triggers for the full rationale."""
-    if evade_count <= 0:
-        return []
+def fire_evade_triggers(defender: Fighter, attacker: Fighter, battle: Battle) -> list[str]:
+    """Fires [On Evade] once, swept across ALL of the defender's own
+    known skills, whenever resolve_evade above just won. No more
+    evade_count loop -- a successful Evade is one whole-hit dodge now.
+    """
     log: list[str] = []
     context = TriggerContext(caster=defender, target=attacker, battle=battle)
-    for _ in range(evade_count):
-        for skill in defender.skills.values():
-            _, post_hit = resolve_triggers(skill, context, "on_evade")
-            log.extend(apply_trigger_effects(post_hit, defender, attacker))
+    for skill in defender.skills.values():
+        _, post_hit = resolve_triggers(skill, context, "on_evade")
+        log.extend(apply_trigger_effects(post_hit, defender, attacker))
     return log
 
 
@@ -762,17 +806,27 @@ def find_eligible_counter(defender: Fighter, attacker_slot_speed: int) -> tuple[
     return None
 
 
-def find_eligible_clashable_counter(defender: Fighter) -> tuple[int, Skill] | None:
-    """Same idea as find_eligible_counter, for [Clashable Counter]. See docs/ENGINEERING_NOTES.md#battle-find-eligible-clashable-counter for the full rationale."""
-    if defender.clashable_counter_used_this_round:
-        return None
+def find_eligible_evade(defender: Fighter, attacker: Fighter, attacker_slot: int) -> tuple[int, Skill] | None:
+    """[Evade] is a real declared skill now, strictly slot-specific,
+    unlike Counter. Only eligible if `defender` has an [Evade]-tagged
+    skill declared this round aimed exactly at (attacker,
+    attacker_slot), and that specific Evade slot hasn't already rolled
+    this round -- tracked per Evade-holder's OWN slot number in
+    evade_used_slots, since a fighter can hold more than one declared
+    Evade at once. No speed comparison -- Evade never steals or gets
+    stolen from.
+    """
     for slot_num, action in defender.declared_actions.items():
-        if "clashable_counter" in action.skill.tags:
+        if slot_num in defender.evade_used_slots:
+            continue
+        if "evade" not in action.skill.tags:
+            continue
+        if action.target is attacker and action.target_slot == attacker_slot:
             return slot_num, action.skill
     return None
 
 
-def find_eligible_clashable_guard(defender: Fighter) -> tuple[int, Skill] | None:
+def find_eligible_clashable_counter(defender: Fighter) -> tuple[int, Skill] | None:
     """Same shape as find_eligible_clashable_counter, for [Clashable Guard]. See docs/ENGINEERING_NOTES.md#battle-find-eligible-clashable-guard for the full rationale."""
     if defender.clashable_guard_used_this_round:
         return None
@@ -1925,7 +1979,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                 })
 
         def _never_clashes(skill_tags: set[str]) -> bool:
-            return "unclashable" in skill_tags or "guard" in skill_tags
+            return "unclashable" in skill_tags or "guard" in skill_tags or "evade" in skill_tags
 
         def _is_plain_guard(skill_tags: set[str]) -> bool:
             return "guard" in skill_tags and "clashable_guard" not in skill_tags
@@ -2160,9 +2214,11 @@ class BattleCog(commands.GroupCog, name="battle"):
                 winner_is_clashable_guard = "clashable_guard" in winner_skill.tags
                 loser_is_clashable_guard = "clashable_guard" in loser_skill.tags
                 guard_note: str | None = None
+                winner_slot = entry_a["slot"] if outcome.winner == "a" else entry_b["slot"]
 
                 if winner_is_clashable_guard:
-                    total_damage, status_log, per_coin_triggers, evade_count = 0, [], [], 0
+                    total_damage, status_log, per_coin_triggers = 0, [], []
+                    evaded = False
                     raised = []
                     for i in range(3):
                         if loser.stagger_tiers_enabled[i]:
@@ -2176,10 +2232,19 @@ class BattleCog(commands.GroupCog, name="battle"):
                             f"{loser.name}'s Stagger thresholds rise: {', '.join(raised)}"
                         )
                 else:
-                    total_damage, status_log, per_coin_triggers, evade_count = apply_incoming_hit(
-                        winner_skill, outcome.winner_final_result, loser, winner
-                    )
-                    if loser_is_clashable_guard and total_damage > 0:
+                    # A Clash's own winner-vs-loser hit checks the loser's
+                    # declared Evade the same as any other incoming hit --
+                    # if it was aimed at exactly this winning slot, it
+                    # gets its shot here, before damage is even computed.
+                    evaded, status_log = resolve_evade(loser, winner, winner_slot, battle)
+                    if evaded:
+                        total_damage, per_coin_triggers = 0, []
+                    else:
+                        total_damage, hit_log, per_coin_triggers = apply_incoming_hit(
+                            winner_skill, outcome.winner_final_result, loser, winner
+                        )
+                        status_log += hit_log
+                    if not evaded and loser_is_clashable_guard and total_damage > 0:
                         reduced = round(total_damage * (100 - GUARD_LOSE_DAMAGE_REDUCTION_PCT) / 100)
                         guard_note = (
                             f"{status_emoji('clashable_guard')} {loser.name}'s Clashable Guard mitigates the "
@@ -2207,7 +2272,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                     clash_lose_post_hit + hit_after_clash_lose_post_hit + turn_end_post_hit_loser, loser, winner
                 )
                 # [On Evade] is the LOSER's own reaction -- they're the one who just got hit by the winner's final toss, see fire_evade_triggers for why... See docs/ENGINEERING_NOTES.md#battle-comment-1904.
-                trigger_log += fire_evade_triggers(loser, winner, battle, evade_count)
+                if evaded:
+                    trigger_log += fire_evade_triggers(loser, winner, battle)
                 if guard_note:
                     trigger_log.append(guard_note)
                 # ---- Animate every attrition round in full ----
@@ -2300,10 +2366,16 @@ class BattleCog(commands.GroupCog, name="battle"):
 
                 is_counter = entry.get("is_counter_retaliation", False)
                 is_guard = "guard" in entry["skill"].tags and not is_counter
+                is_evade_readying = "evade" in entry["skill"].tags and not is_counter
                 if is_counter:
                     live_header = f"{status_emoji('counter')} **{fighter.name}**'s Counter redirects -> strikes **{target.name}** back!"
                 elif is_guard:
                     live_header = f"{status_emoji('guard')} **{fighter.name}** raises Guard!"
+                elif is_evade_readying:
+                    live_header = (
+                        f"{status_emoji('evasion')} **{fighter.name}** readies Evade against "
+                        f"**{target.name}**'s Slot {entry['target_slot']}!"
+                    )
                 else:
                     live_header = f"**{fighter.name}** -> **{target.name}** (unopposed)"
                 await render(live_header)
@@ -2325,13 +2397,23 @@ class BattleCog(commands.GroupCog, name="battle"):
                 sanity_gain = heads_landed * SANITY_PER_HEADS_UNOPPOSED
                 fighter.gain_sanity(sanity_gain)
 
-                if is_guard:
+                if is_evade_readying:
+                    # Evade's OWN declared entry never deals damage or
+                    # rolls its coin here -- its real win/lose roll only
+                    # happens reactively, via resolve_evade, at the exact
+                    # moment its watched slot is actually attacked. If
+                    # that never happens this round, this entry is a
+                    # pure no-op. evade_used_slots is untouched here --
+                    # only resolve_evade marks a slot used.
+                    total_damage = 0
+                    status_log: list[str] = []
+                    trigger_log: list[str] = []
+                elif is_guard:
                     # Guard never deals damage -- its Final Power (the Power reached after the last coin, same value a Clash would compare) becomes Shield HP... See docs/ENGINEERING_NOTES.md#battle-comment-2034.
                     shield_gained = result.final_power
                     fighter.shield += shield_gained
                     total_damage = 0
                     status_log: list[str] = []
-                    evade_count = 0
                     _, unopposed_post_hit = resolve_triggers(adjusted_skill, context, "on_unopposed_attack")
                     _, attack_end_post_hit = resolve_triggers(adjusted_skill, context, "attack_end")
                     _, turn_end_post_hit = resolve_triggers(adjusted_skill, context, "turn_end")
@@ -2340,9 +2422,15 @@ class BattleCog(commands.GroupCog, name="battle"):
                         fighter, target,
                     )
                 else:
-                    total_damage, status_log, per_coin_triggers, evade_count = apply_incoming_hit(
-                        adjusted_skill, result, target, fighter, skip_evasion=is_counter
-                    )
+                    attacker_slot = entry["slot"]
+                    evaded, status_log = resolve_evade(target, fighter, attacker_slot, battle, skip_evade=is_counter)
+                    if evaded:
+                        total_damage, per_coin_triggers = 0, []
+                    else:
+                        total_damage, hit_log, per_coin_triggers = apply_incoming_hit(
+                            adjusted_skill, result, target, fighter
+                        )
+                        status_log += hit_log
                     target.take_damage(total_damage)
                     target.check_stagger(battle.round_number)
                     stagger_post_hit: list[Trigger] = []
@@ -2366,8 +2454,9 @@ class BattleCog(commands.GroupCog, name="battle"):
                             fighter, target,
                         )
                         trigger_log += kill_log + tremor_log + bleed_log
-                        # [On Evade] is the TARGET's own reaction to this unopposed attack -- doesn't apply to a Counter retaliation, which explicitly bypasses it... See docs/ENGINEERING_NOTES.md#battle-comment-2075.
-                        trigger_log += fire_evade_triggers(target, fighter, battle, evade_count)
+                        # [On Evade] is the TARGET's own reaction to this unopposed attack -- doesn't apply to a Counter retaliation, which explicitly bypasses it via skip_evade above. See docs/ENGINEERING_NOTES.md#battle-comment-2075.
+                        if evaded:
+                            trigger_log += fire_evade_triggers(target, fighter, battle)
 
                 # [Attack Weight]: splash the ALREADY-COMPUTED hit onto
                 # any extra enemy slots this skill also reaches (picked
@@ -2427,16 +2516,12 @@ class BattleCog(commands.GroupCog, name="battle"):
                             )
                             continue
 
-                        splash_evasion = splash_fighter.get_status("evasion")
-
-                        splash_evasion = splash_fighter.get_status("evasion")
-                        if splash_evasion is not None and splash_evasion.count > 0:
-                            splash_fighter.set_status_instance(decay_after_trigger(splash_evasion))
-                            splash_log.append(
-                                f"{status_emoji('evasion')} {splash_fighter.name} evades the Attack Weight splash "
-                                f"(Slot {splash_slot})."
-                            )
-                            splash_log.extend(fire_evade_triggers(splash_fighter, fighter, battle, 1))
+                        splash_evaded, splash_evade_log = resolve_evade(
+                            splash_fighter, fighter, entry["slot"], battle
+                        )
+                        if splash_evaded:
+                            splash_log.extend(splash_evade_log)
+                            splash_log.extend(fire_evade_triggers(splash_fighter, fighter, battle))
                             continue
 
                         # Stagger multiplier parity: captured BEFORE this
@@ -2549,11 +2634,13 @@ class BattleCog(commands.GroupCog, name="battle"):
                 # ---- Animate: no attrition rounds for an unopposed attack, straight to the decisive toss ----
                 final_header = live_header
                 final_face = await animate_faces(final_header, result.coin_results)
-                if not is_guard:
+                if not is_guard and not is_evade_readying:
                     await animate_damage(final_header, final_face, result.coin_results, status_log)
                 await asyncio.sleep(0.4)
 
-                if is_guard:
+                if is_evade_readying:
+                    field_value = f"{fighter.name} readies Evade against {target.name}'s Slot {entry['target_slot']}."
+                elif is_guard:
                     field_value = format_skill_result(result)
                     field_value += (
                         f"\n\n{status_emoji('shield')} {fighter.name} gains {shield_gained} Shield HP. "
@@ -2576,7 +2663,13 @@ class BattleCog(commands.GroupCog, name="battle"):
                 if splash_log:
                     field_value += "\n" + "\n".join(splash_log)
 
-                if is_guard:
+                if is_evade_readying:
+                    summary_line = (
+                        f"{status_emoji('evasion')} **{fighter.name}** readies Evade against "
+                        f"{target.name}'s Slot {entry['target_slot']}."
+                    )
+                    full_log_entries.append((f"{fighter.name}'s Evade", field_value))
+                elif is_guard:
                     summary_line = (
                         f"{status_emoji('guard')} **{fighter.name}** raises Guard -- +{shield_gained} Shield "
                         f"({fighter.shield} total)"
