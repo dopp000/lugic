@@ -834,33 +834,37 @@ def find_eligible_clashable_guard(defender: Fighter) -> tuple[int, Skill] | None
     return None
 
 def find_eligible_clashable_counter(defender: Fighter) -> tuple[int, Skill] | None:
-    """Same shape as find_eligible_clashable_counter, for [Clashable Guard]. See docs/ENGINEERING_NOTES.md#battle-find-eligible-clashable-guard for the full rationale."""
-    if defender.clashable_guard_used_this_round:
+    """Same shape as find_eligible_clashable_guard, for [Clashable Counter]."""
+    if defender.clashable_counter_used_this_round:
         return None
     for slot_num, action in defender.declared_actions.items():
-        if "clashable_guard" in action.skill.tags:
+        if "clashable_counter" in action.skill.tags:
             return slot_num, action.skill
     return None
 
 
 def apply_counter_redirects(units: list, battle: Battle) -> list:
-    """Runs once, right after `units` is built and speed-sorted, BEFORE any resolution happens -- transforms the list to reflect Counter and... See docs/ENGINEERING_NOTES.md#battle-apply-counter-redirects for the full rationale."""
-    # Pass 1: Counter. Checks both the primary target AND any [Attack
-    # Weight] extra_targets on the SAME entry -- a splash target with
-    # an eligible Counter gets pulled out of extra_targets entirely and
-    # turned into its own genuine solo retaliation unit, going through
-    # the exact same full resolution pipeline as any real attack. This
-    # only ever applies to plain [Counter], never [Clashable Counter]
-    # (find_eligible_counter only ever matches the "counter" tag) --
-    # Clashable variants are deliberately excluded from interacting
-    # with a splash at all, same exception canon draws for Offset.
-    #
-    # A splash_fighter that IS the primary defender (their own OTHER
-    # slot got auto-picked as a splash candidate) is skipped here on
-    # purpose -- their Counter, if any, is already handled exactly once
-    # by the defender check just below. Without this, a fighter holding
-    # Counter who also got picked as their own splash target would
-    # retaliate TWICE for one incoming attack.
+    """Runs once, right after `units` is built and speed-sorted, BEFORE
+    any resolution happens -- transforms the list to reflect plain
+    [Counter] redirects. Not slot-specific, no fall-through, no
+    target-matching -- it fires against any unopposed attack that
+    reaches its holder, regardless of which slot got hit.
+
+    Clashable Guard/Clashable Counter interception used to also live
+    here as two more static passes, but that was wrong on two counts:
+    it ran once before any resolution happened (so it could never see
+    which of a fighter's OTHER defenses had already been spent earlier
+    in the round -- needed for the "already-used Evade falls through to
+    an unused Clashable" rule), and it matched by "is ANY unopposed
+    attack aimed at this caster" rather than the exact (attacker,
+    attacker_slot) the Clashable defense actually declared as its own
+    target -- so a Clashable Counter aimed at protecting an ally never
+    actually intercepted what it was pointed at. Clashable Guard/Counter
+    interception now happens via the exact-target Pass 0 (see the
+    `entries` setup in combat(), right before mutual-pairing) for the
+    proactive/declared-target case, with the live mid-round fall-through
+    case still to be built as its own follow-up.
+    """
     pass1: list = []
     for u in units:
         if u[0] != "solo":
@@ -901,91 +905,7 @@ def apply_counter_redirects(units: list, battle: Battle) -> list:
         }
         pass1.append(("solo", redirected_entry))
 
-    # Pass 2: Clashable Counter.
-    final_units: list = []
-    consumed: set[int] = set()
-    for idx, u in enumerate(pass1):
-        if idx in consumed:
-            continue
-        if u[0] != "solo":
-            final_units.append(u)
-            continue
-        entry = u[1]
-        caster = entry["caster"]
-        if "clashable_counter" not in entry["skill"].tags:
-            final_units.append(u)
-            continue
-        found = find_eligible_clashable_counter(caster)
-        if found is None:
-            final_units.append(u)
-            continue
-
-        target_idx = None
-        for j, other in enumerate(pass1):
-            if j == idx or j in consumed:
-                continue
-            if other[0] != "solo":
-                continue
-            if other[1]["target"] is caster:
-                target_idx = j
-                break
-
-        if target_idx is None:
-            # "Does not activate" -- fizzles entirely, no consumption.
-            consumed.add(idx)
-            continue
-
-        caster.clashable_counter_used_this_round = True
-        consumed.add(idx)
-        consumed.add(target_idx)
-        intercepted_entry = pass1[target_idx][1]
-        intercepted_entry["is_clashable_counter_intercept"] = True
-        entry["is_clashable_counter_intercept"] = True
-        final_units.append(("clash", entry, intercepted_entry))
-
-    # Pass 3: Clashable Guard. Runs against final_units (post Pass 2),
-    # same scan-for-an-interceptable-solo-unit logic, own flag/tag.
-    pass3_units: list = []
-    consumed3: set[int] = set()
-    for idx, u in enumerate(final_units):
-        if idx in consumed3:
-            continue
-        if u[0] != "solo":
-            pass3_units.append(u)
-            continue
-        entry = u[1]
-        caster = entry["caster"]
-        if "clashable_guard" not in entry["skill"].tags:
-            pass3_units.append(u)
-            continue
-        found = find_eligible_clashable_guard(caster)
-        if found is None:
-            pass3_units.append(u)
-            continue
-
-        target_idx = None
-        for j, other in enumerate(final_units):
-            if j == idx or j in consumed3:
-                continue
-            if other[0] != "solo":
-                continue
-            if other[1]["target"] is caster:
-                target_idx = j
-                break
-
-        if target_idx is None:
-            consumed3.add(idx)
-            continue
-
-        caster.clashable_guard_used_this_round = True
-        consumed3.add(idx)
-        consumed3.add(target_idx)
-        intercepted_entry = final_units[target_idx][1]
-        intercepted_entry["is_clashable_guard_intercept"] = True
-        entry["is_clashable_guard_intercept"] = True
-        pass3_units.append(("clash", entry, intercepted_entry))
-
-    return pass3_units
+    return pass1
 
 
 # Every pre-roll (pre-toss) skill-level timing, in firing order, for a side that's about to enter a Clash. See docs/ENGINEERING_NOTES.md#battle-comment-867.
@@ -1985,13 +1905,92 @@ class BattleCog(commands.GroupCog, name="battle"):
                     "extra_targets": action.extra_targets, "used": False,
                 })
 
+        DEFENSE_TAGS_NO_ATTACK = {"guard", "evade", "counter", "clashable_guard", "clashable_counter"}
+
+        def _is_incoming_attack(skill_tags: set[str]) -> bool:
+            """True for anything that represents a real incoming attack a
+            Clashable defense could actually intercept -- i.e. not
+            another defense skill sitting in the same `entries` list.
+            """
+            return not (skill_tags & DEFENSE_TAGS_NO_ATTACK)
+
+        units = []
+
+        # Pass 0: exact-target Clashable Guard/Clashable Counter
+        # interception. Runs FIRST, before normal mutual-attack pairing,
+        # scanning every declared Clashable Guard/Counter for whether
+        # its own declared (target, target_slot) matches a real,
+        # still-unused incoming attack this round. This replaces the
+        # old apply_counter_redirects Pass 2/3, which never actually
+        # checked the Clashable defense's own declared target at all --
+        # it just grabbed whichever unopposed attack happened to be
+        # aimed at the caster, disregarding what was actually declared.
+        # A Clashable defense that mutually targets the exact attack
+        # that's also targeting IT back is just a special case of this
+        # same exact-match check, so the separate tight mutual-pairing
+        # case below no longer needs its own handling for Clashable
+        # tags -- see DEFENSE_TAGS_NO_ATTACK's addition to
+        # _never_clashes just below, which keeps any Clashable defense
+        # that DIDN'T find a match here from ever being treated as an
+        # attacker by the normal pairing loop.
+        #
+        # Only handles the PROACTIVE/declared-target case. The live
+        # mid-round fall-through case (an attack landing on a slot
+        # whose Evade was already spent earlier this round, redirecting
+        # to a still-unused Clashable elsewhere on the same fighter) is
+        # a separate, not-yet-built piece -- see apply_counter_redirects's
+        # docstring.
+        for cd_entry in entries:
+            if cd_entry["used"]:
+                continue
+            tags = cd_entry["skill"].tags
+            if "clashable_guard" not in tags and "clashable_counter" not in tags:
+                continue
+            caster = cd_entry["caster"]
+            already_used = (
+                caster.clashable_guard_used_this_round if "clashable_guard" in tags
+                else caster.clashable_counter_used_this_round
+            )
+            if already_used:
+                continue
+
+            exact_target = None
+            for other in entries:
+                if other is cd_entry or other["used"]:
+                    continue
+                if (
+                    other["caster"] is cd_entry["target"]
+                    and other["slot"] == cd_entry["target_slot"]
+                    and _is_incoming_attack(other["skill"].tags)
+                ):
+                    exact_target = other
+                    break
+            if exact_target is None:
+                continue
+
+            cd_entry["used"] = True
+            exact_target["used"] = True
+            if "clashable_guard" in tags:
+                caster.clashable_guard_used_this_round = True
+            else:
+                caster.clashable_counter_used_this_round = True
+            units.append(("clash", cd_entry, exact_target))
+
         def _never_clashes(skill_tags: set[str]) -> bool:
-            return "unclashable" in skill_tags or "guard" in skill_tags or "evade" in skill_tags
+            # clashable_guard/clashable_counter are included here too --
+            # any real interception was already claimed by Pass 0 above,
+            # so anything with these tags still unused at this point has
+            # no valid target this round and should just idle, never
+            # act as if it were an attack of its own. Plain "counter" is
+            # deliberately NOT excluded here, matching original scope --
+            # it's handled entirely by apply_counter_redirects.
+            return bool(
+                skill_tags & {"unclashable", "guard", "evade", "clashable_guard", "clashable_counter"}
+            )
 
         def _is_plain_guard(skill_tags: set[str]) -> bool:
             return "guard" in skill_tags and "clashable_guard" not in skill_tags
 
-        units = []
         for i, entry in enumerate(entries):
             if entry["used"]:
                 continue
@@ -2374,6 +2373,9 @@ class BattleCog(commands.GroupCog, name="battle"):
                 is_counter = entry.get("is_counter_retaliation", False)
                 is_guard = "guard" in entry["skill"].tags and not is_counter
                 is_evade_readying = "evade" in entry["skill"].tags and not is_counter
+                is_clashable_defense_idle = (
+                    bool(entry["skill"].tags & {"clashable_guard", "clashable_counter"}) and not is_counter
+                )
                 if is_counter:
                     live_header = f"{status_emoji('counter')} **{fighter.name}**'s Counter redirects -> strikes **{target.name}** back!"
                 elif is_guard:
@@ -2382,6 +2384,13 @@ class BattleCog(commands.GroupCog, name="battle"):
                     live_header = (
                         f"{status_emoji('evasion')} **{fighter.name}** readies Evade against "
                         f"**{target.name}**'s Slot {entry['target_slot']}!"
+                    )
+                elif is_clashable_defense_idle:
+                    idle_tag = "clashable_guard" if "clashable_guard" in entry["skill"].tags else "clashable_counter"
+                    live_header = (
+                        f"{status_emoji(idle_tag)} **{fighter.name}** readies "
+                        f"{'Clashable Guard' if idle_tag == 'clashable_guard' else 'Clashable Counter'} -- "
+                        f"nothing to intercept this round."
                     )
                 else:
                     live_header = f"**{fighter.name}** -> **{target.name}** (unopposed)"
@@ -2412,6 +2421,17 @@ class BattleCog(commands.GroupCog, name="battle"):
                     # that never happens this round, this entry is a
                     # pure no-op. evade_used_slots is untouched here --
                     # only resolve_evade marks a slot used.
+                    total_damage = 0
+                    status_log: list[str] = []
+                    trigger_log: list[str] = []
+                elif is_clashable_defense_idle:
+                    # Same idle shape as is_evade_readying above -- Pass
+                    # 0 (see the `entries` setup earlier in combat())
+                    # already checked whether this Clashable defense's
+                    # own declared target matched a real attack this
+                    # round, and it didn't, so it never actually clashed
+                    # anything and never marks itself used. It's simply
+                    # sitting here unresolved for the round.
                     total_damage = 0
                     status_log: list[str] = []
                     trigger_log: list[str] = []
@@ -2641,12 +2661,15 @@ class BattleCog(commands.GroupCog, name="battle"):
                 # ---- Animate: no attrition rounds for an unopposed attack, straight to the decisive toss ----
                 final_header = live_header
                 final_face = await animate_faces(final_header, result.coin_results)
-                if not is_guard and not is_evade_readying:
+                if not is_guard and not is_evade_readying and not is_clashable_defense_idle:
                     await animate_damage(final_header, final_face, result.coin_results, status_log)
                 await asyncio.sleep(0.4)
 
                 if is_evade_readying:
                     field_value = f"{fighter.name} readies Evade against {target.name}'s Slot {entry['target_slot']}."
+                elif is_clashable_defense_idle:
+                    idle_name = "Clashable Guard" if "clashable_guard" in entry["skill"].tags else "Clashable Counter"
+                    field_value = f"{fighter.name} readies {idle_name} -- nothing to intercept this round."
                 elif is_guard:
                     field_value = format_skill_result(result)
                     field_value += (
@@ -2676,6 +2699,14 @@ class BattleCog(commands.GroupCog, name="battle"):
                         f"{target.name}'s Slot {entry['target_slot']}."
                     )
                     full_log_entries.append((f"{fighter.name}'s Evade", field_value))
+                elif is_clashable_defense_idle:
+                    idle_tag = "clashable_guard" if "clashable_guard" in entry["skill"].tags else "clashable_counter"
+                    idle_name = "Clashable Guard" if idle_tag == "clashable_guard" else "Clashable Counter"
+                    summary_line = (
+                        f"{status_emoji(idle_tag)} **{fighter.name}** readies {idle_name} -- "
+                        f"nothing to intercept this round."
+                    )
+                    full_log_entries.append((f"{fighter.name}'s {idle_name}", field_value))
                 elif is_guard:
                     summary_line = (
                         f"{status_emoji('guard')} **{fighter.name}** raises Guard -- +{shield_gained} Shield "
