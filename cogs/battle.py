@@ -805,7 +805,6 @@ def find_eligible_counter(defender: Fighter, attacker_slot_speed: int) -> tuple[
             return slot_num, action.skill
     return None
 
-
 def find_eligible_evade(defender: Fighter, attacker: Fighter, attacker_slot: int) -> tuple[int, Skill] | None:
     """[Evade] is a real declared skill now, strictly slot-specific,
     unlike Counter. Only eligible if `defender` has an [Evade]-tagged
@@ -825,6 +824,14 @@ def find_eligible_evade(defender: Fighter, attacker: Fighter, attacker_slot: int
             return slot_num, action.skill
     return None
 
+def find_eligible_clashable_guard(defender: Fighter) -> tuple[int, Skill] | None:
+    """Same shape as find_eligible_clashable_counter, for [Clashable Guard]. See docs/ENGINEERING_NOTES.md#battle-find-eligible-clashable-guard for the full rationale."""
+    if defender.clashable_guard_used_this_round:
+        return None
+    for slot_num, action in defender.declared_actions.items():
+        if "clashable_guard" in action.skill.tags:
+            return slot_num, action.skill
+    return None
 
 def find_eligible_clashable_counter(defender: Fighter) -> tuple[int, Skill] | None:
     """Same shape as find_eligible_clashable_counter, for [Clashable Guard]. See docs/ENGINEERING_NOTES.md#battle-find-eligible-clashable-guard for the full rationale."""
