@@ -576,7 +576,10 @@ def build_battle_embed(battle: Battle) -> discord.Embed:
         embed.set_image(url=type_info["image"])
 
     for side_name in ("A", "B"):
-        fighters = sorted(battle.side(side_name), key=lambda f: max(f.slot_speeds, default=0), reverse=True)
+        fighters = sorted(
+            (f for f in battle.side(side_name) if not f.eliminated),
+            key=lambda f: max(f.slot_speeds, default=0), reverse=True,
+        )
         if not fighters:
             continue
 
@@ -610,6 +613,19 @@ def build_battle_embed(battle: Battle) -> discord.Embed:
                 f"{stat_emoji('sanity')} {f.sanity}){tag}\n{slot_line}{hint_line}"
             )
         embed.add_field(name=f"Side {side_name}", value="\n\n".join(lines), inline=False)
+
+    # Eliminated fighters are pulled out of their side's normal roster
+    # entirely and listed here instead, across both sides combined --
+    # once eliminated they're done for the rest of THIS battle (see
+    # Fighter.eliminated's docstring), so there's no slot/speed/declare
+    # info left worth showing for them, just the fact that they're out.
+    eliminated_fighters = [f for f in battle.fighters if f.eliminated]
+    if eliminated_fighters:
+        embed.add_field(
+            name="Eliminated",
+            value="\n".join(f"💀 {f.name}" for f in eliminated_fighters),
+            inline=False,
+        )
 
     if not battle.fighters:
         embed.description = "No fighters added yet. Use /battle addfighter."
@@ -1331,6 +1347,20 @@ class BattleCog(commands.GroupCog, name="battle"):
         target_fighter = battle.get_fighter(fighter)
         if target_fighter is None:
             await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            return
+
+        # A one-way door: once eliminated (see Fighter.eliminated's
+        # docstring), nothing can bring a fighter back into THIS battle,
+        # including an admin heal via hp/max_hp here. Blocking the whole
+        # command rather than just the hp param, since letting other
+        # fields (resistances, speed, stagger config...) still change on
+        # an eliminated fighter would be a pointless no-op at best and a
+        # confusing half-state at worst -- start a new Battle instead.
+        if target_fighter.eliminated:
+            await interaction.response.send_message(
+                f"{target_fighter.name} has been eliminated and can't be modified in this battle.",
+                ephemeral=True,
+            )
             return
 
         if (speed_min is None) != (speed_max is None):
@@ -2565,6 +2595,24 @@ class BattleCog(commands.GroupCog, name="battle"):
         turn_end_status_log = apply_turn_end_status_ticks(battle)
         if turn_end_status_log:
             locked_lines.append("**Turn End**\n" + "\n".join(turn_end_status_log))
+
+        # Elimination: anyone who hit 0 HP this round (from any source --
+        # a clash loss, an unopposed hit, Attack Weight splash, Bleed's
+        # own self-damage, etc.) is flagged out for good. Checked once
+        # here at end-of-round rather than at every individual take_
+        # damage call site, since there are many of those and this
+        # catches all of them uniformly. eliminated is a ONE-WAY flag
+        # (see Fighter's docstring) -- once set, it never gets cleared
+        # by combat() itself, only by starting a new Battle entirely.
+        # Must run BEFORE final_description is joined below, so the
+        # announcement actually shows up in this round's results.
+        newly_eliminated = [f for f in battle.fighters if not f.is_alive() and not f.eliminated]
+        for f in newly_eliminated:
+            f.eliminated = True
+        if newly_eliminated:
+            locked_lines.append(
+                "**Eliminated**\n" + "\n".join(f"💀 {f.name} has been eliminated." for f in newly_eliminated)
+            )
 
         final_description = "\n\n".join(locked_lines)
         if len(final_description) > 4000:

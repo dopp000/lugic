@@ -97,6 +97,19 @@ class Fighter:
     # Shield HP from a [Guard] skill: an overhead pool consumed BEFORE regular HP, not a resistance or a damage-avoidance mechanic -- incoming... See docs/ENGINEERING_NOTES.md#battle-comment-137.
     shield: int = 0
 
+    # True once this fighter has hit 0 HP and been formally removed from
+    # their side for the rest of THIS battle -- a one-way transition, not
+    # just "currently at 0 HP". is_alive() only reflects the current HP
+    # number and would flip back True the instant HP is set positive
+    # again (e.g. an admin /battle setstatus heal); this flag is what
+    # actually keeps an eliminated fighter out of the battle for good.
+    # Set by combat()'s end-of-round elimination sweep, and checked by
+    # setstatus (blocks HP changes on an eliminated fighter) and by
+    # build_battle_embed (moves them into a separate Eliminated section,
+    # out of their side's normal roster). Never cleared automatically --
+    # only /battle end (starting a new Battle) resets it.
+    eliminated: bool = False
+
     def __post_init__(self):
         if self.speed_min is None:
             self.speed_min = self.speed
