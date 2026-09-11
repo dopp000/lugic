@@ -623,7 +623,7 @@ def build_battle_embed(battle: Battle) -> discord.Embed:
     if eliminated_fighters:
         embed.add_field(
             name="Eliminated",
-            value="\n".join(f"💀 {f.name}" for f in eliminated_fighters),
+            value="\n".join(f"{f.name}" for f in eliminated_fighters),
             inline=False,
         )
 
@@ -1358,7 +1358,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         # confusing half-state at worst -- start a new Battle instead.
         if target_fighter.eliminated:
             await interaction.response.send_message(
-                f"{target_fighter.name} has been eliminated and can't be modified in this battle.",
+                f"{target_fighter.name} has been eliminated and cannot act in this battle.",
                 ephemeral=True,
             )
             return
