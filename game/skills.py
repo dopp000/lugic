@@ -60,7 +60,9 @@ class CoinResult:
     is_crit: bool = False
     crit_bonus_damage: int = 0
 
-    # True if the DEFENDER dodged this coin -- see the Evasion-resource rule on resolve_skill below. See docs/ENGINEERING_NOTES.md#skills-comment-82.
+    # True if the DEFENDER dodged this coin -- set externally by
+    # apply_incoming_hit in cogs/battle.py after a successful [Evade]
+    # (find_eligible_evade), not by anything in this file.
     is_evaded: bool = False
 
 
@@ -131,12 +133,6 @@ def resolve_skill(
             poise_remaining = poise.count
             poise_potency = poise.potency
 
-    evasion_remaining = 0
-    if context is not None and context.target is not None:
-        evasion = context.target.get_status("evasion")
-        if evasion is not None:
-            evasion_remaining = evasion.count
-
     for i in range(skill.coins):
         coin_index = i + 1
         fired_triggers: list[Trigger] = []
@@ -158,10 +154,15 @@ def resolve_skill(
         if heads:
             power += coin_power
 
+        # Evade no longer lives here -- it's a declared Skill of its
+        # own now (the [Evade] flag), resolved by find_eligible_evade
+        # in cogs/battle.py BEFORE apply_incoming_hit ever calls into
+        # this function, not as a per-coin resource check on the
+        # attacker's own resolve_skill call. is_evaded on a CoinResult
+        # is still a real field, a successful Evade marks every coin
+        # of the incoming attack as evaded from the outside, it's just
+        # never SET from inside this function anymore.
         is_evaded = False
-        if evasion_remaining > 0:
-            is_evaded = True
-            evasion_remaining -= 1
 
         is_crit = False
         crit_bonus_damage = 0

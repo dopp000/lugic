@@ -46,10 +46,9 @@ SKILL_LEVEL_TIMINGS = {
     # triggers uses for [Combat Start]/[Turn Start]), since the
     # defender isn't the one whose skill is being resolved when they
     # get attacked, so there's no coin_index of theirs to attach either
-    # to. See the Evasion-resource docstring on resolve_skill in
-    # game/skills.py, and the Counter-resource docstring on
-    # apply_incoming_hit in cogs/battle.py, for the actual mechanics
-    # these fire off of. caster on the context is the defender (the one
+    # to. See find_eligible_evade and apply_incoming_hit in
+    # cogs/battle.py for the actual mechanics these fire off of.
+    # caster on the context is the defender (the one
     # reacting), target is the attacker, so a condition like "if
     # attacker has Rupture" still reads naturally off target_status.
     "on evade": "on_evade",
@@ -129,6 +128,7 @@ SKILL_FLAG_TAGS = {
     "unclashable": "unclashable",
     "guard": "guard",
     "clashable guard": "clashable_guard",
+    "evade": "evade",
 }
 
 # The only statuses a caster can hold on themselves as a self-buff
@@ -136,17 +136,17 @@ SKILL_FLAG_TAGS = {
 # thing named isn't Speed) both check against this list, anything else
 # is an unmodeled custom resource (Strider, Assist Defense, Deathrite,
 # named Identity resources, etc) and gets rejected with a clear message,
-# matching this pass's scope. Evasion works like Poise (a count-based
-# stack consumed one-per-coin), read off the DEFENDER instead of the
-# attacker -- see the Evasion-resource docstring on resolve_skill in
-# game/skills.py.
+# matching this pass's scope.
 #
-# NOTE: "counter" is deliberately NOT in this list anymore -- Counter
-# used to be a status/resource here, but it's now a Skill-level
-# mechanic instead (the [Counter] skill flag, see SKILL_FLAG_TAGS
-# above, plus find_eligible_counter/apply_counter_redirects in
-# cogs/battle.py). A skill, not a stat a caster holds.
-SELF_BUFF_STATUSES = ["poise", "charge", "evasion"]
+# NOTE: neither "counter" nor "evasion" live in this list -- both used
+# to be a status/resource here, but are now Skill-level mechanics
+# instead ([Counter]/[Evade] skill flags, see SKILL_FLAG_TAGS above,
+# plus find_eligible_counter/find_eligible_evade and
+# apply_counter_redirects in cogs/battle.py). A declared skill, not a
+# stat a caster holds. "Gain N Evasion" is no longer valid trigger
+# text for this reason -- it now falls through to the same "not a
+# tracked resource" rejection any other unrecognized name would get.
+SELF_BUFF_STATUSES = ["poise", "charge"]
 
 # Target-facing statuses, mirrors statuses.py's INFLICTABLE_STATUSES.
 # Duplicated here rather than imported so this module doesn't need to

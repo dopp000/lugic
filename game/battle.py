@@ -88,6 +88,16 @@ class Fighter:
     clashable_counter_used_this_round: bool = False
     clashable_guard_used_this_round: bool = False
 
+    # [Evade] is target-slot-specific (unlike Counter), so a flat
+    # per-fighter bool isn't enough -- this tracks which of THIS
+    # fighter's OWN slot numbers holding a declared [Evade] have
+    # already resolved (won or lost) this round, so a second attack
+    # landing on that same Evade's target slot correctly finds it
+    # used-up rather than firing twice. Keyed by the Evade's OWN slot
+    # number, not the attacker's slot. See find_eligible_evade in
+    # cogs/battle.py.
+    evade_used_slots: set[int] = field(default_factory=set)
+
     # Stagger. See docs/ENGINEERING_NOTES.md#battle-comment-122.
     stagger_thresholds: list[float] = field(default_factory=lambda: list(DEFAULT_STAGGER_THRESHOLDS))
     stagger_tiers_enabled: list[bool] = field(default_factory=lambda: [True, True, True])
@@ -272,6 +282,7 @@ class Fighter:
         self.counter_used_this_round = False
         self.clashable_counter_used_this_round = False
         self.clashable_guard_used_this_round = False
+        self.evade_used_slots = set()
         self.shield = 0
 
     def __str__(self):
