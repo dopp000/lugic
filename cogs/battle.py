@@ -2064,6 +2064,28 @@ class BattleCog(commands.GroupCog, name="battle"):
         # Transforms `units` to reflect Counter / Clashable Counter interceptions -- see apply_counter_redirects's docstring above. See docs/ENGINEERING_NOTES.md#battle-comment-1690.
         units = apply_counter_redirects(units, battle)
 
+        # Fall-through support: any still-idle Clashable Guard/Counter
+        # solo unit (Pass 0 didn't find its own exact declared target)
+        # is pulled OUT of the main speed-ordered list here, rather than
+        # resolving its "nothing to intercept" idle turn at its own
+        # natural speed position. It stays available, grouped by its
+        # OWN caster, for the live fall-through check in the main loop's
+        # plain-attack branch below: any attack that finds no live Evade
+        # waiting for it may claim one of that SAME fighter's still-
+        # unclaimed entries here instead of landing as a plain hit.
+        # Whatever's left unclaimed once the whole loop finishes gets
+        # its real "idle" turn rendered at the very end (see just after
+        # the main loop below), in no particular order among themselves
+        # since a no-op has nothing left to be ordered against.
+        deferred_clashable_by_fighter: dict[int, list[dict]] = {}
+        still_active_units = []
+        for u in units:
+            if u[0] == "solo" and (u[1]["skill"].tags & {"clashable_guard", "clashable_counter"}):
+                deferred_clashable_by_fighter.setdefault(id(u[1]["caster"]), []).append(u[1])
+            else:
+                still_active_units.append(u)
+        units = still_active_units
+
         # locked_lines holds everything PERMANENTLY decided so far this Combat Phase: the passive-trigger block (if any), then one one-line... See docs/ENGINEERING_NOTES.md#battle-comment-1697.
         locked_lines: list[str] = []
         if passive_log:
@@ -2135,6 +2157,234 @@ class BattleCog(commands.GroupCog, name="battle"):
         # single event (both sides share the same flag value).
         first_action_done = False
 
+        async def resolve_clash_unit(entry_a: dict, entry_b: dict):
+            """The full Clash resolution -- everything from the original
+            inline `if u[0] == "clash":` branch, pulled out into its own
+            callable closure so it can ALSO be invoked reactively, mid-
+            loop, for a fall-through interception (a plain attack that
+            finds no live Evade waiting for it may redirect into an
+            ad-hoc Clash against a still-unused Clashable Guard/Counter
+            on the same target fighter -- see the fall-through check in
+            the main loop's plain-attack branch below). Nothing about
+            the actual resolution logic changed from the original inline
+            version; this is a pure extraction, not a rewrite.
+            """
+            nonlocal first_action_done
+            fighter_a, fighter_b = entry_a["caster"], entry_b["caster"]
+            if not fighter_a.is_alive() or not fighter_b.is_alive():
+                return
+
+            live_header = f"⚔️ **{fighter_a.name}** vs **{fighter_b.name}**"
+            await render(live_header)
+            await asyncio.sleep(0.3)
+
+            context_a = TriggerContext(
+                caster=fighter_a, target=fighter_b, battle=battle,
+                is_first_hit_of_round=not first_action_done,
+            )
+            context_b = TriggerContext(
+                caster=fighter_b, target=fighter_a, battle=battle,
+                is_first_hit_of_round=not first_action_done,
+            )
+            # Full pre-roll chain for both sides -- see PRE_ROLL_CLASH_TIMINGS / _resolve_pre_roll_chain above for firing order and the documented... See docs/ENGINEERING_NOTES.md#battle-comment-1802.
+            skill_a, pre_roll_post_hit_a = _resolve_pre_roll_chain(
+                entry_a["skill"], context_a, PRE_ROLL_CLASH_TIMINGS
+            )
+            skill_b, pre_roll_post_hit_b = _resolve_pre_roll_chain(
+                entry_b["skill"], context_b, PRE_ROLL_CLASH_TIMINGS
+            )
+            first_action_done = True
+
+            # Fully resolved instantly, same as always -- everything
+            # below this point is presentation over already-decided
+            # numbers, see the animate_* helpers' docstrings above.
+            outcome = resolve_round_clash(
+                skill_a, skill_b,
+                heads_chance_a=fighter_a.heads_chance(),
+                heads_chance_b=fighter_b.heads_chance(),
+                context_a=context_a,
+                context_b=context_b,
+            )
+            winner = fighter_a if outcome.winner == "a" else fighter_b
+            loser = fighter_b if winner is fighter_a else fighter_a
+            winner_skill = skill_a if outcome.winner == "a" else skill_b
+            loser_skill = skill_b if outcome.winner == "a" else skill_a
+            winner_context = context_a if outcome.winner == "a" else context_b
+            loser_context = context_b if outcome.winner == "a" else context_a
+            winner_pre_roll_post_hit = pre_roll_post_hit_a if outcome.winner == "a" else pre_roll_post_hit_b
+
+            # Clash win Sanity scales with the winner's coin count --
+            # NOT a flat amount -- computed once here so both the
+            # actual gain and the display text below agree.
+            clash_win_sanity = SANITY_PER_COIN_CLASH_WIN * outcome.winner_final_result.skill.coins
+            winner.gain_sanity(clash_win_sanity)
+            loser.lose_sanity(SANITY_CLASH_LOSS)
+
+            # [Clash Win] and [Attack End] only fire for the winner -- the loser never actually lands a hit, so neither an on-hit-family Trigger nor... See docs/ENGINEERING_NOTES.md#battle-comment-1839.
+            _, clash_win_post_hit = resolve_triggers(winner_skill, winner_context, "clash_win")
+            _, attack_end_post_hit = resolve_triggers(winner_skill, winner_context, "attack_end")
+            _, turn_end_post_hit_winner = resolve_triggers(winner_skill, winner_context, "turn_end")
+            _, clash_lose_post_hit = resolve_triggers(loser_skill, loser_context, "clash_lose")
+            _, hit_after_clash_lose_post_hit = resolve_triggers(loser_skill, loser_context, "hit_after_clash_lose")
+            _, turn_end_post_hit_loser = resolve_triggers(loser_skill, loser_context, "turn_end")
+
+            # Clashable Guard replaces normal clash damage with its own reward/mitigation, on EITHER side -- see GUARD_STAGGER_THRESHOLD_RAISE /... See docs/ENGINEERING_NOTES.md#battle-comment-1853.
+            winner_is_clashable_guard = "clashable_guard" in winner_skill.tags
+            loser_is_clashable_guard = "clashable_guard" in loser_skill.tags
+            guard_note: str | None = None
+            winner_slot = entry_a["slot"] if outcome.winner == "a" else entry_b["slot"]
+
+            if winner_is_clashable_guard:
+                total_damage, status_log, per_coin_triggers = 0, [], []
+                evaded = False
+                raised = []
+                for i in range(3):
+                    if loser.stagger_tiers_enabled[i]:
+                        loser.stagger_thresholds[i] = min(
+                            1.0, loser.stagger_thresholds[i] + GUARD_STAGGER_THRESHOLD_RAISE
+                        )
+                        raised.append(f"Tier {i + 1} -> {round(loser.stagger_thresholds[i] * 100)}%")
+                if raised:
+                    guard_note = (
+                        f"{status_emoji('clashable_guard')} {winner.name}'s Clashable Guard succeeds! "
+                        f"{loser.name}'s Stagger thresholds rise: {', '.join(raised)}"
+                    )
+            else:
+                # A Clash's own winner-vs-loser hit checks the loser's
+                # declared Evade the same as any other incoming hit --
+                # if it was aimed at exactly this winning slot, it
+                # gets its shot here, before damage is even computed.
+                evaded, status_log = resolve_evade(loser, winner, winner_slot, battle)
+                if evaded:
+                    total_damage, per_coin_triggers = 0, []
+                else:
+                    total_damage, hit_log, per_coin_triggers = apply_incoming_hit(
+                        winner_skill, outcome.winner_final_result, loser, winner
+                    )
+                    status_log += hit_log
+                if not evaded and loser_is_clashable_guard and total_damage > 0:
+                    reduced = round(total_damage * (100 - GUARD_LOSE_DAMAGE_REDUCTION_PCT) / 100)
+                    guard_note = (
+                        f"{status_emoji('clashable_guard')} {loser.name}'s Clashable Guard mitigates the "
+                        f"hit: {total_damage} -> {reduced} damage"
+                    )
+                    total_damage = reduced
+
+            loser.take_damage(total_damage)
+            loser.check_stagger(battle.round_number)
+            stagger_post_hit: list[Trigger] = []
+            if loser.current_stagger_tier > 0:
+                _, stagger_post_hit = resolve_triggers(winner_skill, winner_context, "on_stagger")
+            winner_was_crit = any(c.is_crit for c in outcome.winner_final_result.coin_results)
+            kill_log = fire_kill_triggers(winner, loser, winner_skill, winner_context, winner_was_crit)
+            tremor_log = fire_tremor_burst(winner, loser, winner_skill, winner_context)
+            bleed_log = apply_bleed_self_damage(winner, winner_skill)
+            trigger_log = apply_trigger_effects(
+                winner_pre_roll_post_hit + clash_win_post_hit + attack_end_post_hit
+                + turn_end_post_hit_winner + per_coin_triggers
+                + outcome.winner_before_attack_post_hit + stagger_post_hit,
+                winner, loser,
+            )
+            trigger_log += kill_log + tremor_log + bleed_log
+            trigger_log += apply_trigger_effects(
+                clash_lose_post_hit + hit_after_clash_lose_post_hit + turn_end_post_hit_loser, loser, winner
+            )
+            # [On Evade] is the LOSER's own reaction -- they're the one who just got hit by the winner's final toss, see fire_evade_triggers for why... See docs/ENGINEERING_NOTES.md#battle-comment-1904.
+            if evaded:
+                trigger_log += fire_evade_triggers(loser, winner, battle)
+            if guard_note:
+                trigger_log.append(guard_note)
+            # ---- Animate every attrition round in full ----
+            round_summaries: list[str] = []
+            for round_idx, r in enumerate(outcome.rounds, start=1):
+                round_header = (
+                    live_header + "\n" + "\n".join(round_summaries)
+                    + ("\n" if round_summaries else "")
+                    + f"Round {round_idx}: {fighter_a.name} ({r.coins_a_before} coins) "
+                    + f"vs {fighter_b.name} ({r.coins_b_before} coins)"
+                )
+
+                a_face = await animate_faces(f"{round_header}\n{fighter_a.name}:", r.result_a.coin_results)
+                a_power = await animate_power(f"{round_header}\n{fighter_a.name}:", a_face, r.result_a.coin_results)
+                a_block = f"{fighter_a.name}:\n{a_face}\n{a_power}"
+
+                b_face = await animate_faces(f"{round_header}\n{a_block}\n{fighter_b.name}:", r.result_b.coin_results)
+                b_power = await animate_power(f"{round_header}\n{a_block}\n{fighter_b.name}:", b_face, r.result_b.coin_results)
+
+                if r.loser == "a":
+                    result_line = f"{fighter_a.name} loses a coin"
+                elif r.loser == "b":
+                    result_line = f"{fighter_b.name} loses a coin"
+                else:
+                    result_line = "Tie, nobody loses a coin"
+
+                full_round_block = f"{round_header}\n{a_block}\n{fighter_b.name}:\n{b_face}\n{b_power}\n{result_line}"
+                await render(full_round_block)
+                await asyncio.sleep(0.6)
+
+                round_summaries.append(
+                    f"Round {round_idx}: {fighter_a.name} Power {r.result_a.final_power} vs "
+                    f"{fighter_b.name} Power {r.result_b.final_power} -> {result_line}"
+                )
+
+            # ---- Animate the winner's final decisive toss ----
+            final_header = (
+                live_header + "\n" + "\n".join(round_summaries)
+                + f"\n\n**{winner.name}'s final attack** "
+                + f"({outcome.winner_final_result.skill.coins} coins remaining):"
+            )
+            final_face = await animate_faces(final_header, outcome.winner_final_result.coin_results)
+            await animate_damage(final_header, final_face, outcome.winner_final_result.coin_results, status_log)
+            await asyncio.sleep(0.4)
+
+            # ---- Same full detail text + one-line summary as before, for the Full Log button and locked history ----
+            field_value = format_clash_rounds(outcome, fighter_a.name, fighter_b.name)
+            intercept_holder_entry = (
+                entry_a if entry_a.get("is_clashable_counter_intercept")
+                else entry_b if entry_b.get("is_clashable_counter_intercept")
+                else None
+            )
+            if intercept_holder_entry is not None:
+                holder = intercept_holder_entry["caster"]
+                intercept_name = (
+                    "Clashable Guard" if "clashable_guard" in intercept_holder_entry["skill"].tags
+                    else "Clashable Counter"
+                )
+                intercept_tag = "clashable_guard" if intercept_name == "Clashable Guard" else "clashable_counter"
+                field_value = (
+                    f"{status_emoji(intercept_tag)} {holder.name}'s {intercept_name} intercepts an unopposed attack!\n\n"
+                    + field_value
+                )
+            field_value += (
+                f"\n\n**{winner.name}'s final attack** "
+                f"({outcome.winner_final_result.skill.coins} coins remaining):\n"
+            )
+            field_value += format_skill_result(outcome.winner_final_result)
+            field_value += (
+                f"\n\n**{winner.name} wins the clash.** {loser.name} takes {total_damage} damage. "
+                f"({loser.name}: {loser.hp}/{loser.max_hp} HP)"
+            )
+            field_value += (
+                f"\n{winner.name} Sanity +{clash_win_sanity} ({winner.sanity}), "
+                f"{loser.name} Sanity -{SANITY_CLASH_LOSS} ({loser.sanity})"
+            )
+            if status_log:
+                field_value += "\n" + "\n".join(status_log)
+            if trigger_log:
+                field_value += "\n" + "\n".join(trigger_log)
+
+            summary_line = (
+                f"⚔️ **{winner.name}** beats **{loser.name}** -- {total_damage} damage "
+                f"({loser.name}: {loser.hp}/{loser.max_hp} HP)"
+            )
+            summary_lines.append(summary_line)
+            full_log_entries.append((f"{fighter_a.name} vs {fighter_b.name}", field_value))
+
+            # Lock this unit's summary permanently into the message,
+            # clear the live block, and move on to the next unit.
+            locked_lines.append(summary_line)
+            await render(None)
+
         for u in units:
             if u[0] == "offset":
                 _, entry_a, entry_b = u
@@ -2158,211 +2408,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                 continue
             if u[0] == "clash":
                 _, entry_a, entry_b = u
-                fighter_a, fighter_b = entry_a["caster"], entry_b["caster"]
-                if not fighter_a.is_alive() or not fighter_b.is_alive():
-                    continue
-
-                live_header = f"⚔️ **{fighter_a.name}** vs **{fighter_b.name}**"
-                await render(live_header)
-                await asyncio.sleep(0.3)
-
-                context_a = TriggerContext(
-                    caster=fighter_a, target=fighter_b, battle=battle,
-                    is_first_hit_of_round=not first_action_done,
-                )
-                context_b = TriggerContext(
-                    caster=fighter_b, target=fighter_a, battle=battle,
-                    is_first_hit_of_round=not first_action_done,
-                )
-                # Full pre-roll chain for both sides -- see PRE_ROLL_CLASH_TIMINGS / _resolve_pre_roll_chain above for firing order and the documented... See docs/ENGINEERING_NOTES.md#battle-comment-1802.
-                skill_a, pre_roll_post_hit_a = _resolve_pre_roll_chain(
-                    entry_a["skill"], context_a, PRE_ROLL_CLASH_TIMINGS
-                )
-                skill_b, pre_roll_post_hit_b = _resolve_pre_roll_chain(
-                    entry_b["skill"], context_b, PRE_ROLL_CLASH_TIMINGS
-                )
-                first_action_done = True
-
-                # Fully resolved instantly, same as always -- everything
-                # below this point is presentation over already-decided
-                # numbers, see the animate_* helpers' docstrings above.
-                outcome = resolve_round_clash(
-                    skill_a, skill_b,
-                    heads_chance_a=fighter_a.heads_chance(),
-                    heads_chance_b=fighter_b.heads_chance(),
-                    context_a=context_a,
-                    context_b=context_b,
-                )
-                winner = fighter_a if outcome.winner == "a" else fighter_b
-                loser = fighter_b if winner is fighter_a else fighter_a
-                winner_skill = skill_a if outcome.winner == "a" else skill_b
-                loser_skill = skill_b if outcome.winner == "a" else skill_a
-                winner_context = context_a if outcome.winner == "a" else context_b
-                loser_context = context_b if outcome.winner == "a" else context_a
-                winner_pre_roll_post_hit = pre_roll_post_hit_a if outcome.winner == "a" else pre_roll_post_hit_b
-
-                # Clash win Sanity scales with the winner's coin count --
-                # NOT a flat amount -- computed once here so both the
-                # actual gain and the display text below agree.
-                clash_win_sanity = SANITY_PER_COIN_CLASH_WIN * outcome.winner_final_result.skill.coins
-                winner.gain_sanity(clash_win_sanity)
-                loser.lose_sanity(SANITY_CLASH_LOSS)
-
-                # [Clash Win] and [Attack End] only fire for the winner -- the loser never actually lands a hit, so neither an on-hit-family Trigger nor... See docs/ENGINEERING_NOTES.md#battle-comment-1839.
-                _, clash_win_post_hit = resolve_triggers(winner_skill, winner_context, "clash_win")
-                _, attack_end_post_hit = resolve_triggers(winner_skill, winner_context, "attack_end")
-                _, turn_end_post_hit_winner = resolve_triggers(winner_skill, winner_context, "turn_end")
-                _, clash_lose_post_hit = resolve_triggers(loser_skill, loser_context, "clash_lose")
-                _, hit_after_clash_lose_post_hit = resolve_triggers(loser_skill, loser_context, "hit_after_clash_lose")
-                _, turn_end_post_hit_loser = resolve_triggers(loser_skill, loser_context, "turn_end")
-
-                # Clashable Guard replaces normal clash damage with its own reward/mitigation, on EITHER side -- see GUARD_STAGGER_THRESHOLD_RAISE /... See docs/ENGINEERING_NOTES.md#battle-comment-1853.
-                winner_is_clashable_guard = "clashable_guard" in winner_skill.tags
-                loser_is_clashable_guard = "clashable_guard" in loser_skill.tags
-                guard_note: str | None = None
-                winner_slot = entry_a["slot"] if outcome.winner == "a" else entry_b["slot"]
-
-                if winner_is_clashable_guard:
-                    total_damage, status_log, per_coin_triggers = 0, [], []
-                    evaded = False
-                    raised = []
-                    for i in range(3):
-                        if loser.stagger_tiers_enabled[i]:
-                            loser.stagger_thresholds[i] = min(
-                                1.0, loser.stagger_thresholds[i] + GUARD_STAGGER_THRESHOLD_RAISE
-                            )
-                            raised.append(f"Tier {i + 1} -> {round(loser.stagger_thresholds[i] * 100)}%")
-                    if raised:
-                        guard_note = (
-                            f"{status_emoji('clashable_guard')} {winner.name}'s Clashable Guard succeeds! "
-                            f"{loser.name}'s Stagger thresholds rise: {', '.join(raised)}"
-                        )
-                else:
-                    # A Clash's own winner-vs-loser hit checks the loser's
-                    # declared Evade the same as any other incoming hit --
-                    # if it was aimed at exactly this winning slot, it
-                    # gets its shot here, before damage is even computed.
-                    evaded, status_log = resolve_evade(loser, winner, winner_slot, battle)
-                    if evaded:
-                        total_damage, per_coin_triggers = 0, []
-                    else:
-                        total_damage, hit_log, per_coin_triggers = apply_incoming_hit(
-                            winner_skill, outcome.winner_final_result, loser, winner
-                        )
-                        status_log += hit_log
-                    if not evaded and loser_is_clashable_guard and total_damage > 0:
-                        reduced = round(total_damage * (100 - GUARD_LOSE_DAMAGE_REDUCTION_PCT) / 100)
-                        guard_note = (
-                            f"{status_emoji('clashable_guard')} {loser.name}'s Clashable Guard mitigates the "
-                            f"hit: {total_damage} -> {reduced} damage"
-                        )
-                        total_damage = reduced
-
-                loser.take_damage(total_damage)
-                loser.check_stagger(battle.round_number)
-                stagger_post_hit: list[Trigger] = []
-                if loser.current_stagger_tier > 0:
-                    _, stagger_post_hit = resolve_triggers(winner_skill, winner_context, "on_stagger")
-                winner_was_crit = any(c.is_crit for c in outcome.winner_final_result.coin_results)
-                kill_log = fire_kill_triggers(winner, loser, winner_skill, winner_context, winner_was_crit)
-                tremor_log = fire_tremor_burst(winner, loser, winner_skill, winner_context)
-                bleed_log = apply_bleed_self_damage(winner, winner_skill)
-                trigger_log = apply_trigger_effects(
-                    winner_pre_roll_post_hit + clash_win_post_hit + attack_end_post_hit
-                    + turn_end_post_hit_winner + per_coin_triggers
-                    + outcome.winner_before_attack_post_hit + stagger_post_hit,
-                    winner, loser,
-                )
-                trigger_log += kill_log + tremor_log + bleed_log
-                trigger_log += apply_trigger_effects(
-                    clash_lose_post_hit + hit_after_clash_lose_post_hit + turn_end_post_hit_loser, loser, winner
-                )
-                # [On Evade] is the LOSER's own reaction -- they're the one who just got hit by the winner's final toss, see fire_evade_triggers for why... See docs/ENGINEERING_NOTES.md#battle-comment-1904.
-                if evaded:
-                    trigger_log += fire_evade_triggers(loser, winner, battle)
-                if guard_note:
-                    trigger_log.append(guard_note)
-                # ---- Animate every attrition round in full ----
-                round_summaries: list[str] = []
-                for round_idx, r in enumerate(outcome.rounds, start=1):
-                    round_header = (
-                        live_header + "\n" + "\n".join(round_summaries)
-                        + ("\n" if round_summaries else "")
-                        + f"Round {round_idx}: {fighter_a.name} ({r.coins_a_before} coins) "
-                        + f"vs {fighter_b.name} ({r.coins_b_before} coins)"
-                    )
-
-                    a_face = await animate_faces(f"{round_header}\n{fighter_a.name}:", r.result_a.coin_results)
-                    a_power = await animate_power(f"{round_header}\n{fighter_a.name}:", a_face, r.result_a.coin_results)
-                    a_block = f"{fighter_a.name}:\n{a_face}\n{a_power}"
-
-                    b_face = await animate_faces(f"{round_header}\n{a_block}\n{fighter_b.name}:", r.result_b.coin_results)
-                    b_power = await animate_power(f"{round_header}\n{a_block}\n{fighter_b.name}:", b_face, r.result_b.coin_results)
-
-                    if r.loser == "a":
-                        result_line = f"{fighter_a.name} loses a coin"
-                    elif r.loser == "b":
-                        result_line = f"{fighter_b.name} loses a coin"
-                    else:
-                        result_line = "Tie, nobody loses a coin"
-
-                    full_round_block = f"{round_header}\n{a_block}\n{fighter_b.name}:\n{b_face}\n{b_power}\n{result_line}"
-                    await render(full_round_block)
-                    await asyncio.sleep(0.6)
-
-                    round_summaries.append(
-                        f"Round {round_idx}: {fighter_a.name} Power {r.result_a.final_power} vs "
-                        f"{fighter_b.name} Power {r.result_b.final_power} -> {result_line}"
-                    )
-
-                # ---- Animate the winner's final decisive toss ----
-                final_header = (
-                    live_header + "\n" + "\n".join(round_summaries)
-                    + f"\n\n**{winner.name}'s final attack** "
-                    + f"({outcome.winner_final_result.skill.coins} coins remaining):"
-                )
-                final_face = await animate_faces(final_header, outcome.winner_final_result.coin_results)
-                await animate_damage(final_header, final_face, outcome.winner_final_result.coin_results, status_log)
-                await asyncio.sleep(0.4)
-
-                # ---- Same full detail text + one-line summary as before, for the Full Log button and locked history ----
-                field_value = format_clash_rounds(outcome, fighter_a.name, fighter_b.name)
-                if entry_a.get("is_clashable_counter_intercept") or entry_b.get("is_clashable_counter_intercept"):
-                    holder = entry_a["caster"] if entry_a.get("is_clashable_counter_intercept") else entry_b["caster"]
-                    field_value = (
-                        f"{status_emoji('clashable_counter')} {holder.name}'s Clashable Counter intercepts an unopposed attack!\n\n"
-                        + field_value
-                    )
-                field_value += (
-                    f"\n\n**{winner.name}'s final attack** "
-                    f"({outcome.winner_final_result.skill.coins} coins remaining):\n"
-                )
-                field_value += format_skill_result(outcome.winner_final_result)
-                field_value += (
-                    f"\n\n**{winner.name} wins the clash.** {loser.name} takes {total_damage} damage. "
-                    f"({loser.name}: {loser.hp}/{loser.max_hp} HP)"
-                )
-                field_value += (
-                    f"\n{winner.name} Sanity +{clash_win_sanity} ({winner.sanity}), "
-                    f"{loser.name} Sanity -{SANITY_CLASH_LOSS} ({loser.sanity})"
-                )
-                if status_log:
-                    field_value += "\n" + "\n".join(status_log)
-                if trigger_log:
-                    field_value += "\n" + "\n".join(trigger_log)
-
-                summary_line = (
-                    f"⚔️ **{winner.name}** beats **{loser.name}** -- {total_damage} damage "
-                    f"({loser.name}: {loser.hp}/{loser.max_hp} HP)"
-                )
-                summary_lines.append(summary_line)
-                full_log_entries.append((f"{fighter_a.name} vs {fighter_b.name}", field_value))
-
-                # Lock this unit's summary permanently into the message,
-                # clear the live block, and move on to the next unit.
-                locked_lines.append(summary_line)
-                await render(None)
-
+                await resolve_clash_unit(entry_a, entry_b)
+                continue
             else:
                 _, entry = u
                 fighter = entry["caster"]
@@ -2376,6 +2423,37 @@ class BattleCog(commands.GroupCog, name="battle"):
                 is_clashable_defense_idle = (
                     bool(entry["skill"].tags & {"clashable_guard", "clashable_counter"}) and not is_counter
                 )
+                is_plain_attack = not (is_counter or is_guard or is_evade_readying or is_clashable_defense_idle)
+
+                # Fall-through: this is checked and, if eligible, fully
+                # handled BEFORE any of the normal solo-branch work below
+                # (context/pre-roll/resolve_skill/Sanity gain) -- letting
+                # any of that run first and discarding it afterward would
+                # be wrong, not just wasteful, since fighter.gain_sanity
+                # for an "unopposed hit" mutates real state that must
+                # NOT happen if this turns out to be a redirected Clash
+                # instead (Clashes award Sanity under a completely
+                # different rule). find_eligible_evade is a pure lookup,
+                # safe to call here just to check without committing --
+                # only resolve_evade (used later, for a genuine plain
+                # hit) actually marks a slot used.
+                if is_plain_attack:
+                    would_be_evaded = find_eligible_evade(target, fighter, entry["slot"]) is not None
+                    if not would_be_evaded:
+                        available = deferred_clashable_by_fighter.get(id(target), [])
+                        if available:
+                            available.sort(key=lambda e: e["caster"].slot_speed(e["slot"]), reverse=True)
+                            clashable_entry = available.pop(0)
+                            is_cg = "clashable_guard" in clashable_entry["skill"].tags
+                            if is_cg:
+                                target.clashable_guard_used_this_round = True
+                            else:
+                                target.clashable_counter_used_this_round = True
+                            entry["is_clashable_counter_intercept"] = True
+                            clashable_entry["is_clashable_counter_intercept"] = True
+                            await resolve_clash_unit(entry, clashable_entry)
+                            continue
+
                 if is_counter:
                     live_header = f"{status_emoji('counter')} **{fighter.name}**'s Counter redirects -> strikes **{target.name}** back!"
                 elif is_guard:
@@ -2729,6 +2807,25 @@ class BattleCog(commands.GroupCog, name="battle"):
 
                 locked_lines.append(summary_line)
                 await render(None)
+
+        # Whatever's still sitting in deferred_clashable_by_fighter never
+        # got claimed by any attack this round (see the fall-through
+        # check above) -- render each one's real "nothing to intercept"
+        # idle turn now, at the very end, same shape as the old inline
+        # is_clashable_defense_idle case used to render at its own
+        # natural speed position.
+        for leftover_entries in deferred_clashable_by_fighter.values():
+            for idle_entry in leftover_entries:
+                idle_fighter = idle_entry["caster"]
+                idle_tag = "clashable_guard" if "clashable_guard" in idle_entry["skill"].tags else "clashable_counter"
+                idle_name = "Clashable Guard" if idle_tag == "clashable_guard" else "Clashable Counter"
+                idle_summary = (
+                    f"{status_emoji(idle_tag)} **{idle_fighter.name}** readies {idle_name} -- "
+                    f"nothing to intercept this round."
+                )
+                summary_lines.append(idle_summary)
+                full_log_entries.append((f"{idle_fighter.name}'s {idle_name}", idle_summary))
+                locked_lines.append(idle_summary)
 
         # Everything's already locked into locked_lines as the phase
         # went along -- this is just the final static render, no
