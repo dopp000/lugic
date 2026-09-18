@@ -92,6 +92,32 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   Clash), never steals a teammate's incoming attack, single-use per round
   (own `clashable_guard_used_this_round` / `clashable_counter_used_this_round`
   flag, now correctly independent of each other).
+- **Fall-through** (`cogs/battle.py`, `combat()`): the defense-cascade
+  rule Pass 0 didn't cover — any plain attack that finds no live `[Evade]`
+  waiting for it may redirect into an ad-hoc Clash against the *same
+  target Fighter's* still-idle `[Clashable Guard]`/`[Clashable Counter]`
+  instead of landing as a normal hit. Implementation: any Pass-0-unmatched
+  Clashable solo unit is pulled out of the main speed-ordered list up
+  front into `deferred_clashable_by_fighter` (keyed by `id(fighter)`,
+  `Fighter` isn't hashable) rather than resolving its idle turn at its own
+  natural speed position; the main loop's plain-attack branch checks
+  `find_eligible_evade` first (a side-effect-free peek, not a commit), and
+  only if that comes back empty does it check this dict for the target
+  fighter, picking the highest-Speed entry if more than one is available
+  (tie-break: higher Speed wins). Required extracting the whole Clash
+  resolution body out of the animation loop's shared closures
+  (`render`/`animate_faces`/`animate_power`/`animate_damage`) into its own
+  callable, `resolve_clash_unit(entry_a, entry_b)`, so it can be invoked a
+  second time, mid-loop, for a redirected target without duplicating that
+  block — the surgery earlier notes on this repo had flagged as too risky
+  to rush. Whatever's left unclaimed once the whole loop finishes still
+  gets its real "nothing to intercept" idle turn rendered at the very end.
+  Verified with real objects: a redirected attack that should lose still
+  loses (damage lands on the original target, not the interceptor), a
+  redirect that should win protects the target fully, the Speed tie-break
+  picks correctly between an idle Guard and an idle Counter, Evade still
+  takes priority when it's actually eligible, and a normal Clash/plain hit
+  with nothing to redirect is unaffected (regression-checked).
 
 - **Stagger**: up to 3 HP% thresholds per fighter
   (`Fighter.stagger_thresholds`, default 55/40/25%), checked via
@@ -357,48 +383,6 @@ same-side targeting, so it doesn't yet actually let a skill hit allies.
   their resistances don't flip to a Fatal-style override; only the flat
   tier-multiplier applies to damage they take.
 
-## Currently In Progress
-
-The defense-skill cascade (Guard/Evade/Counter/Clashable variants
-interacting with each other within one round) is mid-rebuild, actively
-being worked on across recent sessions. Read this section before touching
-`apply_counter_redirects`, the Pass 0 block, or anything in `combat()`'s
-solo/clash dispatch — it's the one area of the codebase currently in a
-known-incomplete state, not a stable baseline to build on top of casually.
-
-**Locked in and confirmed correct** (see Combat Features above for the full
-mechanical writeup): Evade is a declared, slot-specific, 1-coin skill now,
-not a resource. Guard/Evade are strictly slot-specific, never steal or get
-stolen from. Clashable Guard/Clashable Counter are matched against their
-*exact* declared target via Pass 0, not "any incoming attack," fixed after
-finding the old fallback ignored the declared target entirely. A used-up
-defense skill correctly won't fire twice within the same round.
-
-**The one piece left, not yet built**: the "used-up non-clashable defense
-falls through to a still-unused Clashable" rule. Confirmed design (locked
-in, not still being decided): if an attack lands on a slot whose `[Evade]`/
-`[Guard]` already fired earlier this same round, it doesn't auto-hit —
-it falls through to whichever of that *same fighter's* Clashable defenses
-(`[Clashable Guard]`/`[Clashable Counter]`) is still unused, and that
-clashes instead. Never a teammate's Clashable, only the same fighter's own.
-Once any defense skill (clashable or not) has fired once, it's spent for
-the round, full stop — no double-activation in either direction.
-
-**Why this isn't built yet, concretely**: `apply_counter_redirects`
-historically ran as a single static pre-pass, deciding everything before
-the round's resolution loop even starts. Pass 0 already fixed this for
-Clashable Guard/Counter's own *primary* eligibility (matching against
-runtime-live `evade_used_slots` state now works correctly). What's still
-missing is the fall-through redirect itself — reacting mid-round to "this
-slot's own defense already fired, try the next one" requires the
-clash-resolution body currently tangled inside the animation loop's shared
-closures (`render`, `animate_faces`, `animate_power`, `animate_damage`) to
-get extracted into its own reusable function first, so it can be invoked
-a second time, mid-loop, for a redirected fall-through target without
-duplicating that whole block. This extraction is flagged as real surgery,
-deliberately not rushed into the same diff as anything else — do it as its
-own careful, tested step.
-
 ## Design Divergences From Canon Limbus, and Where This Is Headed
 
 Cross-referenced against the [Limbus wiki's Battles
@@ -657,3 +641,18 @@ live again as soon as the bot restarts.
   "works," re-derive it from the actual live function bodies before
   building on top of it — both of these were confidently described as
   working in earlier notes, and neither was.
+- **Fall-through's real trigger condition wasn't what the original phrasing
+  implied.** "A used-up defense falls through to a still-unused Clashable"
+  reads like it's about the *same* Evade being asked to react twice — but
+  `[Evade]` watches one exact `(attacker, attacker_slot)` pair, declared at
+  `/battle declare` time, and that pair only ever resolves once per round,
+  so the same Evade can never literally be asked twice. The actual rule,
+  confirmed by working through a concrete example: it's about a *separate*
+  incoming attack that has no live defense of its own reacting to it at
+  all (never had one, or its own watcher already fired for something else)
+  — check the target Fighter's other still-idle Clashable defenses for a
+  rescue. Also confirmed live, not upfront: whether an attacker dies
+  mid-round (from an earlier, faster action) before their own turn comes
+  up genuinely changes which redirect is correct, since a static pre-pass
+  can't know that yet — this is what made the `resolve_clash_unit`
+  extraction necessary rather than optional.
