@@ -369,8 +369,7 @@ same-side targeting, so it doesn't yet actually let a skill hit allies.
   power ramp) uses the same generic `animate_damage`/`format_skill_result`
   path as a normal attack; no distinct visual treatment for "this was an
   interception," you have to read the header/log text to tell. Purely
-  cosmetic, not a logic gap — see **Currently In Progress** below for the
-  actual open logic work on this system.
+  cosmetic, not a logic gap.
 - `Combat Start`/`Turn Start` fire via a full sweep of a fighter's entire
   known skill list each round (`fire_passive_triggers`), not tied to what's
   declared. `On Evade` works the same way (`fire_evade_triggers`). `Before
@@ -406,7 +405,7 @@ Durante, and Backups, none of those fit what this bot is for.
 - **Evade is a single win/lose roll per attack, not a persistent dodge
   state**, unlike canon (where a clean Evade can stay active). Evade is a
   declared, slot-specific, 1-coin Skill now (rebuilt from a Count-based
-  resource — see Combat Features and **Currently In Progress**); each
+  resource — see Combat Features); each
   incoming hit against its watched slot gets exactly one coin toss decided
   by the defender's own `heads_chance()`, win or lose, no persistence.
   Deliberate, not an oversight.
@@ -421,27 +420,22 @@ Durante, and Backups, none of those fit what this bot is for.
 
 **Actually on the roadmap, not built yet, rough priority order:**
 
-1. **The defense-skill cascade's fall-through rule.** See **Currently In
-   Progress** above — the one remaining piece of the Evade/Guard/Counter
-   rebuild, blocked on extracting the clash-resolution body out of the
-   animation loop first. Highest priority since it's actively mid-build,
-   not a cold-start item.
-2. **Character skill loadouts.** Let a saved Character carry a skill set
+1. **Character skill loadouts.** Let a saved Character carry a skill set
    that auto-loads via `Fighter.from_character()`, so battles stop requiring
    `/battle addskill` from scratch every time. Compounds well with a future
    Skill Rank/Deck system.
-3. **`[Failed ...]` trigger prefix**: fires when a conditional (e.g. a Kill)
+2. **`[Failed ...]` trigger prefix**: fires when a conditional (e.g. a Kill)
    would have activated but didn't. Not present.
-4. **`[Ally ...]` trigger prefix**: scopes an existing timing to allies
+3. **`[Ally ...]` trigger prefix**: scopes an existing timing to allies
    only, for support effects. `Indiscriminate` is targeting-only; this would
    be trigger-scoping instead. Not present.
-5. **Non-Sin debuffs** (Power Down, Bind, Fragile, Paralyze, Curse, etc.) —
+4. **Non-Sin debuffs** (Power Down, Bind, Fragile, Paralyze, Curse, etc.) —
    now the actual biggest status-system gap, since all 5 Sin-damage statuses
    have real payoffs (see Status Effects above).
-6. **Charge's consumption payoff.** Its own Count decay is wired; nothing
+5. **Charge's consumption payoff.** Its own Count decay is wired; nothing
    converts it into Coin Power/Haste/whatever its actual effect should be
    yet.
-7. **Panic / Low Morale.** -30 SP (Low Morale) / -45 SP (Panic) thresholds.
+6. **Panic / Low Morale.** -30 SP (Low Morale) / -45 SP (Panic) thresholds.
    Panic default: target can't act that Turn. Both must be turn-limited by
    design: never a permanent stat change from one trigger, must expire and
    be reapplied. Needs a customization layer similar to canon's [Panic Type
@@ -449,11 +443,11 @@ Durante, and Backups, none of those fit what this bot is for.
    Effects](https://limbuscompany.wiki.gg/wiki/Status_Effects), for a
    Sinking-user inflicting it, and for a character with their own version of
    the behavior.
-8. **Parts / Core.** For a future multi-part NPC, each skill slot is a
+7. **Parts / Core.** For a future multi-part NPC, each skill slot is a
    distinct body part with its own resistances, damage to a Part also drains
    the shared Core HP (matches canon Focused Encounters). Not built; no NPC
    needing it exists yet.
-9. **A worked-examples guide**: converting a real Limbus kit passive into
+8. **A worked-examples guide**: converting a real Limbus kit passive into
    this bot's Trigger syntax. The Trigger Syntax section documents the
    grammar; there's no "here's a real passive → here's the Trigger lines"
    guide yet. Worth writing once there's a backlog of real characters.
