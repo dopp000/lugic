@@ -187,7 +187,7 @@ class CharacterCog(commands.GroupCog, name="character"):
         resistance_types="Resistance(s) to set, comma-separated for several, e.g. 'slash,burn' (needs values too)",
         values="Percent for each type above, same order, comma-separated, e.g. '20,-10' (needs resistance_types too)",
         stagger_thresholds="3 HP% values for Tier 1/2/3, comma-separated, descending, e.g. '55,40,25'",
-        stagger_disabled_tiers="Which Stagger tiers to strip, comma-separated (only 2 and/or 3 -- Tier 1 can't be removed), or 'none' to re-enable all",
+        stagger_disabled_tiers="Which Stagger tiers to strip (2 and/or 3, comma-separated; Tier 1 can't be removed), or 'none'",
     )
     async def edit(
         self,

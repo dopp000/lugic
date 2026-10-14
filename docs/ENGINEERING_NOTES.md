@@ -13,6 +13,25 @@ True if whoever's invoking this is either the fighter's own linked
     of Discord's built-in manage_guild permission, since that's what was
     asked for here specifically.
 
+## cogs/battle.py :: _is_admin
+<a id="battle-is-admin"></a>
+
+True if whoever's invoking this holds the server's admin role
+    (ADMIN_ROLE_ID) -- no "it's your own fighter" fallback, unlike
+    _can_manage_fighter. Used for flat admin-only tools where there's
+    no owner concept to fall back to, currently just /battle
+    setstatus (a stat/status override meant for admins running or
+    testing a fight, not for players managing their own fighter).
+    Paired with `@app_commands.default_permissions(manage_guild=True)`
+    on the command itself so Discord hides it from the command list
+    for anyone without Manage Server by default -- that's a client-side
+    hint only, bound to Discord's built-in permission bit rather than
+    ADMIN_ROLE_ID, so a server whose admin role doesn't carry Manage
+    Server should also set `/battle setstatus`'s command permissions
+    directly (Server Settings -> Integrations -> this bot) to scope it
+    to exactly that role. The actual security boundary is this check,
+    not the visibility setting.
+
 ## cogs/battle.py :: _parse_status_tokens
 <a id="battle-parse-status-tokens"></a>
 

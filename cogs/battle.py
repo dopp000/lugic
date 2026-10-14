@@ -46,6 +46,13 @@ def _can_manage_fighter(interaction: discord.Interaction, fighter: Fighter) -> b
     return False
 
 
+def _is_admin(interaction: discord.Interaction) -> bool:
+    """True if whoever's invoking this holds the server's admin role (ADMIN_ROLE_ID). Unlike _can_manage_fighter, there's no "it's your own fighter" fallback -- this is for flat admin-only tools like /battle setstatus. See docs/ENGINEERING_NOTES.md#battle-is-admin for the full rationale."""
+    if isinstance(interaction.user, discord.Member):
+        return any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles)
+    return False
+
+
 class SkillConfirmView(discord.ui.View):
     def __init__(self, fighter: Fighter, skill: Skill, preview_text: str, timeout: float = 60):
         super().__init__(timeout=timeout)
@@ -1168,8 +1175,11 @@ class BattleCog(commands.GroupCog, name="battle"):
         self.bot = bot
         self.battles: dict[int, Battle] = {}
 
-    @app_commands.command(name="create", description="Start a new battle in this channel")
-    @app_commands.describe(battle_type="Spar, Standard Encounter, or Fatal Battle")
+    @app_commands.command(
+        name="create",
+        description="Start a new battle in this channel (one battle per channel)",
+    )
+    @app_commands.describe(battle_type="Pick the kind of battle: Spar, Standard Encounter, or Fatal Battle")
     @app_commands.choices(
         battle_type=[
             app_commands.Choice(name="Spar", value="spar"),
@@ -1193,14 +1203,17 @@ class BattleCog(commands.GroupCog, name="battle"):
         message = await interaction.original_response()
         battle.message_id = message.id
 
-    @app_commands.command(name="addfighter", description="Add a fighter to the current battle")
+    @app_commands.command(
+        name="addfighter",
+        description="Add a fighter to the current battle, from a saved character or as a one-off",
+    )
     @app_commands.describe(
-        side="A or B",
-        character_name="Pull stats, avatar, and resistances from a saved character",
-        name="Fighter's name, only used if not pulling from a saved character",
-        hp="Starting HP, only used if not pulling from a saved character (default 100)",
-        speed_min="Lowest a skill slot's Speed can roll (default: flat 10 if omitted)",
-        speed_max="Highest a skill slot's Speed can roll (default: same as speed_min)",
+        side="Which side to join: A or B",
+        character_name="Load one of your saved /character profiles into this battle (recommended)",
+        name="Name for a one-off fighter -- skip this if you used character_name instead",
+        hp="Starting HP for a one-off fighter, default 100 (ignored if using character_name)",
+        speed_min="Lowest Speed a skill slot can roll each round (default: flat 10 if omitted)",
+        speed_max="Highest Speed a skill slot can roll each round (default: same as speed_min)",
     )
     async def addfighter(
         self,
@@ -1282,8 +1295,9 @@ class BattleCog(commands.GroupCog, name="battle"):
 
     @app_commands.command(
         name="setstatus",
-        description="Admin/testing tool: directly set a fighter's stats, resistances, and/or a status",
+        description="Admin only: directly set a fighter's stats, resistances, and/or a status",
     )
+    @app_commands.default_permissions(manage_guild=True)
     @app_commands.describe(
         fighter="Fighter name",
         status_name="A status to set, or 'none' to clear all statuses",
@@ -1297,7 +1311,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         power="Set Power",
         resistance_input="Resistance(s) to set: 'Type:Value', comma-separated for several, e.g. 'slash:20,burn:-10'",
         stagger_thresholds="3 HP% values for Tier 1/2/3, comma-separated, descending, e.g. '55,40,25'",
-        stagger_disabled_tiers="Which Stagger tiers to strip, comma-separated (only 2 and/or 3 -- Tier 1 can't be removed), or 'none' to re-enable all",
+        stagger_disabled_tiers="Which Stagger tiers to strip (2 and/or 3, comma-separated; Tier 1 can't be removed), or 'none'",
     )
     @app_commands.choices(
         status_name=[app_commands.Choice(name=s.capitalize(), value=s) for s in INFLICTABLE_STATUSES]
@@ -1320,6 +1334,12 @@ class BattleCog(commands.GroupCog, name="battle"):
         stagger_thresholds: str | None = None,
         stagger_disabled_tiers: str | None = None,
     ):
+        if not _is_admin(interaction):
+            await interaction.response.send_message(
+                "Only an admin can use /battle setstatus.", ephemeral=True
+            )
+            return
+
         battle = self.battles.get(interaction.channel_id)
         if battle is None:
             await interaction.response.send_message("No active battle here.", ephemeral=True)
@@ -1504,7 +1524,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         await interaction.response.send_message(f"Updated {target_fighter.name}: {', '.join(changes)}.")
         await sync_battle_message(self.bot, battle)
 
-    @app_commands.command(name="addskill", description="Give a fighter a skill (opens a popup)")
+    @app_commands.command(name="addskill", description="Create and teach a fighter a new skill (opens a form)")
     @app_commands.describe(fighter="Which fighter learns this skill")
     async def addskill(
         self,
@@ -1524,7 +1544,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         # The ONLY response for this interaction -- everything about the skill (name, stats, damage type, statuses, triggers) is now collected in... See docs/ENGINEERING_NOTES.md#battle-comment-1345.
         await interaction.response.send_modal(AddSkillModal(target_fighter))
 
-    @app_commands.command(name="skills", description="List everything a fighter currently knows")
+    @app_commands.command(name="skills", description="Show every skill a fighter currently knows")
     @app_commands.describe(fighter="Which fighter's skills to show")
     async def skills(self, interaction: discord.Interaction, fighter: str):
         battle = self.battles.get(interaction.channel_id)
@@ -1549,7 +1569,10 @@ class BattleCog(commands.GroupCog, name="battle"):
             text = text[:1900] + "\n...(truncated, too many/long skills to show at once)"
         await interaction.response.send_message(text, ephemeral=True)
 
-    @app_commands.command(name="removeskill", description="Remove a skill from a fighter's known skills")
+    @app_commands.command(
+        name="removeskill",
+        description="Remove a skill from a fighter's known skills (owner or admin only)",
+    )
     @app_commands.describe(fighter="Which fighter to remove a skill from", skill_name="Which skill to remove")
     async def removeskill(self, interaction: discord.Interaction, fighter: str, skill_name: str):
         battle = self.battles.get(interaction.channel_id)
@@ -1580,14 +1603,14 @@ class BattleCog(commands.GroupCog, name="battle"):
 
     @app_commands.command(
         name="declare",
-        description="Assign a skill to one of your slots, aimed at a specific slot on your target",
+        description="Lock in a skill for this round, aimed at one of the target's slots",
     )
     @app_commands.describe(
-        fighter="Who is declaring",
-        slot="Which of YOUR skill slots to use (1-3)",
+        fighter="Which fighter is acting",
+        slot="Which of your fighter's own skill slots to use (1-3)",
         skill_name="Which skill they're using",
-        target="Who they're targeting",
-        target_slot="Which of the TARGET's skill slots to aim at (1-3)",
+        target="Which enemy fighter to aim at",
+        target_slot="Which of the target's slots to aim at -- this decides if it Clashes (1-3)",
     )
     async def declare(
         self,
@@ -1829,7 +1852,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         await interaction.response.send_message(preview, view=view, ephemeral=True)
 
     @app_commands.command(name="undeclare", description="Cancel one of your declared skill slots")
-    @app_commands.describe(fighter="Who is cancelling", slot="Which slot to clear (1-3)")
+    @app_commands.describe(fighter="Which fighter is cancelling a declared action", slot="Which slot to clear (1-3)")
     async def undeclare(self, interaction: discord.Interaction, fighter: str, slot: int):
         battle = self.battles.get(interaction.channel_id)
         if battle is None:
@@ -1851,7 +1874,10 @@ class BattleCog(commands.GroupCog, name="battle"):
                 f"{caster.name}'s Slot {slot} wasn't declared.", ephemeral=True
             )
 
-    @app_commands.command(name="removefighter", description="Remove a fighter from the current battle")
+    @app_commands.command(
+        name="removefighter",
+        description="Remove a fighter from the current battle (owner or admin only)",
+    )
     @app_commands.describe(fighter="Fighter to remove")
     async def removefighter(self, interaction: discord.Interaction, fighter: str):
         battle = self.battles.get(interaction.channel_id)
@@ -1874,7 +1900,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         await interaction.response.send_message(f"Removed {target_fighter.name} from the battle.")
         await sync_battle_message(self.bot, battle)
 
-    @app_commands.command(name="combat", description="Resolve everyone's declared actions this Combat Phase")
+    @app_commands.command(name="combat", description="Resolve this round once everyone has declared their actions")
     async def combat(self, interaction: discord.Interaction):
         battle = self.battles.get(interaction.channel_id)
         if battle is None:

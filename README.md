@@ -281,7 +281,7 @@ already-added skill means removing and re-adding it, not surgical edit.
 | `declare` | Locks a skill into a slot aimed at a target's slot. No scouting. Also where Attack Weight splash candidates get picked (see Combat Features). Blocks targeting an eliminated fighter, same as it already blocked an eliminated caster from acting. |
 | `undeclare` | Clears one declared slot. |
 | `removefighter` | Owner or admin (`ADMIN_ROLE_ID`) via `_can_manage_fighter`. |
-| `setstatus` | Admin/testing tool: HP, Sanity, Speed (min+max), resistances, Power, Stagger thresholds/enabled-tiers, one status, whichever fields are passed. Refuses to touch an eliminated fighter at all. |
+| `setstatus` | Admin-only (`ADMIN_ROLE_ID`) via `_is_admin`, enforced in code; also hidden from the Discord command list by default for anyone without Manage Server (`default_permissions`), though a server whose admin role doesn't carry that permission should re-scope it via Server Settings → Integrations. Sets HP, Sanity, Speed (min+max), resistances, Power, Stagger thresholds/enabled-tiers, one status, whichever fields are passed. Refuses to touch an eliminated fighter at all. |
 | `combat` | Resolves the round. See Animated Combat Phase. Also where Turn-End status ticks (Burn/Sinking/Charge) and Elimination checks run, once per round. |
 | `end` | Ends the battle. |
 
