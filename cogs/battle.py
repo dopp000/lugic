@@ -14,7 +14,7 @@ from game.skills import Skill, SkillResult, ClashOutcome, resolve_skill, resolve
 from game.conditions import Trigger, TriggerContext, parse_trigger_text, TriggerParseError
 from game.character import load_character
 from game.statuses import StatusInstance, decay_after_trigger, apply_status, INFLICTABLE_STATUSES
-from game.resistances import DAMAGE_TYPES, ALL_RESISTANCE_TYPES, apply_resistance
+from game.resistances import DAMAGE_TYPES, ALL_RESISTANCE_TYPES, apply_resistance, parse_resistance_multiplier
 from game.emojis import status_emoji, coin_emoji, coin_roll_emoji, damage_type_emoji, stat_emoji, skill_slot_emoji, hint_emoji, attack_weight_icons, stagger_tier_emoji, stagger_action_emoji
 
 LOG_CHANNEL_ID = 1538071557560213595  # #bot-combat-logs
@@ -747,7 +747,7 @@ def apply_incoming_hit(
     for i, coin in enumerate(result.coin_results):
         per_coin_triggers.extend(coin.fired_triggers)
         raw = coin.damage_dealt + (coin.crit_bonus_damage if coin.is_crit else 0)
-        resisted = apply_resistance(raw, target.resistances.get(attacker_skill.damage_type, 0))
+        resisted = apply_resistance(raw, target.resistances.get(attacker_skill.damage_type, 1.0))
         if resisted != raw:
             log.append(
                 f"Coin {i + 1}: ({damage_type_emoji(attacker_skill.damage_type)} "
@@ -778,12 +778,12 @@ def apply_incoming_hit(
 
         status_name = attacker_skill.coin_statuses[i] if i < len(attacker_skill.coin_statuses) else None
         if status_name:
-            resistance_pct = target.resistances.get(status_name, 0)
+            resistance_multiplier = target.resistances.get(status_name, 1.0)
             raw_potency = (
                 attacker_skill.coin_status_potencies[i]
                 if i < len(attacker_skill.coin_status_potencies) else 0
             )
-            added_potency = apply_resistance(raw_potency, resistance_pct)
+            added_potency = apply_resistance(raw_potency, resistance_multiplier)
             added_count = (
                 attacker_skill.coin_status_counts[i]
                 if i < len(attacker_skill.coin_status_counts) else 0
@@ -1122,8 +1122,8 @@ def apply_trigger_effects(triggers: list[Trigger], caster: Fighter, target: Figh
         if t.effect_type == "inflict_status":
             if target is None:
                 continue
-            resistance_pct = target.resistances.get(t.status_name, 0)
-            added_potency = apply_resistance(t.effect_value, resistance_pct)
+            resistance_multiplier = target.resistances.get(t.status_name, 1.0)
+            added_potency = apply_resistance(t.effect_value, resistance_multiplier)
             current = target.get_status(t.status_name)
             new_instance = apply_status(current, t.status_name, added_potency, t.status_count)
             target.set_status_instance(new_instance)
@@ -1329,7 +1329,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         speed_min="Set the low end of this fighter's Speed range (needs speed_max too, re-rolls slots)",
         speed_max="Set the high end of this fighter's Speed range (needs speed_min too, re-rolls slots)",
         power="Set Power",
-        resistance_input="Resistance(s) to set: 'Type:Value', comma-separated for several, e.g. 'slash:20,burn:-10'",
+        resistance_input="Resistance(s) to set: 'Type:Value', comma-separated for several, e.g. 'slash:1.25,burn:0.75' (1.0 = Normal, steps of 0.25)",
         stagger_thresholds="3 HP% values for Tier 1/2/3, comma-separated, descending, e.g. '55,40,25'",
         stagger_disabled_tiers="Which Stagger tiers to strip (2 and/or 3, comma-separated; Tier 1 can't be removed), or 'none'",
     )
@@ -1391,7 +1391,7 @@ class BattleCog(commands.GroupCog, name="battle"):
             return
 
         # Parsed and validated up front, before anything gets mutated -- same "all-or-nothing" principle as the rest of this command: a bad... See docs/ENGINEERING_NOTES.md#battle-comment-1171.
-        resistance_changes: list[tuple[str, int]] = []
+        resistance_changes: list[tuple[str, float]] = []
         if resistance_input is not None:
             for token in resistance_input.split(","):
                 token = token.strip()
@@ -1401,7 +1401,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                 if len(parts) != 2:
                     await interaction.response.send_message(
                         f"Resistance entry '{token}' is invalid. Use 'Type:Value', comma-separated "
-                        f"for several, e.g. 'slash:20,burn:-10'.",
+                        f"for several, e.g. 'slash:1.25,burn:0.75'.",
                         ephemeral=True,
                     )
                     return
@@ -1413,12 +1413,10 @@ class BattleCog(commands.GroupCog, name="battle"):
                         ephemeral=True,
                     )
                     return
-                try:
-                    r_value = int(r_value_raw)
-                except ValueError:
+                r_value, error = parse_resistance_multiplier(r_value_raw)
+                if error:
                     await interaction.response.send_message(
-                        f"Resistance value '{r_value_raw}' for {r_type} isn't a whole number.",
-                        ephemeral=True,
+                        f"Resistance value for {r_type}: {error}", ephemeral=True
                     )
                     return
                 resistance_changes.append((r_type, r_value))
@@ -1516,7 +1514,7 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         for r_type, r_value in resistance_changes:
             target_fighter.resistances[r_type] = r_value
-            changes.append(f"{r_type.capitalize()} resistance -> {r_value}%")
+            changes.append(f"{r_type.capitalize()} resistance -> {r_value}x")
 
         if parsed_stagger_thresholds is not None:
             target_fighter.stagger_thresholds = parsed_stagger_thresholds
@@ -2703,7 +2701,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                                 continue
                             raw_coin = coin.damage_dealt + (coin.crit_bonus_damage if coin.is_crit else 0)
                             resisted_coin = apply_resistance(
-                                raw_coin, splash_fighter.resistances.get(adjusted_skill.damage_type, 0)
+                                raw_coin, splash_fighter.resistances.get(adjusted_skill.damage_type, 1.0)
                             )
                             coin_total = resisted_coin
 
@@ -2727,12 +2725,12 @@ class BattleCog(commands.GroupCog, name="battle"):
                                 if i < len(adjusted_skill.coin_statuses) else None
                             )
                             if status_name:
-                                resistance_pct = splash_fighter.resistances.get(status_name, 0)
+                                resistance_multiplier = splash_fighter.resistances.get(status_name, 1.0)
                                 raw_potency = (
                                     adjusted_skill.coin_status_potencies[i]
                                     if i < len(adjusted_skill.coin_status_potencies) else 0
                                 )
-                                added_potency = apply_resistance(raw_potency, resistance_pct)
+                                added_potency = apply_resistance(raw_potency, resistance_multiplier)
                                 added_count = (
                                     adjusted_skill.coin_status_counts[i]
                                     if i < len(adjusted_skill.coin_status_counts) else 0

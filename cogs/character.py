@@ -10,7 +10,7 @@ from game.character import (
     delete_character,
     list_characters_by_owner,
 )
-from game.resistances import ALL_RESISTANCE_TYPES, DAMAGE_TYPES
+from game.resistances import ALL_RESISTANCE_TYPES, DAMAGE_TYPES, parse_resistance_multiplier
 from game.emojis import status_emoji, damage_type_emoji
 
 # Reused rather than duplicated: the skill-creation form (stat parsing,
@@ -54,7 +54,7 @@ def build_character_embed(character: Character, owner_name: str) -> discord.Embe
     resist_lines = []
     for k, v in character.resistances.items():
         icon = damage_type_emoji(k) if k in DAMAGE_TYPES else status_emoji(k)
-        resist_lines.append(f"{icon} {k.capitalize()}: {v}%")
+        resist_lines.append(f"{icon} {k.capitalize()}: {v}x")
     embed.add_field(name="Resistances", value="\n".join(resist_lines), inline=False)
 
     embed.set_footer(text=f"Owner: {owner_name}")
@@ -75,9 +75,9 @@ async def get_or_create_webhook(channel: discord.TextChannel) -> discord.Webhook
     return await channel.create_webhook(name=WEBHOOK_NAME)
 
 
-def _parse_resistance_tokens(resistance_types: str, values: str) -> tuple[dict[str, int], str | None]:
+def _parse_resistance_tokens(resistance_types: str, values: str) -> tuple[dict[str, float], str | None]:
     """Parses the paired comma-separated 'resistance_types'/'values' strings
-    (e.g. 'slash,burn' + '20,-10') into a {type: value} dict, matched
+    (e.g. 'slash,burn' + '1.25,0.75') into a {type: value} dict, matched
     positionally. Returns (parsed, error) -- error is None on success, or a
     user-facing message on failure (ignore parsed in that case). Shared by
     /character resistance and the resistance_types/values params on
@@ -89,7 +89,7 @@ def _parse_resistance_tokens(resistance_types: str, values: str) -> tuple[dict[s
     if len(types) != len(value_tokens):
         return {}, (
             f"Got {len(types)} resistance type(s) but {len(value_tokens)} value(s) -- "
-            f"these need to line up 1:1, e.g. resistance_types 'slash,burn' values '20,-10'."
+            f"these need to line up 1:1, e.g. resistance_types 'slash,burn' values '1.25,0.75'."
         )
 
     for t in types:
@@ -98,12 +98,12 @@ def _parse_resistance_tokens(resistance_types: str, values: str) -> tuple[dict[s
                 f"'{t}' isn't a valid resistance type. Choose from: {', '.join(ALL_RESISTANCE_TYPES)}."
             )
 
-    parsed: dict[str, int] = {}
+    parsed: dict[str, float] = {}
     for t, v in zip(types, value_tokens):
-        try:
-            parsed[t] = int(v)
-        except ValueError:
-            return {}, f"Value '{v}' for {t} isn't a whole number."
+        value, error = parse_resistance_multiplier(v)
+        if error:
+            return {}, f"Value for {t}: {error}"
+        parsed[t] = value
 
     return parsed, None
 
@@ -194,7 +194,7 @@ class CharacterCog(commands.GroupCog, name="character"):
         speed_max="Highest a skill slot's Speed can roll each round (needs speed_min too)",
         power="New Power",
         resistance_types="Resistance(s) to set, comma-separated for several, e.g. 'slash,burn' (needs values too)",
-        values="Percent for each type above, same order, comma-separated, e.g. '20,-10' (needs resistance_types too)",
+        values="Multiplier for each type above, same order, comma-separated, e.g. '1.25,0.75' (needs resistance_types too)",
         stagger_thresholds="3 HP% values for Tier 1/2/3, comma-separated, descending, e.g. '55,40,25'",
         stagger_disabled_tiers="Which Stagger tiers to strip (2 and/or 3, comma-separated; Tier 1 can't be removed), or 'none'",
     )
@@ -335,7 +335,7 @@ class CharacterCog(commands.GroupCog, name="character"):
 
         if parsed_resistances:
             character.resistances.update(parsed_resistances)
-            summary = ", ".join(f"{t.capitalize()} {v}%" for t, v in parsed_resistances.items())
+            summary = ", ".join(f"{t.capitalize()} {v}x" for t, v in parsed_resistances.items())
             changes.append(f"resistances -> {summary}")
 
         if parsed_stagger_thresholds is not None:
@@ -373,8 +373,8 @@ class CharacterCog(commands.GroupCog, name="character"):
     @app_commands.describe(
         name="Character name",
         resistance_types="Which resistance(s) to set, comma-separated for several, e.g. 'slash,burn'",
-        values="Percent for each type above, same order, comma-separated, e.g. '20,-10'. "
-        "Over 100 fully blocks it, negative is a weakness (takes more)",
+        values="Multiplier for each type above, same order, comma-separated, e.g. '1.25,0.75'. "
+        "1.0 is Normal, steps of 0.25; above 1.0 takes more damage, below takes less, 0 is immune",
     )
     async def resistance(
         self,
@@ -403,7 +403,7 @@ class CharacterCog(commands.GroupCog, name="character"):
         character.resistances.update(parsed)
         save_character(character)
 
-        summary = ", ".join(f"{t.capitalize()} {v}%" for t, v in parsed.items())
+        summary = ", ".join(f"{t.capitalize()} {v}x" for t, v in parsed.items())
         await interaction.response.send_message(
             f"Set {character.name}'s resistances: {summary}.", ephemeral=True
         )

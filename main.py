@@ -18,6 +18,7 @@ INITIAL_COGS = [
     "cogs.battle",
     "cogs.character",
     "cogs.roll",
+    "cogs.help",
 ]
 
 

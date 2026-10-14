@@ -63,7 +63,8 @@ class Fighter:
     power: int = 6
     skill_slots: int = 3
     avatar_url: str | None = None
-    resistances: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_RESISTANCES))
+    # Decimal damage multipliers, 1.0 = Normal (see game/resistances.py).
+    resistances: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_RESISTANCES))
 
     # Discord user ID of whoever controls this fighter. See docs/ENGINEERING_NOTES.md#battle-comment-81.
     owner_id: int | None = None

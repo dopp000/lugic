@@ -101,6 +101,36 @@ SKILL_SLOT_EMOJI_IDS: dict[int, int | None] = {
 # Animated emoji use a different tag format: <a:Name:ID> instead of <:Name:ID>.
 COIN_ROLL_EMOJI_ID: int | None = 1538091919995965471
 
+# /help's top-level category buttons (cogs/help.py). None for now, same
+# gradual-fill convention as everywhere else in this file -- falls back
+# to plain ":Name:" text in embed/message bodies until these get
+# uploaded and filled in. Note: unlike every other icon in this file,
+# these are NEVER passed into a Button/SelectOption's own `emoji=`
+# kwarg while still None -- that field needs a real emoji object, and
+# the plain-text fallback below would get rejected there. cogs/help.py
+# only uses emoji_tag()'s output for embed/message text, and builds its
+# own discord.PartialEmoji directly from these same IDs (skipping the
+# kwarg entirely when one's still None) for the structural emoji= spot.
+HELP_CATEGORY_EMOJI_IDS: dict[str, int | None] = {
+    "skill_tags": None,
+    "damage_math": None,
+}
+
+# Skill-flag tags whose icon is one already uploaded for a different
+# purpose -- reused by ID rather than re-uploading the same icon twice.
+# The three with no match yet (no existing mechanic looks like them)
+# default to None, same convention as above.
+SKILL_TAG_EMOJI_IDS: dict[str, int | None] = {
+    "counter": STATUS_EMOJI_IDS["counter"],
+    "clashable_counter": STATUS_EMOJI_IDS["clashable_counter"],
+    "guard": STATUS_EMOJI_IDS["guard"],
+    "clashable_guard": STATUS_EMOJI_IDS["clashable_guard"],
+    "evade": STATUS_EMOJI_IDS["evasion"],
+    "target_fixed": None,
+    "unclashable": None,
+    "indiscriminate": None,
+}
+
 def emoji_tag(display_name: str, emoji_id: int | None, animated: bool = False) -> str:
     """Builds a real Discord custom emoji tag if an ID is known, otherwise
     falls back to plain ":Name:" text (visible as literal characters,
@@ -186,3 +216,29 @@ def attack_weight_icons(weight: int) -> str:
     Weight) still renders as a single ⯀.
     """
     return "⯀" * max(weight, 1)
+
+
+def help_category_emoji(category_key: str) -> str:
+    """For /help's top-level category buttons (cogs/help.py), safe to
+    drop into embed/message TEXT only -- see the "never passed as a
+    Button/SelectOption emoji=" note on HELP_CATEGORY_EMOJI_IDS above.
+    """
+    display_names = {"skill_tags": "Skill_Tags", "damage_math": "Damage_Math"}
+    key = category_key.lower()
+    display_name = display_names.get(key, key.capitalize())
+    return emoji_tag(display_name, HELP_CATEGORY_EMOJI_IDS.get(key))
+
+
+def skill_tag_emoji(tag_key: str) -> str:
+    """For a skill-flag tag entry in /help (cogs/help.py), safe to drop
+    into embed/message TEXT only -- same caveat as help_category_emoji
+    above.
+    """
+    display_names = {
+        "target_fixed": "Target_Fixed",
+        "clashable_counter": "Clashable_Counter",
+        "clashable_guard": "Clashable_Guard",
+    }
+    key = tag_key.lower()
+    display_name = display_names.get(key, key.capitalize())
+    return emoji_tag(display_name, SKILL_TAG_EMOJI_IDS.get(key))

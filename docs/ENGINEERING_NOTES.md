@@ -1411,25 +1411,86 @@ target, so "resisting" them doesn't make sense.
 ## game/resistances.py :: apply_resistance
 <a id="resistances-apply-resistance"></a>
 
-Reduces a value by a resistance percentage, using Limbus
-    Company's own asymmetric formula instead of a flat linear
-    reduction: a WEAKNESS (resistance_pct negative, meaning MORE damage
-    taken) applies at full face value, but an actual RESISTANCE
-    (resistance_pct positive) is only HALF as effective as its face
-    value suggests. This matches the real game's philosophy that being
-    weak to something hurts fully, but resisting something only helps
-    partially -- resistance and weakness are not mirror images of each
-    other.
+**Now a flat decimal multiplier, not the old percent formula.** Up
+    through commit `761bce1`, this scaled a value by a percentage using
+    Limbus Company's own asymmetric formula: a WEAKNESS (resistance_pct
+    negative, meaning MORE damage taken) applied at full face value, but
+    an actual RESISTANCE (resistance_pct positive) was only HALF as
+    effective as its face value suggested (so +50 "resistance" only cut
+    damage 25%, and it took +200 to reach a full 100% reduction, not
+    +100).
 
-    Concretely: -50 resistance_pct (50% weakness) still means 1.5x
-    damage, same as a naive linear formula would give. But +50
-    resistance_pct (nominally "50% resistance") only actually reduces
-    damage by 25%, not 50% -- it now takes +200 resistance_pct to reach
-    a full 100% reduction (0 damage), not +100. So once resistance_pct
-    is positive, it's no longer literally "the percent damage reduced";
-    it's better read as "how much resistance is being applied," with
-    the real reduction being half that.
+    That asymmetric formula is gone. `apply_resistance` is now a direct
+    `value * multiplier`, where 1.0 is Normal, below 1.0 is resistant,
+    above 1.0 is weak -- no special-casing between the two directions.
+    `RESISTANCE_STEP` (0.25) is the only granularity constraint, enforced
+    by `parse_resistance_multiplier` at every command that sets a
+    resistance (`/character resistance`, `/character edit`, `/battle
+    setstatus`), not by `apply_resistance` itself -- a `Fighter`/
+    `Character` built directly in code (tests, future NPC presets) can
+    still hold an off-step multiplier if it really wants to, this just
+    means nothing player-facing can set one.
 
-    resistance_pct still isn't clamped going in on either side. The
-    result is still floored at 0, since resistance should never turn
+    The result is still floored at 0, since resistance should never turn
     damage into healing.
+
+## game/resistances.py :: migrate_percent_to_multiplier
+<a id="resistances-migrate-percent-to-multiplier"></a>
+
+One-time conversion run from `Character.from_dict` (game/character.py)
+    for any character file saved before the decimal-multiplier switch
+    above -- detected by the absence of the `"resistance_format":
+    "multiplier"` marker that `Character.to_dict` now writes. Re-derives
+    what multiplier the character's OLD percent value actually produced
+    under the retired asymmetric formula, then snaps that to the nearest
+    `RESISTANCE_STEP`, so an existing character's damage behavior doesn't
+    silently change out from under its owner on the next load. Precision
+    loss is expected and fine for values that don't land near a 0.25
+    step already (old 20% resistance -> 0.9x -> rounds to 1.0x, i.e. it
+    disappears) -- that's the cost of moving everyone onto one fixed
+    step size, not a bug to chase. A file with the marker, or a brand
+    new character with no resistances key at all, skips this entirely.
+
+## cogs/help.py :: overview
+<a id="help-overview"></a>
+
+`/help` is a drill-down guidebook: Home (category buttons) -> a
+    category's topic dropdown -> one topic's full explanation, with Back
+    (one level up) and Home (straight to the top) on every screen below
+    Home. Content is entirely in `game/help_content.py` as plain
+    `HelpEntry(key, title, summary, body)` records grouped under
+    `HELP_CATEGORIES` -- deliberately kept separate from this very file
+    and from README.md, both of which are written for whoever develops
+    this bot. `/help`'s text is written for whoever plays on it: no code
+    references, no "see Combat Features," no internal names a player
+    never sees. Adding a whole new category (Status Effects, Trigger
+    Syntax, a Commands list) later is just a new `list[HelpEntry]` plus
+    one new tuple in `HELP_CATEGORIES` -- nothing in `cogs/help.py`
+    itself needs to change.
+
+## cogs/help.py :: _select_emoji
+<a id="help-select-emoji"></a>
+
+**The one real gotcha in this file.** Every other `*_emoji()` helper in
+    `game/emojis.py` is safe to call even when its backing ID is still
+    `None` -- `emoji_tag()` falls back to plain `":Name:"` TEXT, which is
+    harmless dropped into an embed description or a message body. That
+    fallback is NOT safe to hand to a `discord.ui.Button` or
+    `discord.SelectOption`'s own `emoji=` kwarg, though: that field wants
+    a real emoji object (a unicode emoji or a `discord.PartialEmoji`
+    pointing at an uploaded custom emoji's real ID), not arbitrary
+    display text, and Discord's API is liable to reject the whole
+    interaction response over it rather than silently showing the text.
+
+    `_select_emoji` (and the two callers that use it,
+    `_category_select_emoji`/`_entry_select_emoji`) is the one place in
+    this file that touches a structural `emoji=` kwarg, and it never
+    calls `emoji_tag()` for that purpose: it reads the raw ID straight
+    out of `HELP_CATEGORY_EMOJI_IDS`/`SKILL_TAG_EMOJI_IDS` and either
+    builds a real `discord.PartialEmoji(name=..., id=...)` or returns
+    `None` outright (a Button/SelectOption with `emoji=None` just shows
+    no icon, which Discord is perfectly happy with). Every other spot in
+    this file that wants an icon in TEXT (`_entry_text_icon`,
+    `help_category_emoji_for_title`) still goes through the normal
+    `emoji_tag()`-based helpers in `game/emojis.py`, same as the rest of
+    the codebase.

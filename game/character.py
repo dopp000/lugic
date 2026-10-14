@@ -3,7 +3,7 @@ import json
 import os
 from dataclasses import dataclass, field
 
-from game.resistances import DEFAULT_RESISTANCES
+from game.resistances import DEFAULT_RESISTANCES, migrate_percent_to_multiplier
 from game.skills import Skill
 
 CHARACTERS_DIR = "data/characters"
@@ -28,7 +28,8 @@ class Character:
     speed_min: int | None = None  # lowest a skill slot's Speed can roll, per round
     speed_max: int | None = None  # highest a skill slot's Speed can roll, per round
     power: int = 6
-    resistances: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_RESISTANCES))
+    # Decimal damage multipliers, 1.0 = Normal (see game/resistances.py).
+    resistances: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_RESISTANCES))
     # Both None means "use Fighter's own defaults" (DEFAULT_STAGGER_THRESHOLDS,
     # all 3 tiers enabled) -- only set here if a character has a
     # customized Stagger setup that should persist across battles. See
@@ -66,6 +67,11 @@ class Character:
             "speed_max": self.speed_max,
             "power": self.power,
             "resistances": self.resistances,
+            # Marks this file as already using decimal-multiplier
+            # resistances, so a future load doesn't try to re-run the
+            # one-time percent-to-multiplier migration on values that are
+            # already multipliers. See from_dict below.
+            "resistance_format": "multiplier",
             "stagger_thresholds": self.stagger_thresholds,
             "stagger_tiers_enabled": self.stagger_tiers_enabled,
             "skills": {name: s.to_dict() for name, s in self.skills.items()},
@@ -77,8 +83,26 @@ class Character:
         # Merge onto the defaults so old files still load instead of
         # crashing with a missing-field error.
         data = dict(data)
+        saved_resistances = data.get("resistances", {})
+
+        # Characters saved before the decimal-multiplier system existed
+        # have no "resistance_format" marker, and their numbers are old
+        # percent values (0 = Normal, -10 = 10% weak, 20 = "20%
+        # resistance" under the old asymmetric formula) rather than
+        # multipliers. One-time convert those so an old character's
+        # damage behavior doesn't silently change out from under its
+        # owner just because this format switched -- see
+        # migrate_percent_to_multiplier's own docstring for the
+        # precision tradeoff. A file already saved with the marker (or a
+        # brand new character with no resistances key at all) skips
+        # this untouched.
+        if data.get("resistance_format") != "multiplier":
+            saved_resistances = {
+                k: migrate_percent_to_multiplier(v) for k, v in saved_resistances.items()
+            }
+
         resistances = dict(DEFAULT_RESISTANCES)
-        resistances.update(data.get("resistances", {}))
+        resistances.update(saved_resistances)
         data["resistances"] = resistances
 
         # Characters saved before skills existed won't have that key --

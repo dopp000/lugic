@@ -186,9 +186,8 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   stacking (`apply_status` adds potency+count onto existing), decay
   (`decay_after_trigger` ticks count down by 1), universal potency cap at 99
   (canon's own cap; Charge additionally caps its own Count at 20, a separate
-  ceiling). Resistance applies to infliction the same asymmetric way it
-  applies to damage (`apply_resistance`, a real Limbus-style formula, not a
-  flat percentage; see below).
+  ceiling). Resistance applies to infliction the same way it applies to
+  damage: a flat decimal multiplier (`apply_resistance`; see below).
 - **Self-buff resources**: `SELF_BUFF_STATUSES` is just `["poise",
   "charge"]` now. Poise drives Crit. Charge's own Count decay is wired
   (`apply_turn_end_status_ticks`), but nothing *consumes* Charge into an
@@ -236,10 +235,10 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
 `/character create/edit/resistance/view/list/delete/say` covers a **stat
 sheet only**: HP, Speed (flat or min/max range, replacing the old flat-speed
 field once set), a single flat Power value, resistances (comma-separated
-multi-set: `resistance_types:slash,burn values:20,-10`, covers the 3 damage
-types + 5 status types), avatar, and `say` (webhook RP). No Sanity field:
-intentional, Sanity always starts at 0 per battle. No Trait/faction tags, no
-self-buff starting values.
+multi-set: `resistance_types:slash,burn values:1.25,0.75`, covers the 3
+damage types + 5 status types, 1.0 = Normal, see Combat Features), avatar,
+and `say` (webhook RP). No Sanity field: intentional, Sanity always starts at
+0 per battle. No Trait/faction tags, no self-buff starting values.
 
 **Persistent Stagger config now exists**: `Character.stagger_thresholds` /
 `stagger_tiers_enabled` (both `None` by default, meaning "use `Fighter`'s
@@ -317,6 +316,35 @@ that flag.
 ### `/roll`
 
 Plain dice roller (`1d20+4+2` style), not tied to battle state.
+
+### `/help`
+
+Player-facing guidebook, not a dev reference (that's this README).
+Drill-down menu: pick a category button, then a topic from a dropdown,
+then read the full explanation; Back/Home navigate without re-running the
+command. Ephemeral, ~5 minute timeout on the buttons. Content lives in
+`game/help_content.py`, written in plain language on purpose, kept
+separate from this file. **Only two categories exist so far** (the two
+things asked for first): **Skill Tags** (all 8 flags, one per dropdown
+entry) and **Damage Math** (the basic hit formula, resistance, Stagger's
+multiplier, Rupture vs. Crit, Attack Weight splash). Status Effects,
+Trigger Syntax, and a Commands category are the natural next additions —
+same pattern, a new entry list in `game/help_content.py` plus one new
+line in `HELP_CATEGORIES`, no changes needed to `cogs/help.py` itself.
+
+Category buttons (`Skill Tags`, `Damage Math`) and three of the eight
+skill tags (`Target Fixed`, `Unclashable`, `Indiscriminate`) have no
+custom emoji yet (`HELP_CATEGORY_EMOJI_IDS` / `SKILL_TAG_EMOJI_IDS` in
+`game/emojis.py`, both `None` placeholders) — same gradual-fill
+convention as every other icon in that file. The other five tags already
+reuse an existing uploaded icon (Counter/Clashable Counter/Guard/
+Clashable Guard/Evade all have one from their own mechanic). Unlike
+everywhere else that convention is used, a `None` here is never passed
+into a Button/SelectOption's own `emoji=` kwarg — that field needs a real
+emoji object, not display text, so `cogs/help.py` only uses the
+plain-text-safe `emoji_tag()` output in embed bodies, and builds its own
+`discord.PartialEmoji` directly from the ID dicts (skipping the kwarg
+entirely while still `None`) wherever a real icon slot is needed.
 
 ## Trigger Syntax (`game/conditions.py`)
 
@@ -417,14 +445,18 @@ Durante, and Backups, none of those fit what this bot is for.
   incoming hit against its watched slot gets exactly one coin toss decided
   by the defender's own `heads_chance()`, win or lose, no persistence.
   Deliberate, not an oversight.
-- **Resistance uses the real canon formula, asymmetric around Normal.** A
-  weakness (`resistance_pct` negative) scales damage linearly and fully; an
-  actual resistance (positive) is only half as effective per point as an
-  equivalent weakness (`apply_resistance` in `game/resistances.py`, checked
-  against the wiki's worked example: 20 resistance reduces damage 10%, not
-  20%). No finite resistance value ever reaches true 0 damage; canon's
-  "Immune" tier is a separate discrete `x0`, not modeled here. A genuine
-  zero-damage case would need an explicit override.
+- **Resistance is a flat decimal multiplier, not canon's asymmetric
+  formula.** Every resistance value is read directly as "how much damage
+  this type/status deals to this fighter": 1.0x is Normal, 0.75x takes 25%
+  less, 1.25x takes 25% more (`apply_resistance` in `game/resistances.py`
+  is a straight `value * multiplier`, no special-casing between resist and
+  weak). Values are stepped in fixed 0.25 increments (`RESISTANCE_STEP`),
+  enforced by `parse_resistance_multiplier` at every command that sets one.
+  0x is a real, reachable Immune, unlike the old percent system where no
+  finite value ever reached true 0 damage. Characters saved before this
+  switch get their old percent value one-time converted to the closest
+  0.25 step (`migrate_percent_to_multiplier`) the first time they're
+  loaded, so they don't silently change behavior.
 
 **Actually on the roadmap, not built yet, rough priority order:**
 
@@ -533,6 +565,7 @@ dedicated design pass rather than inventing figures ad hoc.
 ├── cogs/               # Discord-facing commands, grouped by feature
 │   ├── battle.py        # /battle group -- largest file, combat engine glue lives here
 │   ├── character.py     # /character group -- persistent character CRUD
+│   ├── help.py          # /help -- player-facing guidebook (drill-down menu)
 │   └── roll.py          # /roll -- standalone dice roller
 ├── game/               # Game logic, no Discord imports here
 │   ├── battle.py         # Fighter, Battle, DeclaredAction, BATTLE_TYPES
@@ -542,6 +575,7 @@ dedicated design pass rather than inventing figures ad hoc.
 │   ├── statuses.py        # StatusInstance, apply_status, decay_after_trigger
 │   ├── resistances.py     # DAMAGE_TYPES, ALL_RESISTANCE_TYPES, apply_resistance
 │   ├── emojis.py          # Every custom Discord emoji ID this bot uses
+│   ├── help_content.py    # /help's plain-language topic content, no Discord imports
 │   └── colors.py          # Embed color helpers
 ├── data/characters/    # One JSON file per saved Character. Gitignored on
 │                         purpose -- personal data, stays local, never in repo.
