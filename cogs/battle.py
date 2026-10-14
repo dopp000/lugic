@@ -1711,6 +1711,50 @@ class BattleCog(commands.GroupCog, name="battle"):
         caster_speed = caster.slot_speed(slot)
         target_speed = target_fighter.slot_speed(target_slot)
 
+        # [Attack Weight]: auto-pick (attack_weight - 1) extra enemy
+        # slots to splash onto if this ends up resolving unopposed --
+        # ANY living enemy is eligible (not just target_fighter's other
+        # slots), fastest Speed first, excluding the primary
+        # (target_fighter, target_slot) already chosen. Exactly ONE
+        # candidate slot per distinct Fighter -- picking that Fighter's
+        # own fastest eligible slot as the representative -- since HP,
+        # Shield, and every status live on the Fighter object, not the
+        # slot. Without this dedup, a single multi-slot enemy could be
+        # picked more than once and take/gain everything N times over
+        # for one Attack Weight cast. Clashes are completely unaffected
+        # by this -- see combat()'s solo branch.
+        #
+        # Computed up here, before the clash-steal check below, so
+        # EVERY path that can end up calling declare_in_slot() --
+        # including the three early-return fallbacks inside the
+        # clash-steal block -- carries the same splash targets. It used
+        # to live after that block and only reach the main
+        # ClashDeclareView() call, silently dropping Attack Weight's
+        # splash whenever one of those fallbacks fired instead.
+        extra_targets: list[tuple[Fighter, int]] = []
+        attack_weight_note = ""
+        if skill.attack_weight > 1:
+            candidates = []
+            for f in battle.fighters:
+                if f.side == caster.side or not f.is_alive():
+                    continue
+                eligible_slots = [
+                    s for s in range(1, f.skill_slots + 1)
+                    if not (f is target_fighter and s == target_slot)
+                ]
+                if not eligible_slots:
+                    continue
+                best_slot = max(eligible_slots, key=lambda s: f.slot_speed(s))
+                candidates.append((f, best_slot))
+            candidates.sort(key=lambda fs: fs[0].slot_speed(fs[1]), reverse=True)
+            extra_targets = candidates[: skill.attack_weight - 1]
+            if extra_targets:
+                attack_weight_note = (
+                    f"\n\n**Attack Weight {attack_weight_icons(skill.attack_weight)}**: also splashes onto "
+                    + ", ".join(f"{f.name} Slot {s}" for f, s in extra_targets)
+                    + " if this resolves unopposed (Clashes are unaffected)."
+                )
+
         partner_info = battle.find_mutual_clash_partner(target_fighter, target_slot)
         if partner_info is not None:
             partner, partner_slot = partner_info
@@ -1725,7 +1769,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                 and caster_speed > target_speed
             ):
                 if partner_is_target_fixed:
-                    caster.declare_in_slot(slot, skill, target_fighter, target_slot)
+                    caster.declare_in_slot(slot, skill, target_fighter, target_slot, extra_targets)
                     await interaction.response.send_message(
                         f"{target_fighter.name}'s Slot {target_slot} is already clashing "
                         f"{partner.name}'s **{partner_action.skill.name}**, which is Target Fixed "
@@ -1737,7 +1781,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                     return
 
                 if partner.owner_id is None:
-                    caster.declare_in_slot(slot, skill, target_fighter, target_slot)
+                    caster.declare_in_slot(slot, skill, target_fighter, target_slot, extra_targets)
                     await interaction.response.send_message(
                         f"{target_fighter.name}'s Slot {target_slot} is already clashing "
                         f"{partner.name}, and taking it over needs {partner.name}'s owner to "
@@ -1778,7 +1822,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                         sent = False
 
                 if not sent:
-                    caster.declare_in_slot(slot, skill, target_fighter, target_slot)
+                    caster.declare_in_slot(slot, skill, target_fighter, target_slot, extra_targets)
                     await interaction.response.send_message(
                         f"Couldn't DM {partner.name}'s owner to ask for approval (DMs closed or "
                         f"user not found), so this falls through to unopposed against "
@@ -1798,42 +1842,6 @@ class BattleCog(commands.GroupCog, name="battle"):
                 return
 
         # Deliberately no preview of the target's own skill here, ever -- you don't get to see what an enemy is bringing before you commit,... See docs/ENGINEERING_NOTES.md#battle-comment-1523.
-
-        # [Attack Weight]: auto-pick (attack_weight - 1) extra enemy
-        # slots to splash onto if this ends up resolving unopposed --
-        # ANY living enemy is eligible (not just target_fighter's other
-        # slots), fastest Speed first, excluding the primary
-        # (target_fighter, target_slot) already chosen. Exactly ONE
-        # candidate slot per distinct Fighter -- picking that Fighter's
-        # own fastest eligible slot as the representative -- since HP,
-        # Shield, and every status live on the Fighter object, not the
-        # slot. Without this dedup, a single multi-slot enemy could be
-        # picked more than once and take/gain everything N times over
-        # for one Attack Weight cast. Clashes are completely unaffected
-        # by this -- see combat()'s solo branch.
-        extra_targets: list[tuple[Fighter, int]] = []
-        attack_weight_note = ""
-        if skill.attack_weight > 1:
-            candidates = []
-            for f in battle.fighters:
-                if f.side == caster.side or not f.is_alive():
-                    continue
-                eligible_slots = [
-                    s for s in range(1, f.skill_slots + 1)
-                    if not (f is target_fighter and s == target_slot)
-                ]
-                if not eligible_slots:
-                    continue
-                best_slot = max(eligible_slots, key=lambda s: f.slot_speed(s))
-                candidates.append((f, best_slot))
-            candidates.sort(key=lambda fs: fs[0].slot_speed(fs[1]), reverse=True)
-            extra_targets = candidates[: skill.attack_weight - 1]
-            if extra_targets:
-                attack_weight_note = (
-                    f"\n\n**Attack Weight {attack_weight_icons(skill.attack_weight)}**: also splashes onto "
-                    + ", ".join(f"{f.name} Slot {s}" for f, s in extra_targets)
-                    + " if this resolves unopposed (Clashes are unaffected)."
-                )
 
         view = ClashDeclareView(
             caster, skill, target_fighter, slot, target_slot, self.bot, battle,
