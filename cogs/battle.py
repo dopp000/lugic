@@ -14,7 +14,7 @@ from game.battle import (
 from game.skills import Skill, SkillResult, ClashOutcome, resolve_skill, resolve_round_clash, resolve_triggers
 from game.conditions import Trigger, TriggerContext, parse_trigger_text, TriggerParseError
 from game.character import load_character
-from game.statuses import StatusInstance, decay_after_trigger, apply_status, INFLICTABLE_STATUSES
+from game.statuses import StatusInstance, decay_after_trigger, apply_status, INFLICTABLE_STATUSES, magnitude_to_hint_tier
 from game.resistances import DAMAGE_TYPES, ALL_RESISTANCE_TYPES, apply_resistance, parse_resistance_multiplier
 from game.emojis import status_emoji, coin_emoji, coin_roll_emoji, damage_type_emoji, stat_emoji, skill_slot_emoji, hint_emoji, attack_weight_icons, stagger_tier_emoji, stagger_action_emoji
 
@@ -33,9 +33,6 @@ DEFENSE_TAGS = {"guard", "clashable_guard", "counter", "clashable_counter"}
 # matches canon Limbus's own cap, so a huge Rupture stack can't one-shot
 # through a small-HP-pool fighter.
 RUPTURE_DAMAGE_CAP_PCT = 0.10
-
-# Magnitude (potency * count) thresholds for the status-based half of a fighter's Hint tier, checked highest first. See docs/ENGINEERING_NOTES.md#battle-comment-40.
-STATUS_HINT_THRESHOLDS = [(15, 3), (6, 2), (1, 1)]
 
 
 def _can_manage_fighter(interaction: discord.Interaction, fighter: Fighter) -> bool:
@@ -648,20 +645,12 @@ def format_clash_rounds(outcome: ClashOutcome, name_a: str, name_b: str) -> str:
 
 
 def _status_hint_tier(fighter: Fighter) -> int:
-    """The worse of a fighter's currently active statuses, mapped to a tier by magnitude (potency * count). See docs/ENGINEERING_NOTES.md#battle-status-hint-tier for the full rationale."""
+    """The worse of a fighter's currently active statuses, mapped to a tier by magnitude (potency * count) via magnitude_to_hint_tier (game/statuses.py). See docs/ENGINEERING_NOTES.md#battle-status-hint-tier for the full rationale."""
     best = 0
     for status in fighter.statuses.values():
         if status.count <= 0:
             continue
-        magnitude = status.potency * status.count
-        tier = 0
-        for threshold, t in STATUS_HINT_THRESHOLDS:
-            if magnitude >= threshold:
-                tier = t
-                break
-        if status.name == "rupture":
-            tier = min(3, max(tier, 1) + 1) if tier > 0 else 2
-        best = max(best, tier)
+        best = max(best, magnitude_to_hint_tier(status.potency * status.count, status.name))
     return best
 
 

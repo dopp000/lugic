@@ -35,8 +35,15 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   `game/conditions.py`, `game/skills.py`, or the trigger-dispatch chain in
   `cogs/battle.py`'s `combat()`.
 - **Hint Tier**: every Trigger carries a danger rating, 1 (mild) to 3
-  (highly dangerous), hand-set via a trailing `(Hint N)` on the line,
-  defaulting to 1 if left off. Shown as a small icon next to each Trigger
+  (highly dangerous). Can be hand-set via a trailing `(Hint N)` on the
+  line, which always wins when present; left off, a Trigger that inflicts
+  a status gets its tier worked out automatically from its own
+  potency \* count, the same scale an already-active status of that size
+  would be judged by (`magnitude_to_hint_tier`, `game/statuses.py`) --
+  so nobody has to remember to manually flag a dangerous passive, and
+  an inflict-type effect never silently defaults to looking mild. Any
+  other effect type (bonus power, Sanity gain, a self-buff) still
+  defaults to 1. Shown as a small icon next to each Trigger
   in a skill listing (`/battle skills`, `/character skills`), and as a
   single worst-of-the-fighter icon under their name on the battle embed
   (`compute_hint_tier`, `cogs/battle.py`). A tier 2+ Trigger that actually

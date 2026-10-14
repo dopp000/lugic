@@ -3,6 +3,16 @@ from dataclasses import dataclass
 # The 5 target-facing statuses that can be inflicted on an opponent and resisted. See docs/ENGINEERING_NOTES.md#statuses-comment-3.
 INFLICTABLE_STATUSES = ["burn", "bleed", "tremor", "rupture", "sinking"]
 
+# Maps a status's magnitude (potency * count) to a Hint tier (1-3, see
+# Trigger.hint_tier in game/conditions.py). Shared by two callers that
+# both need the exact same scale: cogs/battle.py's _status_hint_tier
+# (for a fighter's currently ACTIVE status) and parse_trigger_text in
+# game/conditions.py (to auto-set a newly written Trigger's own tier
+# from its inflict_status effect, instead of requiring a hand-typed
+# "(Hint N)"). Lives here, not in either caller, since neither module
+# can import from the other without a cycle.
+STATUS_HINT_THRESHOLDS = [(15, 3), (6, 2), (1, 1)]
+
 
 @dataclass
 class StatusInstance:
@@ -18,6 +28,18 @@ def decay_after_trigger(current: StatusInstance) -> StatusInstance:
     if new_count <= 0:
         return StatusInstance(name=current.name, potency=0, count=0)
     return StatusInstance(name=current.name, potency=current.potency, count=new_count)
+
+
+def magnitude_to_hint_tier(magnitude: int, status_name: str | None = None) -> int:
+    """Maps a potency*count magnitude to a Hint tier via STATUS_HINT_THRESHOLDS above (0 if below even the lowest threshold). Rupture gets a flat +1 on top of its magnitude tier, capped at 3, and is floored at 2 even from a 0 magnitude -- its automatic on-hit trigger makes any active Rupture a live threat regardless of size. See docs/ENGINEERING_NOTES.md#statuses-magnitude-to-hint-tier for the full rationale."""
+    tier = 0
+    for threshold, t in STATUS_HINT_THRESHOLDS:
+        if magnitude >= threshold:
+            tier = t
+            break
+    if status_name == "rupture":
+        tier = min(3, tier + 1) if tier > 0 else 2
+    return tier
 
 
 def apply_status(current: StatusInstance | None, name: str, added_potency: int, added_count: int) -> StatusInstance:

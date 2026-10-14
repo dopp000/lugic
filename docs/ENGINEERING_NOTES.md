@@ -175,9 +175,14 @@ One per cog (BattleCog's reads a battle-scoped Fighter, CharacterCog's
 <a id="battle-status-hint-tier"></a>
 
 The worse of a fighter's currently active statuses, mapped to a
-    tier by magnitude (potency * count). Rupture gets a flat +1 on top
-    of its magnitude tier, capped at 3, since its automatic on-hit
-    trigger makes any active Rupture a live threat regardless of size.
+    tier by magnitude (potency * count) via `magnitude_to_hint_tier`
+    (game/statuses.py -- see #statuses-magnitude-to-hint-tier for the
+    actual scale and Rupture's special case). Pulled out into that
+    shared helper so a newly-written Trigger's own hint_tier can be
+    auto-classified on the exact same scale (see
+    #conditions-parse-trigger-text-hint-tier) instead of drifting out
+    of sync with two separately-maintained copies of the same
+    thresholds.
 
 ## cogs/battle.py :: _skill_hint_tier
 <a id="battle-skill-hint-tier"></a>
@@ -525,15 +530,6 @@ either side -- instead of computing a winner. Deliberately narrow
 (exactly these four tags, not anything vaguely "defensive"), per
 design decision: two units both trying to block/redirect the same
 exchange simply fail to connect with each other, they don't fight.
-
-## cogs/battle.py :: comment near line 40
-<a id="battle-comment-40"></a>
-
-Magnitude (potency * count) thresholds for the status-based half of a
-fighter's Hint tier, checked highest first. Rupture then gets a flat
-+1 on top of whatever tier its own magnitude lands on, since its
-automatic on-hit trigger makes it a real threat even at low numbers,
-not because it's inherently worse than the others at equal magnitude.
 
 ## cogs/battle.py :: comment near line 272
 <a id="battle-comment-272"></a>
@@ -1052,8 +1048,11 @@ A Condition plus what happens if it's true, plus when to check it.
     coin_index is 1-based, matching the skill's own coin_statuses
     indexing, and is None for skill-level timings.
 
-    hint_tier (1-3) is hand-set by whoever built the skill, written as
-    a trailing "(Hint N)" on the line. Defaults to 1 if omitted.
+    hint_tier (1-3) can be hand-set by whoever built the skill, written
+    as a trailing "(Hint N)" on the line -- that always wins when
+    present. Left off, an inflict_status trigger gets it worked out
+    automatically from its own potency*count instead of a flat default;
+    see #conditions-parse-trigger-text-hint-tier.
 
     raw_text is the original line, kept around for addskill's preview
     and for error messages, so a malformed line can be echoed back
@@ -1103,8 +1102,9 @@ Parses a full multi-line trigger block, as pasted into the trigger
     rest of the line is handed to the condition parser first (which
     strips off any recognized condition phrase and hands back whatever
     is left), then the effect parser. An optional trailing '(Hint N)'
-    anywhere in the line sets that trigger's Hint tier, default 1 if
-    omitted.
+    anywhere in the line sets that trigger's Hint tier explicitly (see
+    #conditions-parse-trigger-text-hint-tier for what happens when it's
+    left off).
 
     A single line only carries one effect. A Limbus tooltip line chaining
     several effects with ';' needs to become several lines instead, each
@@ -1119,6 +1119,35 @@ Parses a full multi-line trigger block, as pasted into the trigger
     Raises TriggerParseError on the first malformed line, with that exact
     line attached, so the caller (the modal's on_submit) can show the
     person precisely which line to fix instead of the whole block.
+
+## game/conditions.py :: parse_trigger_text's hint_tier auto-classification
+<a id="conditions-parse-trigger-text-hint-tier"></a>
+
+A hand-typed "(Hint N)" always wins, same as before -- this only
+    covers what happens when a line has none. Previously that meant a
+    flat default of 1 (mild) no matter what the line actually did,
+    which meant a skill author had to remember to manually flag
+    anything dangerous, and silently under-flagged it if they forgot.
+
+    Now, a trigger whose effect_type is inflict_status gets its tier
+    worked out from its own effect_value (potency) * status_count,
+    through the exact same magnitude_to_hint_tier scale
+    (game/statuses.py) that an already-ACTIVE status of that same
+    potency/count would be judged by (_status_hint_tier,
+    cogs/battle.py) -- so a passive that inflicts, say, Burn 5/5 shows
+    up exactly as dangerous as a fighter already standing in Burn 5/5
+    would. Floored at 1, never 0 -- hint_tier's valid domain is 1-3,
+    0 was never meant to be a real value, it's just
+    magnitude_to_hint_tier's internal "below every threshold" return.
+
+    Deliberately scoped to inflict_status only. The other effect types
+    (bonus_power, bonus_coin_power, sanity_gain, gain_status) aren't
+    "inflicting danger onto an opponent" the same way a status is --
+    there's no existing magnitude scale to borrow for them, and
+    inventing an arbitrary one risked being less meaningful than just
+    leaving them at the old flat default of 1. They still default to
+    1, same as before this existed; only inflict_status triggers
+    changed behavior.
 
 ## game/conditions.py :: comment near line 36
 <a id="conditions-comment-36"></a>
@@ -1513,6 +1542,32 @@ Called when a status's trigger condition fires (e.g. Rupture
     Decrements Count by 1. If Count reaches 0, the stack is fully
     consumed: Potency resets to 0 too, rather than lingering at 0 count
     with stale Potency.
+
+## game/statuses.py :: magnitude_to_hint_tier
+<a id="statuses-magnitude-to-hint-tier"></a>
+
+Maps a potency*count magnitude to a danger Hint tier (1-3, see
+    Trigger.hint_tier in game/conditions.py; 0 means "below even the
+    lowest threshold," which a caller floors to 1 rather than leaving
+    at 0 -- hint_tier's valid domain is 1-3, 0 was never a real tier).
+    STATUS_HINT_THRESHOLDS above is the scale: 15+ is tier 3, 6+ is
+    tier 2, 1+ is tier 1.
+
+    Rupture is a special case on top of that: it gets a flat +1 bumped
+    onto whatever tier its magnitude alone would land on, capped at 3,
+    and is floored at 2 even from a 0 magnitude. This is because
+    Rupture's own automatic on-hit trigger makes any active Rupture a
+    live threat regardless of size -- it's not that Rupture deals more
+    damage per point than the other four statuses at equal magnitude,
+    it's that it goes off without the caster doing anything further.
+
+    Lives here (not in cogs/battle.py, where the only caller used to
+    be) so game/conditions.py's parse_trigger_text can use the exact
+    same scale to auto-classify a newly-written Trigger's hint_tier
+    from its own inflict_status effect_value/status_count, without a
+    circular import (game/conditions.py can't import from
+    cogs/battle.py, which imports game/conditions.py itself). See
+    #conditions-parse-trigger-text-hint-tier for that caller.
 
 ## game/statuses.py :: apply_status
 <a id="statuses-apply-status"></a>

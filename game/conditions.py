@@ -3,6 +3,8 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from game.statuses import magnitude_to_hint_tier
+
 if TYPE_CHECKING:
     # Only for type hints below -- importing these for real would be a
     # circular import (game.battle -> game.skills -> game.conditions).
@@ -277,8 +279,11 @@ class Trigger:
     coin_index is 1-based, matching the skill's own coin_statuses
     indexing, and is None for skill-level timings.
 
-    hint_tier (1-3) is hand-set by whoever built the skill, written as
-    a trailing "(Hint N)" on the line. Defaults to 1 if omitted.
+    hint_tier (1-3) can be hand-set by whoever built the skill, written
+    as a trailing "(Hint N)" on the line -- that always wins when
+    present. Left off, an inflict_status trigger gets it worked out
+    automatically from its own potency*count (see parse_trigger_text
+    below); any other effect type defaults to 1.
 
     raw_text is the original line, kept around for addskill's preview
     and for error messages, so a malformed line can be echoed back
@@ -487,8 +492,12 @@ def parse_trigger_text(text: str) -> tuple[list[Trigger], set[str]]:
     rest of the line is handed to the condition parser first (which
     strips off any recognized condition phrase and hands back whatever
     is left), then the effect parser. An optional trailing '(Hint N)'
-    anywhere in the line sets that trigger's Hint tier, default 1 if
-    omitted.
+    anywhere in the line sets that trigger's Hint tier explicitly, and
+    always wins when present. Left off, an inflict_status trigger's
+    tier is worked out automatically from its own potency*count (same
+    scale an already-active status of that size would get, see
+    magnitude_to_hint_tier in game/statuses.py); any other effect type
+    defaults to 1. See docs/ENGINEERING_NOTES.md#conditions-parse-trigger-text-hint-tier for the full rationale.
 
     A single line only carries one effect. A Limbus tooltip line chaining
     several effects with ';' needs to become several lines instead, each
@@ -555,11 +564,11 @@ def parse_trigger_text(text: str) -> tuple[list[Trigger], set[str]]:
                 line, f"[{tag_text}] is a per-coin tag, it needs a ':CoinN:' prefix, e.g. ':Coin1: [{tag_text}] ...'"
             )
 
-        hint_tier = 1
+        explicit_hint_tier = None
         hint_match = _HINT_RE.search(rest)
         if hint_match:
-            hint_tier = int(hint_match.group(1))
-            if not (1 <= hint_tier <= 3):
+            explicit_hint_tier = int(hint_match.group(1))
+            if not (1 <= explicit_hint_tier <= 3):
                 raise TriggerParseError(line, "Hint tier must be 1, 2, or 3")
             rest = _HINT_RE.sub("", rest).strip()
 
@@ -568,6 +577,23 @@ def parse_trigger_text(text: str) -> tuple[list[Trigger], set[str]]:
 
         condition, effect_text = _parse_condition_and_effect_text(rest)
         effect_type, effect_value, status_name, status_count = _parse_effect_text(effect_text)
+
+        # A hand-typed "(Hint N)" always wins. Otherwise, a trigger that
+        # inflicts a status gets its tier worked out the same way an
+        # ALREADY-ACTIVE status of that same potency/count would be
+        # (magnitude_to_hint_tier, game/statuses.py) -- so an admin
+        # doesn't have to guess a number by hand, and can't forget to
+        # flag something dangerous. Floored at 1, never 0: hint_tier's
+        # valid range is 1-3, same as the old flat default this
+        # replaces. Any other effect type (bonus_power, sanity_gain,
+        # gain_status -- none of them "inflict danger onto an opponent"
+        # the way a status does) keeps the old flat default of 1.
+        if explicit_hint_tier is not None:
+            hint_tier = explicit_hint_tier
+        elif effect_type == "inflict_status":
+            hint_tier = max(1, magnitude_to_hint_tier(effect_value * status_count, status_name))
+        else:
+            hint_tier = 1
 
         triggers.append(Trigger(
             condition=condition,
