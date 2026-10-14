@@ -16,16 +16,16 @@ STATUS_EMOJI_IDS: dict[str, int | None] = {
     "bleed": 1538062845793533992,
     "tremor": 1538063202930393179,
     "charge": 1538062873241059338,
-    "tremor_burst": 1538063181967130624,  # not wired to a mechanic yet, ready for when Tremor Burst is built
+    "tremor_burst": 1538063181967130624,  # Tremor Burst is fully built (fire_tremor_burst in cogs/battle.py) -- this comment used to say "not wired yet," that's stale now
     "sinking": 1538063130729512962,
     "poise": 1538062820300816384,
     "evasion": 1538065517896671252,  # uploaded as "Evade", not "Evasion" -- see _STATUS_DISPLAY_NAMES below
     "counter": 1543225884310245406,
     "clashable_counter": 1546006725578985533,
-    # Same "reserved, not wired to a mechanic yet" pattern as tremor_burst
-    # above -- upload the icon and fill in the ID whenever the matching
-    # system actually gets built (see README's Roadmap section).
-    "shield": 1544679323192266904,   # for Guard's Shield HP, once Guard exists
+    # Shield/Guard/Clashable Guard are all fully built too (see Combat
+    # Features in README.md) -- same stale-comment cleanup as
+    # tremor_burst above, flagged there since the last README pass.
+    "shield": 1544679323192266904,   # Guard's overhead HP pool
     "guard": 1545222381600243762,
     "clashable_guard": 1546005005834649640,
     "stagger": 1545221789037363252,

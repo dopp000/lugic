@@ -497,12 +497,13 @@ a deliberate admin/testing escape hatch.
 
 Emoji IDs for Shield, Panic, and Low Morale (Panic/Low Morale share one icon)
 are filled in (`STATUS_EMOJI_IDS`, `game/emojis.py`) even though Panic/Low
-Morale's own mechanics aren't built yet. `guard` and `tremor_burst` both
-have real emoji IDs filled in too now (neither is `None` anymore) — both
-mechanics are fully built (see Combat Features / Status Effects above);
-`tremor_burst`'s own inline comment in `game/emojis.py` claiming "not wired
-to a mechanic yet" is itself stale and worth fixing next time that file is
-touched.
+Morale's own mechanics aren't built yet. `guard`, `shield`, `clashable_guard`,
+and `tremor_burst` all have real emoji IDs filled in too (none are `None`
+anymore) — all four mechanics are fully built (see Combat Features / Status
+Effects above). Their stale "not wired to a mechanic yet" inline comments in
+`game/emojis.py`, flagged here as worth fixing next time that file got
+touched, got fixed the next time it actually was (adding `/help`'s category
+icons).
 
 ## Character Creation & Progression (Level 1)
 
