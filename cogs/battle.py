@@ -57,7 +57,7 @@ def _is_admin(interaction: discord.Interaction) -> bool:
 class SkillConfirmView(discord.ui.View):
     def __init__(
         self, fighter: Fighter, skill: Skill, preview_text: str, timeout: float = 60,
-        on_saved=None,
+        on_saved=None, old_skill_name: str | None = None, old_preview_text: str | None = None,
     ):
         super().__init__(timeout=timeout)
         self.fighter = fighter
@@ -70,26 +70,47 @@ class SkillConfirmView(discord.ui.View):
         # also writes the skill to the character's JSON file, not just
         # into memory for this one battle. See docs/ENGINEERING_NOTES.md#battle-skillconfirmview for the full rationale.
         self.on_saved = on_saved
+        # Both set only by EditSkillModal (/battle editskill, /character
+        # editskill) -- old_skill_name is the skill's name BEFORE this
+        # edit, lowercased same as Fighter.skills' own keys, so Confirm
+        # knows to remove that entry too if the edit renamed it (plain
+        # add_skill alone would otherwise leave the old name's entry
+        # behind, next to the new one, rather than replacing it).
+        # old_preview_text is the skill's full preview from BEFORE the
+        # edit, so the admin log below can show a before/after instead
+        # of just the end result. See docs/ENGINEERING_NOTES.md#battle-skillconfirmview.
+        self.old_skill_name = old_skill_name
+        self.old_preview_text = old_preview_text
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.old_skill_name is not None and self.old_skill_name != self.skill.name.lower():
+            self.fighter.remove_skill(self.old_skill_name)
         self.fighter.add_skill(self.skill)
         if self.on_saved is not None:
             self.on_saved()
 
         log_channel = interaction.client.get_channel(LOG_CHANNEL_ID)
         if log_channel is not None:
-            await log_channel.send(
-                f"{interaction.user.mention} confirmed a new skill for **{self.fighter.name}**:\n"
-                f"{self.preview_text}"
-            )
+            if self.old_preview_text is not None:
+                await log_channel.send(
+                    f"{interaction.user.mention} edited a skill for **{self.fighter.name}**:\n"
+                    f"**Before:**\n{self.old_preview_text}\n**After:**\n{self.preview_text}"
+                )
+            else:
+                await log_channel.send(
+                    f"{interaction.user.mention} confirmed a new skill for **{self.fighter.name}**:\n"
+                    f"{self.preview_text}"
+                )
 
         for child in self.children:
             child.disabled = True
-        await interaction.response.edit_message(
-            content=f"**Confirmed.** {self.fighter.name} learned {self.skill.name}.",
-            view=self,
+        confirm_text = (
+            f"**Confirmed.** {self.fighter.name}'s **{self.skill.name}** skill was updated."
+            if self.old_preview_text is not None
+            else f"**Confirmed.** {self.fighter.name} learned {self.skill.name}."
         )
+        await interaction.response.edit_message(content=confirm_text, view=self)
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
@@ -176,6 +197,23 @@ def _parse_status_tokens(
         coin_status_counts.append(count)
 
     return coin_statuses, coin_status_potencies, coin_status_counts, None
+
+
+def _format_status_tokens(skill: Skill) -> str:
+    """The reverse of _parse_status_tokens above, for EditSkillModal's pre-fill. See docs/ENGINEERING_NOTES.md#battle-format-skill-text for the full rationale."""
+    tokens = []
+    for name, potency, count in zip(
+        skill.coin_statuses, skill.coin_status_potencies, skill.coin_status_counts
+    ):
+        tokens.append("none" if name is None else f"{name.capitalize()}:{potency}:{count}")
+    return ",".join(tokens)
+
+
+def _format_trigger_text(skill: Skill) -> str:
+    """The reverse of parse_trigger_text (game/conditions.py), for EditSkillModal's pre-fill. See docs/ENGINEERING_NOTES.md#battle-format-skill-text for the full rationale."""
+    lines = [t.raw_text for t in skill.triggers]
+    lines += [f"[{tag.replace('_', ' ').title()}]" for tag in sorted(skill.tags)]
+    return "\n".join(lines)
 
 
 class AddSkillModal(discord.ui.Modal, title="New Skill"):
@@ -322,9 +360,48 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
             attack_weight=attack_weight,
         )
 
-        preview_text = f"{self.target_fighter.name} would learn {self.skill_name.value}\n" + _skill_preview_text(skill)
-        view = SkillConfirmView(self.target_fighter, skill, preview_text, on_saved=self.on_saved)
+        preview_text = self._preview_header(skill) + "\n" + _skill_preview_text(skill)
+        view = self._build_confirm_view(skill, preview_text)
         await interaction.response.send_message(preview_text, view=view, ephemeral=True)
+
+    def _preview_header(self, skill: Skill) -> str:
+        """Overridden by EditSkillModal. See docs/ENGINEERING_NOTES.md#battle-addskillmodal-hooks for the full rationale."""
+        return f"{self.target_fighter.name} would learn {self.skill_name.value}"
+
+    def _build_confirm_view(self, skill: Skill, preview_text: str) -> "SkillConfirmView":
+        """Overridden by EditSkillModal. See docs/ENGINEERING_NOTES.md#battle-addskillmodal-hooks for the full rationale."""
+        return SkillConfirmView(self.target_fighter, skill, preview_text, on_saved=self.on_saved)
+
+
+class EditSkillModal(AddSkillModal):
+    """Same popup as AddSkillModal, pre-filled from a skill the fighter already knows. See docs/ENGINEERING_NOTES.md#battle-editskillmodal for the full rationale."""
+
+    def __init__(self, target_fighter, existing_skill: Skill, on_saved=None):
+        super().__init__(target_fighter, on_saved=on_saved)
+        self.title = "Edit Skill"
+        self.existing_skill = existing_skill
+
+        self.skill_name.default = existing_skill.name
+        self.stats_input.default = (
+            f"{existing_skill.base_power}, {existing_skill.coin_power}, "
+            f"{existing_skill.coins}, {existing_skill.damage_type.capitalize()}"
+        )
+        self.attack_weight_input.default = str(existing_skill.attack_weight)
+        self.status_input.default = _format_status_tokens(existing_skill)
+        self.triggers_input.default = _format_trigger_text(existing_skill)
+
+    def _preview_header(self, skill: Skill) -> str:
+        return f"{self.target_fighter.name}'s **{self.existing_skill.name}** would become:"
+
+    def _build_confirm_view(self, skill: Skill, preview_text: str) -> "SkillConfirmView":
+        old_preview_text = (
+            f"{self.target_fighter.name}'s {self.existing_skill.name} (before)\n"
+            + _skill_preview_text(self.existing_skill)
+        )
+        return SkillConfirmView(
+            self.target_fighter, skill, preview_text, on_saved=self.on_saved,
+            old_skill_name=self.existing_skill.name.lower(), old_preview_text=old_preview_text,
+        )
 
 
 # Discord silently rejects an ENTIRE modal with a 400 (which the caller only ever sees as a generic "The application did not respond") if... See docs/ENGINEERING_NOTES.md#battle-comment-272.
@@ -1626,6 +1703,26 @@ class BattleCog(commands.GroupCog, name="battle"):
             text = text[:1900] + "\n...(truncated, too many/long skills to show at once)"
         await interaction.response.send_message(text, ephemeral=True)
 
+    async def _skill_name_autocomplete_choices(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        """Shared by /battle removeskill and /battle editskill's skill_name option. See docs/ENGINEERING_NOTES.md#battle-skill-name-autocomplete for the full rationale."""
+        battle = self.battles.get(interaction.channel_id)
+        if battle is None:
+            return []
+        fighter_name = getattr(interaction.namespace, "fighter", None)
+        if not fighter_name:
+            return []
+        target_fighter = battle.get_fighter(fighter_name)
+        if target_fighter is None:
+            return []
+        current_lower = current.lower()
+        return [
+            app_commands.Choice(name=skill.name, value=skill.name)
+            for skill in target_fighter.skills.values()
+            if current_lower in skill.name.lower()
+        ][:25]
+
     @app_commands.command(
         name="removeskill",
         description="Remove a skill from a fighter's known skills (owner or admin only)",
@@ -1657,6 +1754,46 @@ class BattleCog(commands.GroupCog, name="battle"):
             await interaction.response.send_message(
                 f"{target_fighter.name} doesn't know a skill called '{skill_name}'.", ephemeral=True
             )
+
+    @removeskill.autocomplete("skill_name")
+    async def removeskill_skill_name_autocomplete(self, interaction: discord.Interaction, current: str):
+        return await self._skill_name_autocomplete_choices(interaction, current)
+
+    @app_commands.command(
+        name="editskill",
+        description="Edit a skill a fighter already knows, for THIS battle (owner or admin only)",
+    )
+    @app_commands.describe(fighter="Which fighter's skill to edit", skill_name="Which skill to edit")
+    async def editskill(self, interaction: discord.Interaction, fighter: str, skill_name: str):
+        battle = self.battles.get(interaction.channel_id)
+        if battle is None:
+            await interaction.response.send_message("No active battle here.", ephemeral=True)
+            return
+
+        target_fighter = battle.get_fighter(fighter)
+        if target_fighter is None:
+            await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            return
+
+        if not _can_manage_fighter(interaction, target_fighter):
+            await interaction.response.send_message(
+                "Only this fighter's own owner or an admin can edit one of their skills.",
+                ephemeral=True,
+            )
+            return
+
+        existing_skill = target_fighter.get_skill(skill_name)
+        if existing_skill is None:
+            await interaction.response.send_message(
+                f"{target_fighter.name} doesn't know a skill called '{skill_name}'.", ephemeral=True
+            )
+            return
+
+        await interaction.response.send_modal(EditSkillModal(target_fighter, existing_skill))
+
+    @editskill.autocomplete("skill_name")
+    async def editskill_skill_name_autocomplete(self, interaction: discord.Interaction, current: str):
+        return await self._skill_name_autocomplete_choices(interaction, current)
 
     @app_commands.command(
         name="declare",

@@ -487,6 +487,61 @@ class CharacterCog(commands.GroupCog, name="character"):
                 f"{character.name} doesn't know a skill called '{skill_name}'.", ephemeral=True
             )
 
+    async def _skill_name_autocomplete_choices(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        """Shared by /character removeskill and /character editskill's skill_name option -- same approach as battle_cog's own version of this. See docs/ENGINEERING_NOTES.md#battle-skill-name-autocomplete for the full rationale."""
+        character_name = getattr(interaction.namespace, "name", None)
+        if not character_name:
+            return []
+        character = load_character(character_name)
+        if character is None:
+            return []
+        current_lower = current.lower()
+        return [
+            app_commands.Choice(name=skill.name, value=skill.name)
+            for skill in character.skills.values()
+            if current_lower in skill.name.lower()
+        ][:25]
+
+    @removeskill.autocomplete("skill_name")
+    async def removeskill_skill_name_autocomplete(self, interaction: discord.Interaction, current: str):
+        return await self._skill_name_autocomplete_choices(interaction, current)
+
+    @app_commands.command(
+        name="editskill",
+        description="Edit a skill this character already knows, permanently (opens a form)",
+    )
+    @app_commands.describe(name="Character whose skill to edit", skill_name="Which skill to edit")
+    async def editskill(self, interaction: discord.Interaction, name: str, skill_name: str):
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            return
+
+        is_owner = interaction.user.id == character.owner_id
+        if not (is_owner or is_admin(interaction)):
+            await interaction.response.send_message(
+                "Only this character's owner or an admin can edit one of their skills.",
+                ephemeral=True,
+            )
+            return
+
+        existing_skill = character.get_skill(skill_name)
+        if existing_skill is None:
+            await interaction.response.send_message(
+                f"{character.name} doesn't know a skill called '{skill_name}'.", ephemeral=True
+            )
+            return
+
+        await interaction.response.send_modal(
+            battle_cog.EditSkillModal(character, existing_skill, on_saved=lambda: save_character(character))
+        )
+
+    @editskill.autocomplete("skill_name")
+    async def editskill_skill_name_autocomplete(self, interaction: discord.Interaction, current: str):
+        return await self._skill_name_autocomplete_choices(interaction, current)
+
     @app_commands.command(name="delete", description="Delete one of your characters")
     @app_commands.describe(name="Character to delete")
     async def delete(self, interaction: discord.Interaction, name: str):

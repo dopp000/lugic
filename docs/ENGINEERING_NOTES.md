@@ -50,6 +50,33 @@ True if whoever's invoking this holds the server's admin role
     `.remove_skill()` on it, which Character now implements with the
     exact same shape as Fighter (see game/character.py).
 
+    `old_skill_name`/`old_preview_text` are set only by EditSkillModal
+    (/battle editskill, /character editskill), never by a plain
+    addskill flow. On Confirm, if `old_skill_name` is set and no longer
+    matches the submitted skill's own (lowercased) name -- i.e. this
+    edit renamed the skill -- the old entry is removed first, via
+    `remove_skill`, before `add_skill` writes the new one in. Without
+    this, renaming would leave BOTH the old and new names behind in
+    `.skills` (plain dict assignment under a new key, never clearing
+    the old one), not replace the one entry as a player would expect.
+    `old_preview_text`, when set, also switches the admin log post from
+    "confirmed a new skill" (the whole skill) to "edited a skill", with
+    a **Before:**/**After:** block instead of just the end state -- the
+    actual "provide logs so admins can check" requirement this was
+    built for.
+
+## cogs/battle.py :: AddSkillModal's _preview_header / _build_confirm_view
+<a id="battle-addskillmodal-hooks"></a>
+
+Two small hook methods `on_submit` calls at the very end, instead of
+    building the preview message and SkillConfirmView inline the way it
+    used to. Exists purely so EditSkillModal (below) can override just
+    these two spots -- a different first line ("would become" instead
+    of "would learn") and a SkillConfirmView that also carries the old
+    skill's name/preview along -- without having to duplicate
+    `on_submit`'s entire parsing/validation body, which is identical
+    for both an add and an edit.
+
 ## cogs/battle.py :: _parse_status_tokens
 <a id="battle-parse-status-tokens"></a>
 
@@ -74,6 +101,75 @@ The full skill-creation popup: everything /battle addskill used to
     comma-separated line ("5, 5, 3, Blunt") and parsed by hand in
     on_submit below, same pattern status_input already used for
     per-coin data -- there wasn't room to give each its own box.
+
+## cogs/battle.py :: _format_status_tokens / _format_trigger_text
+<a id="battle-format-skill-text"></a>
+
+The reverse direction of `_parse_status_tokens` and
+    `parse_trigger_text` (game/conditions.py) -- given an already-built
+    Skill, rebuild the exact text a fresh /battle addskill submission
+    for that same skill would have had in its status/triggers boxes.
+    Exists for EditSkillModal to pre-fill those boxes from a skill's
+    CURRENT values, so editing means changing just what's wrong instead
+    of retyping the whole skill from memory.
+
+    `_format_status_tokens` is a straight per-coin zip: "none" for a
+    coin with no status, else "Name:Potency:Count", comma-joined.
+
+    `_format_trigger_text` leans on Trigger.raw_text -- each Trigger
+    already kept its own original line verbatim specifically so it
+    could be echoed back exactly (originally for error messages, see
+    Trigger's own docstring in game/conditions.py), so those just get
+    joined back as one block. Flag-only lines (`[Target Fixed]` etc.)
+    never became a Trigger object and have no raw_text, so those get
+    freshly rebuilt from the tag key's own name instead -- round-trips
+    fine either way since the parser only cares about the bracket text,
+    not where it came from.
+
+## cogs/battle.py :: EditSkillModal
+<a id="battle-editskillmodal"></a>
+
+Subclasses AddSkillModal rather than duplicating it: same five
+    fields, same on_submit parsing/validation, the only differences are
+    pre-filling each field's `.default` from an existing Skill in
+    `__init__` (via `_format_status_tokens`/`_format_trigger_text`
+    above) and overriding the two small hook methods AddSkillModal
+    exposes for exactly this purpose (see
+    #battle-addskillmodal-hooks). `existing_skill` is kept on `self`
+    so both overrides can reference its name -- the preview header
+    ("X's Y would become:") and the old-name/old-preview values handed
+    to SkillConfirmView for the rename check and the admin log's
+    before/after (see #battle-skillconfirmview).
+
+    Setting `self.title = "Edit Skill"` after `super().__init__()`
+    works because discord.py's Modal stores `title` as a plain instance
+    attribute (set from the class-level `title=` kwarg at construction
+    time) -- reassigning it afterward is safe, nothing caches the
+    class-level value separately.
+
+## cogs/battle.py / cogs/character.py :: _skill_name_autocomplete_choices
+<a id="battle-skill-name-autocomplete"></a>
+
+One per cog (BattleCog's reads a battle-scoped Fighter, CharacterCog's
+    reads a saved Character), shared between that cog's own
+    `removeskill` and `editskill` commands via
+    `@<command>.autocomplete("skill_name")` -- both commands need the
+    exact same "suggest this fighter's/character's own known skill
+    names" behavior, so the real logic lives in one method and each
+    command's autocomplete callback is a one-line call into it.
+
+    Reads the OTHER option (`fighter` for /battle, `name` for
+    /character) via `interaction.namespace` rather than taking it as a
+    parameter -- that's how discord.py autocomplete sees a sibling
+    option's current value from the same in-progress command
+    invocation. Returns an empty list (not an error) whenever that
+    option is missing or doesn't resolve to a real
+    fighter/character/battle -- autocomplete fires on every keystroke,
+    including before the user has finished typing a valid one. Matching
+    is substring, case-insensitive, against each known skill's name;
+    Discord caps autocomplete results at 25, enforced with a plain
+    slice since skill lists are never anywhere near that size in
+    practice.
 
 ## cogs/battle.py :: _status_hint_tier
 <a id="battle-status-hint-tier"></a>

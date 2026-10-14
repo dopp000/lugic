@@ -275,11 +275,12 @@ their own independent Base Power/Coin Power; worth confirming whether it's
 still consumed anywhere at battle time or is dead weight from before the
 Skill system existed.
 
-**Skill management is partially built now, not fully absent.**
-`/battle skills` lists everything a fighter currently knows, and
-`/battle removeskill` removes one by name — both closed since the last
-README pass. There is still no `/battle editskill`, so fixing a typo on an
-already-added skill means removing and re-adding it, not surgical edit.
+**Skill management is fully built now, not partially.**
+`/battle skills` lists everything a fighter currently knows, `/battle
+removeskill` removes one by name, and `/battle editskill` opens the same
+popup pre-filled with the skill's current values -- fixing a typo no longer
+means removing and re-adding the whole thing. `/character` has the matching
+three. All closed since the last README pass.
 
 ## Command Reference
 
@@ -291,7 +292,8 @@ already-added skill means removing and re-adding it, not surgical edit.
 | `addfighter` | From a saved `/character` or as a one-off. |
 | `addskill` | `AddSkillModal`: one popup, packed comma-separated stats (Discord caps a modal at 5 fields), per-coin statuses, Trigger text box, `attack_weight_input`. 1-coin enforcement on `[Guard]`/`[Evade]`/`[Clashable Guard]`. **Temporary, battle-only** — teaches the in-battle `Fighter`, not the saved `Character`. Use `/character addskill` to keep a skill permanently. |
 | `skills` | Lists everything a fighter currently knows (this battle only — see `/character skills` for a character's permanent list). |
-| `removeskill` | Removes one named skill from a fighter's known skills, for this battle only. No `editskill` yet — remove and re-add for a typo fix. |
+| `removeskill` | Removes one named skill from a fighter's known skills, for this battle only. `skill_name` autocompletes from that fighter's own known skills. |
+| `editskill` | Owner or admin, same as `removeskill`. Opens the same `AddSkillModal` popup as `addskill`, but pre-filled with the skill's current values (`EditSkillModal`) -- renaming is handled (the old name's entry is removed, not left behind alongside the new one), and the admin log channel gets a before/after instead of just the end result. `skill_name` autocompletes the same way as `removeskill`. Battle-only, same as `addskill`. |
 | `declare` | Locks a skill into a slot aimed at a target's slot. No scouting. Also where Attack Weight splash candidates get picked (see Combat Features). Blocks targeting an eliminated fighter, same as it already blocked an eliminated caster from acting. |
 | `undeclare` | Clears one declared slot. |
 | `removefighter` | Owner or admin (`ADMIN_ROLE_ID`) via `_can_manage_fighter`. |
@@ -302,8 +304,11 @@ already-added skill means removing and re-adding it, not surgical edit.
 No `/battle status`; the synced embed (`build_battle_embed`, kept current
 via `sync_battle_message`) already shows everything it did. No skip/pass
 action exists; every declared slot needs a real skill, and combat won't run
-until `all_declared()` is true, with no admin override to force it. No
-visible round/turn counter for players. **Elimination is built** (0 HP →
+until `all_declared()` is true, with no admin override to force it. The
+round number IS shown to players, as the synced embed's footer text
+("Round N") -- this used to be listed as missing, no longer true (it's
+easy to miss since a Discord footer is small and gray, but it's there).
+**Elimination is built** (0 HP →
 permanent flag, removed from roster, blocked from acting/being targeted,
 see Combat Features) — this used to be listed as entirely absent, no longer
 true. Still no Skill Slot loss, no Backup/Substitute/Retreat system beyond
@@ -320,7 +325,8 @@ that flag.
 | `resistance` | Owner-or-admin. Multi-set via positionally-aligned `resistance_types`/`values`. |
 | `addskill` | Owner-or-admin. Same `AddSkillModal` popup as `/battle addskill`, but teaches the skill to the saved `Character` permanently — it's then picked up automatically next time this character joins a battle, via `Fighter.from_character()`. |
 | `skills` | Owner-or-admin. Lists everything this character permanently knows. |
-| `removeskill` | Owner-or-admin. Removes one named skill from the character's permanent skill list. |
+| `removeskill` | Owner-or-admin. Removes one named skill from the character's permanent skill list. `skill_name` autocompletes from this character's own known skills. |
+| `editskill` | Owner-or-admin. Same `EditSkillModal` popup as `/battle editskill`, pre-filled with the skill's current values, but saves to the permanent `Character` (via the same `on_saved=save_character` wiring `addskill` already uses). `skill_name` autocompletes the same way as `removeskill`. |
 | `delete` | Owner-or-admin. |
 | `say` | Owner-or-admin. Speaks via webhook (name + avatar). |
 
