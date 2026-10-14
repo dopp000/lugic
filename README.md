@@ -34,6 +34,17 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   **Trigger Syntax** below. Most worth re-reading before touching
   `game/conditions.py`, `game/skills.py`, or the trigger-dispatch chain in
   `cogs/battle.py`'s `combat()`.
+- **Hint Tier**: every Trigger carries a danger rating, 1 (mild) to 3
+  (highly dangerous), hand-set via a trailing `(Hint N)` on the line,
+  defaulting to 1 if left off. Shown as a small icon next to each Trigger
+  in a skill listing (`/battle skills`, `/character skills`), and as a
+  single worst-of-the-fighter icon under their name on the battle embed
+  (`compute_hint_tier`, `cogs/battle.py`). A tier 2+ Trigger that actually
+  fires also gets called out in the live fight log itself: bolded,
+  capitalized, and wrapped in that tier's icon on both sides
+  (`_warn_wrap`), so a genuinely dangerous passive stands out from routine
+  tier-1 ticks instead of reading the same as them. Tier 1 lines are left
+  as plain text.
 - **Poise-break Crit**: holding Poise crits coins for bonus damage, consuming
   one Poise count per crit until it runs out.
 - **Evade**: a declared Skill via `/battle declare`, not a self-buff resource

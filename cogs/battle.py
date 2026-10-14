@@ -1,5 +1,6 @@
 import asyncio
 import random
+import re
 
 import discord
 from discord.ext import commands
@@ -1115,8 +1116,40 @@ def _resolve_pre_roll_chain(
     return skill, post_hit
 
 
+# Matches a Discord custom-emoji tag, animated or not -- <:Name:ID> or
+# <a:Name:ID> -- so _warn_wrap below can skip over them instead of
+# uppercasing their contents. Case matters inside a real tag (the "a"
+# animated-prefix is literal, and some clients key off the name's exact
+# case), so this is NOT just cosmetic -- see _warn_wrap's own docstring.
+_EMOJI_TAG_RE = re.compile(r"<a?:\w+:\d+>")
+
+
+def _warn_wrap(line: str, hint_tier: int) -> str:
+    """Makes a dangerous (hint_tier 2 or 3) Trigger's fight-log line
+    actually stand out: bolded, capitalized, and wrapped in that tier's
+    own hint_emoji on both sides -- e.g. a tier-2 Burn trigger reads
+    "(warning icon) **TRIGGER: RIZE GAINS BURN: 3/2** (warning icon)"
+    instead of blending in with routine tier-1 lines. Only ever called
+    for tier >= 2 -- mild (tier 1) lines are left as plain text, so the
+    formatting itself carries the "this matters" signal.
+
+    Uppercasing skips over any Discord custom-emoji tag already in
+    `line` (e.g. status_emoji's output) rather than applying .upper() to
+    the whole string -- a tag's "a" animated prefix is case-sensitive,
+    and mangling it would silently break that one emoji's render. See
+    docs/ENGINEERING_NOTES.md#battle-warn-wrap.
+    """
+    parts = _EMOJI_TAG_RE.split(line)
+    tags = _EMOJI_TAG_RE.findall(line)
+    upper = parts[0].upper()
+    for tag, part in zip(tags, parts[1:]):
+        upper += tag + part.upper()
+    icon = hint_emoji(hint_tier)
+    return f"{icon} **{upper}** {icon}"
+
+
 def apply_trigger_effects(triggers: list[Trigger], caster: Fighter, target: Fighter | None) -> list[str]:
-    """Applies the post-hit effects (inflict_status, sanity_gain, gain_status) from whichever triggers fired AND actually landed a hit. See docs/ENGINEERING_NOTES.md#battle-apply-trigger-effects for the full rationale."""
+    """Applies the post-hit effects (inflict_status, sanity_gain, gain_status) from whichever triggers fired AND actually landed a hit. Dangerous ones (hint_tier 2+) get run through _warn_wrap so they stand out in the fight log. See docs/ENGINEERING_NOTES.md#battle-apply-trigger-effects for the full rationale."""
     log: list[str] = []
     for t in triggers:
         if t.effect_type == "inflict_status":
@@ -1127,21 +1160,24 @@ def apply_trigger_effects(triggers: list[Trigger], caster: Fighter, target: Figh
             current = target.get_status(t.status_name)
             new_instance = apply_status(current, t.status_name, added_potency, t.status_count)
             target.set_status_instance(new_instance)
-            log.append(
+            line = (
                 f"Trigger: {target.name} gains {status_emoji(t.status_name)} "
                 f"{t.status_name.capitalize()}: {new_instance.potency}/{new_instance.count}"
             )
+            log.append(_warn_wrap(line, t.hint_tier) if t.hint_tier >= 2 else line)
         elif t.effect_type == "sanity_gain":
             caster.gain_sanity(t.effect_value)
-            log.append(f"Trigger: {caster.name} Sanity +{t.effect_value} ({caster.sanity})")
+            line = f"Trigger: {caster.name} Sanity +{t.effect_value} ({caster.sanity})"
+            log.append(_warn_wrap(line, t.hint_tier) if t.hint_tier >= 2 else line)
         elif t.effect_type == "gain_status":
             current = caster.get_status(t.status_name)
             new_instance = apply_status(current, t.status_name, t.effect_value, t.status_count)
             caster.set_status_instance(new_instance)
-            log.append(
+            line = (
                 f"Trigger: {caster.name} gains {status_emoji(t.status_name)} "
                 f"{t.status_name.capitalize()}: {new_instance.potency}/{new_instance.count}"
             )
+            log.append(_warn_wrap(line, t.hint_tier) if t.hint_tier >= 2 else line)
     return log
 
 

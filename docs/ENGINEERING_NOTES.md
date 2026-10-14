@@ -294,6 +294,28 @@ Chains resolve_triggers across every pre-roll timing in `timings`,
     this round, so it no longer needs a `battle` param to check
     battle.started against.
 
+## cogs/battle.py :: _warn_wrap
+<a id="battle-warn-wrap"></a>
+
+Makes a dangerous Trigger's fight-log line (hint_tier 2 or 3) actually
+    stand out: bolded, capitalized, wrapped in that tier's own
+    `hint_emoji` on both sides. Only ever called for tier >= 2 --
+    `apply_trigger_effects` below leaves tier 1 (mild) lines as plain
+    text, so the formatting itself is the "this matters" signal, not
+    something every line gets.
+
+    The one real gotcha: a Trigger's log line can already contain a
+    Discord custom-emoji tag of its own (`status_emoji`'s output, e.g.
+    `<:Burn:1538...>`), and naively calling `.upper()` on the whole
+    string would mangle it -- an animated tag's `a` prefix (`<a:Name:ID>`)
+    is case-sensitive, so `.upper()` turning it into `<A:NAME:ID>` would
+    silently stop that one emoji from rendering. `_EMOJI_TAG_RE` finds
+    every `<a?:\w+:\d+>` tag first, `_warn_wrap` uppercases everything
+    AROUND them and leaves the tags themselves untouched, then wraps the
+    result in bold markdown and the hint icon. No call site in this file
+    currently feeds it an animated tag, but the helper is written to be
+    safe regardless, since a future Trigger line easily could.
+
 ## cogs/battle.py :: apply_trigger_effects
 <a id="battle-apply-trigger-effects"></a>
 
@@ -302,6 +324,18 @@ Applies the post-hit effects (inflict_status, sanity_gain,
     hit. Pre-roll effects (bonus_power/bonus_coin_power) are already
     baked into the skill by resolve_triggers before this ever runs, so
     there's nothing to do for those here.
+
+    Each line is run through `_warn_wrap` above when its own Trigger's
+    `hint_tier` is 2 or 3, so a dangerous passive calls attention to
+    itself the moment it actually fires, not just via the small icon
+    next to it in a skill listing. This covers every caller that routes
+    through this function -- `fire_evade_triggers`, `fire_passive_triggers`,
+    `fire_kill_triggers`, `fire_tremor_burst`'s own generic-effect portion,
+    and every `resolve_triggers` call site in `combat()` -- since they all
+    funnel their fired Triggers through here rather than building their
+    own log lines. The universal, non-Trigger status ticks (Burn/Sinking in
+    `apply_turn_end_status_ticks`, Bleed in `apply_bleed_self_damage`) have
+    no `hint_tier` at all and are untouched by this.
 
     target is optional: passive timings that don't reference an enemy
     (Combat Start, Turn Start) call this with target=None, since there's
