@@ -32,6 +32,24 @@ True if whoever's invoking this holds the server's admin role
     to exactly that role. The actual security boundary is this check,
     not the visibility setting.
 
+## cogs/battle.py :: SkillConfirmView
+<a id="battle-skillconfirmview"></a>
+
+`on_saved` is an optional no-arg callback run right after `add_skill`
+    on confirm, alongside the existing log-channel post. /battle
+    addskill leaves it unset -- a battle-scoped Fighter has nothing
+    further to persist once the skill is in its `.skills` dict.
+    /character addskill passes `lambda: save_character(character)`
+    (from cogs/character.py) so the exact same modal + confirm button
+    also writes the new skill to that character's JSON file, making it
+    permanent instead of good for this one battle only. This is also why
+    AddSkillModal/SkillConfirmView's `target_fighter`/`fighter`
+    parameters are typed loosely rather than as `Fighter` -- a
+    `game.character.Character` is passed in for the permanent case, and
+    both classes only ever call `.name`, `.add_skill()`, `.get_skill()`,
+    `.remove_skill()` on it, which Character now implements with the
+    exact same shape as Fighter (see game/character.py).
+
 ## cogs/battle.py :: _parse_status_tokens
 <a id="battle-parse-status-tokens"></a>
 

@@ -1,3 +1,4 @@
+import copy
 import random
 from dataclasses import dataclass, field
 from game.skills import Skill
@@ -152,6 +153,12 @@ class Fighter:
             fighter.stagger_thresholds = list(character.stagger_thresholds)
         if character.stagger_tiers_enabled is not None:
             fighter.stagger_tiers_enabled = list(character.stagger_tiers_enabled)
+        # Deep-copied, not aliased -- so this fighter's own skills (which
+        # a battle-scoped /battle addskill or /battle removeskill can
+        # still freely add to or strip, same as before) never mutate the
+        # character's own saved copy, and two simultaneous battles using
+        # the same character don't secretly share one skill dict.
+        fighter.skills = copy.deepcopy(character.skills)
         return fighter
 
     def roll_slot_speeds(self):

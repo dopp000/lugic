@@ -13,6 +13,15 @@ from game.character import (
 from game.resistances import ALL_RESISTANCE_TYPES, DAMAGE_TYPES
 from game.emojis import status_emoji, damage_type_emoji
 
+# Reused rather than duplicated: the skill-creation form (stat parsing,
+# 1-coin-only Guard/Evade/Clashable Guard enforcement, the Trigger DSL)
+# is the exact same one /battle addskill uses -- this cog just points it
+# at a saved Character instead of a battle-scoped Fighter, and tells it
+# to also save_character() on confirm. See
+# docs/ENGINEERING_NOTES.md#battle-skillconfirmview for why that class
+# accepts either kind of target.
+import cogs.battle as battle_cog
+
 WEBHOOK_NAME = "Character Proxy"
 
 
@@ -398,6 +407,85 @@ class CharacterCog(commands.GroupCog, name="character"):
         await interaction.response.send_message(
             f"Set {character.name}'s resistances: {summary}.", ephemeral=True
         )
+
+    @app_commands.command(
+        name="addskill",
+        description="Teach this character a new skill, saved permanently (opens a form)",
+    )
+    @app_commands.describe(name="Which character learns this skill")
+    async def addskill(self, interaction: discord.Interaction, name: str):
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            return
+
+        is_owner = interaction.user.id == character.owner_id
+        if not (is_owner or is_admin(interaction)):
+            await interaction.response.send_message(
+                "Only this character's owner or an admin can teach it a skill.", ephemeral=True
+            )
+            return
+
+        await interaction.response.send_modal(
+            battle_cog.AddSkillModal(character, on_saved=lambda: save_character(character))
+        )
+
+    @app_commands.command(name="skills", description="Show every skill this character permanently knows")
+    @app_commands.describe(name="Character to check")
+    async def skills(self, interaction: discord.Interaction, name: str):
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            return
+
+        is_owner = interaction.user.id == character.owner_id
+        if not (is_owner or is_admin(interaction)):
+            await interaction.response.send_message(
+                "Only this character's owner or an admin can view its skills.", ephemeral=True
+            )
+            return
+
+        if not character.skills:
+            await interaction.response.send_message(
+                f"{character.name} doesn't know any skills yet. Use /character addskill.",
+                ephemeral=True,
+            )
+            return
+
+        blocks = [battle_cog._skill_preview_text(skill) for skill in character.skills.values()]
+        text = f"**{character.name}** knows {len(blocks)} skill(s):\n\n" + "\n\n".join(blocks)
+        if len(text) > 1900:
+            text = text[:1900] + "\n...(truncated, too many/long skills to show at once)"
+        await interaction.response.send_message(text, ephemeral=True)
+
+    @app_commands.command(
+        name="removeskill",
+        description="Remove a skill from a character's known skills, permanently",
+    )
+    @app_commands.describe(name="Character to remove a skill from", skill_name="Which skill to remove")
+    async def removeskill(self, interaction: discord.Interaction, name: str, skill_name: str):
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            return
+
+        is_owner = interaction.user.id == character.owner_id
+        if not (is_owner or is_admin(interaction)):
+            await interaction.response.send_message(
+                "Only this character's owner or an admin can remove one of their skills.",
+                ephemeral=True,
+            )
+            return
+
+        if character.remove_skill(skill_name):
+            save_character(character)
+            await interaction.response.send_message(
+                f"Removed **{skill_name}** from {character.name}.", ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"{character.name} doesn't know a skill called '{skill_name}'.", ephemeral=True
+            )
 
     @app_commands.command(name="delete", description="Delete one of your characters")
     @app_commands.describe(name="Character to delete")

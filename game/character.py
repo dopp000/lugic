@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass, field
 
 from game.resistances import DEFAULT_RESISTANCES
+from game.skills import Skill
 
 CHARACTERS_DIR = "data/characters"
 
@@ -35,6 +36,24 @@ class Character:
     stagger_thresholds: list[float] | None = None
     stagger_tiers_enabled: list[bool] | None = None
 
+    # Skills this character permanently knows, keyed lowercase same as
+    # Fighter.skills (game/battle.py). Taught once via /character
+    # addskill and saved here, instead of only ever living on a
+    # battle-scoped Fighter -- Fighter.from_character copies this dict
+    # in (deep-copied, so two simultaneous battles with the same
+    # character can't mutate each other's copy) whenever this character
+    # joins a new battle, so a skill only has to be taught once, ever.
+    skills: dict[str, Skill] = field(default_factory=dict)
+
+    def add_skill(self, skill: Skill):
+        self.skills[skill.name.lower()] = skill
+
+    def get_skill(self, name: str) -> Skill | None:
+        return self.skills.get(name.lower())
+
+    def remove_skill(self, name: str) -> bool:
+        return self.skills.pop(name.lower(), None) is not None
+
     def to_dict(self) -> dict:
         return {
             "owner_id": self.owner_id,
@@ -49,6 +68,7 @@ class Character:
             "resistances": self.resistances,
             "stagger_thresholds": self.stagger_thresholds,
             "stagger_tiers_enabled": self.stagger_tiers_enabled,
+            "skills": {name: s.to_dict() for name, s in self.skills.items()},
         }
 
     @classmethod
@@ -60,6 +80,13 @@ class Character:
         resistances = dict(DEFAULT_RESISTANCES)
         resistances.update(data.get("resistances", {}))
         data["resistances"] = resistances
+
+        # Characters saved before skills existed won't have that key --
+        # defaults to no skills, same "old saves still load" philosophy
+        # as speed_min/speed_max below.
+        data["skills"] = {
+            name: Skill.from_dict(sd) for name, sd in data.get("skills", {}).items()
+        }
 
         # Forward-compatible: drop any keys that no longer exist as real
         # fields (e.g. old saves still carrying "sp" from before the

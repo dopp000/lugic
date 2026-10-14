@@ -246,15 +246,19 @@ self-buff starting values.
 own defaults"), applied in `Fighter.from_character()`. This closes what used
 to be a listed gap ("no Stagger threshold customization on Character").
 
-**The one real gap worth prioritizing**: Characters still carry **no Skills
-at all**. Skills only exist on the in-battle `Fighter`, built fresh per
-battle via `Fighter.from_character()`. Nothing persists between battles:
-every fight means re-running `/battle addskill` for every skill on every
-fighter from scratch. A saved "loadout" concept tying skills to a Character
-would make persistent characters actually feel persistent, and would
-compound well with any Skill Rank/Deck system built later. Note this is
-**separate** from the `/battle skills`/`removeskill` commands below, which
-manage an in-battle `Fighter`'s skill list, not a saved `Character`'s.
+**Characters now carry Skills.** `/character addskill`/`skills`/`removeskill`
+teach, list, and remove skills on a saved `Character`, using the same popup
+form as `/battle addskill`. `Fighter.from_character()` deep-copies a
+character's saved skills into the Fighter at battle start, so a skill only
+has to be taught once, ever — fighting no longer means rebuilding a kit from
+scratch each time. This used to be the biggest listed gap ("no Skill
+loadouts"); it's closed now. `/battle addskill` still exists and is explicitly
+**temporary, battle-only** — useful for a one-off fighter or testing a skill
+before committing it to a character permanently. The two skill lists are
+separate: a `Character`'s saved skills vs. an in-battle `Fighter`'s current
+skills (which starts as a copy of the character's, but `/battle
+addskill`/`removeskill` only change that battle's copy, not the saved
+character).
 
 The flat `Power` field on Character looks orphaned now that Skills carry
 their own independent Base Power/Coin Power; worth confirming whether it's
@@ -275,9 +279,9 @@ already-added skill means removing and re-adding it, not surgical edit.
 | --- | --- |
 | `create` | Starts a battle (Spar / Standard / Fatal). One per channel. Battle type is currently cosmetic only, no mechanical branching (no permanent-death enforcement for Fatal, etc. — though see Elimination in Combat Features, which applies regardless of battle type). |
 | `addfighter` | From a saved `/character` or as a one-off. |
-| `addskill` | `AddSkillModal`: one popup, packed comma-separated stats (Discord caps a modal at 5 fields), per-coin statuses, Trigger text box, `attack_weight_input`. 1-coin enforcement on `[Guard]`/`[Evade]`/`[Clashable Guard]`. |
-| `skills` | Lists everything a fighter currently knows. |
-| `removeskill` | Removes one named skill from a fighter's known skills. No `editskill` yet — remove and re-add for a typo fix. |
+| `addskill` | `AddSkillModal`: one popup, packed comma-separated stats (Discord caps a modal at 5 fields), per-coin statuses, Trigger text box, `attack_weight_input`. 1-coin enforcement on `[Guard]`/`[Evade]`/`[Clashable Guard]`. **Temporary, battle-only** — teaches the in-battle `Fighter`, not the saved `Character`. Use `/character addskill` to keep a skill permanently. |
+| `skills` | Lists everything a fighter currently knows (this battle only — see `/character skills` for a character's permanent list). |
+| `removeskill` | Removes one named skill from a fighter's known skills, for this battle only. No `editskill` yet — remove and re-add for a typo fix. |
 | `declare` | Locks a skill into a slot aimed at a target's slot. No scouting. Also where Attack Weight splash candidates get picked (see Combat Features). Blocks targeting an eliminated fighter, same as it already blocked an eliminated caster from acting. |
 | `undeclare` | Clears one declared slot. |
 | `removefighter` | Owner or admin (`ADMIN_ROLE_ID`) via `_can_manage_fighter`. |
@@ -304,6 +308,9 @@ that flag.
 | `view` | Owner or admin; `public:True` posts to channel. |
 | `edit` | Owner-or-admin. `speed_min`/`speed_max` must be given together, no implicit flat-speed shortcut anymore. Also where `stagger_thresholds`/`stagger_tiers_enabled` get set, applied at battle-start via `Fighter.from_character()`. |
 | `resistance` | Owner-or-admin. Multi-set via positionally-aligned `resistance_types`/`values`. |
+| `addskill` | Owner-or-admin. Same `AddSkillModal` popup as `/battle addskill`, but teaches the skill to the saved `Character` permanently — it's then picked up automatically next time this character joins a battle, via `Fighter.from_character()`. |
+| `skills` | Owner-or-admin. Lists everything this character permanently knows. |
+| `removeskill` | Owner-or-admin. Removes one named skill from the character's permanent skill list. |
 | `delete` | Owner-or-admin. |
 | `say` | Owner-or-admin. Speaks via webhook (name + avatar). |
 
@@ -313,8 +320,9 @@ Plain dice roller (`1d20+4+2` style), not tied to battle state.
 
 ## Trigger Syntax (`game/conditions.py`)
 
-One line per Trigger, pasted into `/battle addskill`'s popup. Blank lines
-ignored.
+One line per Trigger, pasted into the `addskill` popup (`/battle addskill`
+for a one-off battle fighter, `/character addskill` to teach it permanently
+— both use the same form). Blank lines ignored.
 
 ```
 [<Timing>] <optional condition,> <effect>
@@ -420,22 +428,18 @@ Durante, and Backups, none of those fit what this bot is for.
 
 **Actually on the roadmap, not built yet, rough priority order:**
 
-1. **Character skill loadouts.** Let a saved Character carry a skill set
-   that auto-loads via `Fighter.from_character()`, so battles stop requiring
-   `/battle addskill` from scratch every time. Compounds well with a future
-   Skill Rank/Deck system.
-2. **`[Failed ...]` trigger prefix**: fires when a conditional (e.g. a Kill)
+1. **`[Failed ...]` trigger prefix**: fires when a conditional (e.g. a Kill)
    would have activated but didn't. Not present.
-3. **`[Ally ...]` trigger prefix**: scopes an existing timing to allies
+2. **`[Ally ...]` trigger prefix**: scopes an existing timing to allies
    only, for support effects. `Indiscriminate` is targeting-only; this would
    be trigger-scoping instead. Not present.
-4. **Non-Sin debuffs** (Power Down, Bind, Fragile, Paralyze, Curse, etc.) —
+3. **Non-Sin debuffs** (Power Down, Bind, Fragile, Paralyze, Curse, etc.) —
    now the actual biggest status-system gap, since all 5 Sin-damage statuses
    have real payoffs (see Status Effects above).
-5. **Charge's consumption payoff.** Its own Count decay is wired; nothing
+4. **Charge's consumption payoff.** Its own Count decay is wired; nothing
    converts it into Coin Power/Haste/whatever its actual effect should be
    yet.
-6. **Panic / Low Morale.** -30 SP (Low Morale) / -45 SP (Panic) thresholds.
+5. **Panic / Low Morale.** -30 SP (Low Morale) / -45 SP (Panic) thresholds.
    Panic default: target can't act that Turn. Both must be turn-limited by
    design: never a permanent stat change from one trigger, must expire and
    be reapplied. Needs a customization layer similar to canon's [Panic Type
@@ -443,11 +447,11 @@ Durante, and Backups, none of those fit what this bot is for.
    Effects](https://limbuscompany.wiki.gg/wiki/Status_Effects), for a
    Sinking-user inflicting it, and for a character with their own version of
    the behavior.
-7. **Parts / Core.** For a future multi-part NPC, each skill slot is a
+6. **Parts / Core.** For a future multi-part NPC, each skill slot is a
    distinct body part with its own resistances, damage to a Part also drains
    the shared Core HP (matches canon Focused Encounters). Not built; no NPC
    needing it exists yet.
-8. **A worked-examples guide**: converting a real Limbus kit passive into
+7. **A worked-examples guide**: converting a real Limbus kit passive into
    this bot's Trigger syntax. The Trigger Syntax section documents the
    grammar; there's no "here's a real passive → here's the Trigger lines"
    guide yet. Worth writing once there's a backlog of real characters.

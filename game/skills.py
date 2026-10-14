@@ -44,6 +44,43 @@ class Skill:
         while len(self.coin_status_counts) < self.coins:
             self.coin_status_counts.append(0)
 
+    def to_dict(self) -> dict:
+        """Used to save a learned skill onto a persistent Character (see
+        game/character.py), so it survives across battles instead of
+        having to be retaught from the addskill form every time. tags is
+        a set, not JSON-safe on its own, so it's written out sorted (for
+        a stable, diffable file) and rebuilt as a set in from_dict.
+        """
+        return {
+            "name": self.name,
+            "base_power": self.base_power,
+            "coin_power": self.coin_power,
+            "coins": self.coins,
+            "damage_type": self.damage_type,
+            "coin_statuses": list(self.coin_statuses),
+            "coin_status_potencies": list(self.coin_status_potencies),
+            "coin_status_counts": list(self.coin_status_counts),
+            "triggers": [t.to_dict() for t in self.triggers],
+            "tags": sorted(self.tags),
+            "attack_weight": self.attack_weight,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Skill":
+        return cls(
+            name=data["name"],
+            base_power=data["base_power"],
+            coin_power=data["coin_power"],
+            coins=data["coins"],
+            damage_type=data.get("damage_type", "blunt"),
+            coin_statuses=list(data.get("coin_statuses", [])),
+            coin_status_potencies=list(data.get("coin_status_potencies", [])),
+            coin_status_counts=list(data.get("coin_status_counts", [])),
+            triggers=[Trigger.from_dict(t) for t in data.get("triggers", [])],
+            tags=set(data.get("tags", [])),
+            attack_weight=data.get("attack_weight", 1),
+        )
+
 
 @dataclass
 class CoinResult:

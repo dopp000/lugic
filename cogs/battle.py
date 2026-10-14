@@ -54,15 +54,27 @@ def _is_admin(interaction: discord.Interaction) -> bool:
 
 
 class SkillConfirmView(discord.ui.View):
-    def __init__(self, fighter: Fighter, skill: Skill, preview_text: str, timeout: float = 60):
+    def __init__(
+        self, fighter: Fighter, skill: Skill, preview_text: str, timeout: float = 60,
+        on_saved=None,
+    ):
         super().__init__(timeout=timeout)
         self.fighter = fighter
         self.skill = skill
         self.preview_text = preview_text
+        # Optional no-arg callback, run right after add_skill below.
+        # /battle addskill leaves this unset (a battle-scoped Fighter has
+        # nothing further to persist); /character addskill passes
+        # save_character(character) here, so confirming the SAME modal
+        # also writes the skill to the character's JSON file, not just
+        # into memory for this one battle. See docs/ENGINEERING_NOTES.md#battle-skillconfirmview for the full rationale.
+        self.on_saved = on_saved
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.fighter.add_skill(self.skill)
+        if self.on_saved is not None:
+            self.on_saved()
 
         log_channel = interaction.client.get_channel(LOG_CHANNEL_ID)
         if log_channel is not None:
@@ -204,9 +216,17 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
         max_length=4000,
     )
 
-    def __init__(self, target_fighter: Fighter):
+    def __init__(self, target_fighter, on_saved=None):
         super().__init__()
         self.target_fighter = target_fighter
+        # Passed straight through to SkillConfirmView -- see its own
+        # on_saved docstring. target_fighter is typed loosely (not
+        # `Fighter`) on purpose: /character addskill passes a
+        # game.character.Character here instead, which this modal never
+        # needs to tell apart from a real Fighter -- both have .name,
+        # .add_skill(), .get_skill(), .remove_skill(), which is all this
+        # class or SkillConfirmView ever touch on it.
+        self.on_saved = on_saved
 
     async def on_submit(self, interaction: discord.Interaction):
         stats_parts = [p.strip() for p in self.stats_input.value.split(",")]
@@ -302,7 +322,7 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
         )
 
         preview_text = f"{self.target_fighter.name} would learn {self.skill_name.value}\n" + _skill_preview_text(skill)
-        view = SkillConfirmView(self.target_fighter, skill, preview_text)
+        view = SkillConfirmView(self.target_fighter, skill, preview_text, on_saved=self.on_saved)
         await interaction.response.send_message(preview_text, view=view, ephemeral=True)
 
 
@@ -1524,7 +1544,10 @@ class BattleCog(commands.GroupCog, name="battle"):
         await interaction.response.send_message(f"Updated {target_fighter.name}: {', '.join(changes)}.")
         await sync_battle_message(self.bot, battle)
 
-    @app_commands.command(name="addskill", description="Create and teach a fighter a new skill (opens a form)")
+    @app_commands.command(
+        name="addskill",
+        description="Teach a fighter a skill for THIS battle only (use /character addskill to keep it)",
+    )
     @app_commands.describe(fighter="Which fighter learns this skill")
     async def addskill(
         self,

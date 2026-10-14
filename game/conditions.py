@@ -1,3 +1,4 @@
+import dataclasses
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -183,6 +184,18 @@ class Condition:
     comparison: str = "gte"
     value: int = 0
 
+    def to_dict(self) -> dict:
+        """Plain dict of every field -- Condition is flat (no nested
+        dataclasses, no sets), so this is just a 1:1 field dump, no
+        special-casing needed. Used by Trigger.to_dict so a Skill's
+        triggers can round-trip through a saved Character's JSON file.
+        """
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Condition":
+        return cls(**data)
+
 
 @dataclass
 class TriggerContext:
@@ -280,6 +293,33 @@ class Trigger:
     status_count: int = 0
     hint_tier: int = 1
     raw_text: str = ""
+
+    def to_dict(self) -> dict:
+        """Used so a Skill carrying this Trigger can be saved to a
+        Character's JSON file and read back unchanged. condition is the
+        one nested dataclass field, so it gets its own to_dict call
+        rather than a blind dataclasses.asdict (which would still work
+        here since Condition has no sets either, but spelling it out
+        keeps this symmetric with Skill.to_dict below, which does need
+        the custom handling for its set field).
+        """
+        return {
+            "condition": self.condition.to_dict(),
+            "effect_type": self.effect_type,
+            "timing": self.timing,
+            "coin_index": self.coin_index,
+            "effect_value": self.effect_value,
+            "status_name": self.status_name,
+            "status_count": self.status_count,
+            "hint_tier": self.hint_tier,
+            "raw_text": self.raw_text,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Trigger":
+        data = dict(data)
+        data["condition"] = Condition.from_dict(data["condition"])
+        return cls(**data)
 
 
 class TriggerParseError(ValueError):
