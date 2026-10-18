@@ -122,6 +122,13 @@ class Fighter:
     # only /battle end (starting a new Battle) resets it.
     eliminated: bool = False
 
+    # Set when combat() strips an Immobilized fighter's declarations at
+    # the start of a round. Turn end then consumes the Immobilized
+    # status. An Immobilized that lands MID-combat has not blocked
+    # anything yet, so it carries into next round. See
+    # docs/ENGINEERING_NOTES.md#statuses-one-turn-debuffs.
+    immobilized_blocked: bool = False
+
     def __post_init__(self):
         if self.speed_min is None:
             self.speed_min = self.speed
@@ -329,7 +336,7 @@ class Battle:
         return all(
             f.has_declared()
             for f in self.fighters
-            if f.is_alive()
+            if f.is_alive() and f.get_status("immobilized") is None
         )
 
     def find_mutual_clash_partner(self, target: Fighter, target_slot: int) -> tuple[Fighter, int] | None:

@@ -162,6 +162,19 @@ def resolve_skill(
     coin_power = skill.coin_power
     results: list[CoinResult] = []
 
+    # Power Down lowers every coin's Final Power; Paralyze fixes the
+    # Power of the first X coins to 0. Both come from the caster's own
+    # statuses, so they need a context.
+    power_down = 0
+    paralyzed_coins = 0
+    if context is not None and context.caster is not None:
+        pd = context.caster.get_status("power_down")
+        if pd is not None and pd.count > 0:
+            power_down = pd.potency
+        para = context.caster.get_status("paralyze")
+        if para is not None and para.count > 0:
+            paralyzed_coins = para.count
+
     poise_remaining = 0
     poise_potency = 0
     if context is not None and context.caster is not None:
@@ -190,6 +203,7 @@ def resolve_skill(
         heads = flip_coin(heads_chance)
         if heads:
             power += coin_power
+        final_power = 0 if coin_index <= paralyzed_coins else max(0, power - power_down)
 
         # Evade no longer lives here -- it's a declared Skill of its
         # own now (the [Evade] flag), resolved by find_eligible_evade
@@ -207,7 +221,7 @@ def resolve_skill(
             crit_chance = min(100, poise_potency * POISE_CRIT_CHANCE_PER_POTENCY)
             if flip_coin(crit_chance):
                 is_crit = True
-                crit_bonus_damage = round(power * (POISE_CRIT_DAMAGE_MULTIPLIER - 1))
+                crit_bonus_damage = round(final_power * (POISE_CRIT_DAMAGE_MULTIPLIER - 1))
                 poise_remaining -= 1
 
         if context is not None and not is_evaded:
@@ -236,7 +250,7 @@ def resolve_skill(
                     fired_triggers.append(t)
 
         results.append(CoinResult(
-            heads=heads, power_after=power, damage_dealt=(0 if is_evaded else power),
+            heads=heads, power_after=final_power, damage_dealt=(0 if is_evaded else final_power),
             fired_triggers=fired_triggers,
             is_crit=is_crit, crit_bonus_damage=crit_bonus_damage,
             is_evaded=is_evaded,

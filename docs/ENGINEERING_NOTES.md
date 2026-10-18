@@ -1545,22 +1545,39 @@ Called when a status's trigger condition fires (e.g. Rupture
 
 ## game/statuses.py :: magnitude_to_hint_tier
 <a id="statuses-one-turn-debuffs"></a>
-### One-turn debuffs (Bind, Fragile, type Fragility)
+### Non-Sin debuffs (Bind, Fragile, Power Down, Damage Down, Paralyze, Poison, Immobilized)
 
-`ONE_TURN_STATUSES` in game/statuses.py. Potency is the strength, Count is
-forced to 1 by `apply_status` (it is only a presence marker so
-`set_status_instance` keeps the status). They take effect the moment they
-land, so later hits in the same round feel them, and
-`apply_turn_end_status_ticks` pops them from every fighter at turn end.
+Lists live in game/statuses.py. `ONE_TURN_STATUSES` land immediately (so
+later hits in the same round feel them) and `apply_turn_end_status_ticks`
+pops them at turn end. They come in two flavours, matching the wiki:
 
-- Bind: `Fighter.shift_slot_speeds(-potency)` lowers every rolled slot
-  Speed (floor 0) when applied. Speeds are rerolled next round, so no
-  explicit undo is needed.
-- Fragile and `<type>_fragility`: `fragility_bonus` gives +10% per Potency,
-  each capped at +100%, summed. Applied once to the whole hit total after
-  the Stagger multiplier (primary and Attack Weight splash).
-- No resistances, since the wiki gives none for them. Triggers still get an
-  auto hint tier from potency.
+- `POTENCY_TURN_STATUSES` (bind, power_down): strength is Potency, Count is
+  forced to 1 by `apply_status`.
+- `COUNT_TURN_STATUSES` (fragile, the type fragilities, damage_down,
+  paralyze): strength is Count, Potency is just 1. Fragile, type
+  fragilities and damage_down cap Count at 10 (`PERCENT_COUNT_STATUSES`).
+
+Hooks:
+- Bind: `Fighter.shift_slot_speeds(-potency)` when applied. Speeds are
+  rerolled next round, so no undo is needed.
+- Power Down and Paralyze: read from the caster in `resolve_skill`.
+  `final_power = max(0, power - power_down)`, and the first `count` coins
+  are fixed to 0. The cumulative `power` variable is left alone, so later
+  coins still build on the real total.
+- Fragile, type fragility, Damage Down: `fragility_bonus` and
+  `damage_down_penalty`, combined as one multiplier `1 + frag - down`
+  (floored at 0) applied once after the Stagger multiplier, for the primary
+  hit and Attack Weight splash.
+- Poison: ticked in `apply_turn_end_status_ticks`, fixed damage through
+  `take_damage`, then `count // 2`. Not in ONE_TURN_STATUSES.
+- Immobilized: blocks `/battle declare`, `Battle.all_declared` ignores such
+  fighters, and `combat()` clears their declarations and sets
+  `Fighter.immobilized_blocked`. Turn end removes the status only if it
+  actually blocked that round, so one inflicted mid-combat carries over.
+- No resistances (the wiki gives none). Triggers still get an auto hint
+  tier from potency * count.
+- Known gap: a Stagger'd fighter also cannot declare yet `all_declared`
+  still waits for them. Left alone here.
 
 <a id="statuses-magnitude-to-hint-tier"></a>
 

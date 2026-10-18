@@ -157,6 +157,7 @@ SELF_BUFF_STATUSES = ["poise", "charge"]
 TARGET_STATUSES = [
     "burn", "bleed", "tremor", "rupture", "sinking",
     "bind", "fragile", "slash_fragility", "pierce_fragility", "blunt_fragility",
+    "power_down", "damage_down", "paralyze", "poison", "immobilized",
 ]
 
 

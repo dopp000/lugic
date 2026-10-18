@@ -240,15 +240,25 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   `fire_kill_triggers`, called after `take_damage`); `[On Crit Kill]` also
   fires if any coin in that same hit was a Crit. Both were listed as "not in
   `conditions.py` at all" in the last README pass — that's now wrong, fixed.
-- **One-turn debuffs are built**: Bind (Speed -X), Fragile (+X*10% damage
-  taken, max +100%) and Slash/Pierce/Blunt Fragility (same, only for that
-  damage type). Inflict them like any status, e.g.
-  `:Coin1: [On Hit] Inflict Slash Fragility Potency 3, Count 1` (Count is
-  ignored, they are always 1). They land immediately, last the rest of the
-  round, and are wiped at turn end. No resistances, and `/battle setstatus`
-  can set them. See `docs/ENGINEERING_NOTES.md#statuses-one-turn-debuffs`.
-- Still missing: Power Down, Damage Down, Defense Level Down, Paralyze,
-  Curse (the wiki page has no text for most of these yet).
+- **Non-Sin debuffs built** (wiki numbers, no resistances, all settable via
+  `/battle setstatus`):
+  - Potency-based, last the rest of the round, wiped at turn end:
+    **Bind** (Speed -X) and **Power Down** (all coins lose X Final Power).
+    Write them as `:Coin1: [On Hit] Inflict Bind Potency 3, Count 1`.
+  - Count-based, same lifetime: **Fragile** and **Slash/Pierce/Blunt
+    Fragility** (+10% damage taken per Count, max 10), **Damage Down**
+    (-10% damage dealt per Count, max 10) and **Paralyze** (the first X coins
+    of the caster's skills deal 0). Write them as
+    `:Coin1: [On Hit] Inflict +3 Fragile Count`.
+  - **Poison** (Count): at turn end take fixed damage equal to Count, then
+    Count is halved. Lasts across turns until it reaches 0.
+  - **Immobilized**: the fighter cannot declare and any declared actions are
+    dropped at combat start. It is removed at the end of the round it blocked.
+    If it lands mid-combat it carries into next round.
+  See `docs/ENGINEERING_NOTES.md#statuses-one-turn-debuffs`.
+- Still missing: Offense/Defense Level (and Level Up/Down), Clash Power
+  Down, Plus/Minus Coin Drop/Boost, HP Healing Down, Curse, and the matching
+  buffs (Power Up, Haste, Protection, Damage Up).
 - Charge has no consumption payoff (see above) — smaller, but still open.
 - No turn-based expiry independent of triggering (a status that should wear
   off after N turns even if its trigger never fires isn't modeled — every
@@ -495,8 +505,10 @@ Durante, and Backups, none of those fit what this bot is for.
 2. **`[Ally ...]` trigger prefix**: scopes an existing timing to allies
    only, for support effects. `Indiscriminate` is targeting-only; this would
    be trigger-scoping instead. Not present.
-3. **More non-Sin debuffs** (Power Down, Damage Down, Defense Level Down,
-   Paralyze, Curse, etc.). Bind, Fragile and the type Fragilities are done.
+3. **More non-Sin statuses**: Offense/Defense Level first (several statuses
+   depend on it), then Clash Power, Coin Drop/Boost and the matching buffs.
+   Bind, Fragile, type Fragility, Power Down, Damage Down, Paralyze, Poison
+   and Immobilized are done.
 4. **Charge's consumption payoff.** Its own Count decay is wired; nothing
    converts it into Coin Power/Haste/whatever its actual effect should be
    yet.

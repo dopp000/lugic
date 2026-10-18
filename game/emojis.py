@@ -39,6 +39,11 @@ STATUS_EMOJI_IDS: dict[str, int | None] = {
     "slash_fragility": None,
     "pierce_fragility": None,
     "blunt_fragility": None,
+    "power_down": None,
+    "damage_down": None,
+    "paralyze": None,
+    "poison": None,
+    "immobilized": None,
 }
 
 # Stagger has its own tiered icon set, since real Limbus visually
@@ -164,6 +169,8 @@ def status_emoji(status_name: str) -> str:
         "slash_fragility": "Slash_Fragility",
         "pierce_fragility": "Pierce_Fragility",
         "blunt_fragility": "Blunt_Fragility",
+        "power_down": "Power_Down",
+        "damage_down": "Damage_Down",
     }
     display_name = display_names.get(key, status_name.capitalize())
     return emoji_tag(display_name, STATUS_EMOJI_IDS.get(key))

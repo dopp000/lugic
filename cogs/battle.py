@@ -16,7 +16,8 @@ from game.conditions import Trigger, TriggerContext, parse_trigger_text, Trigger
 from game.character import load_character
 from game.statuses import (
     StatusInstance, decay_after_trigger, apply_status, INFLICTABLE_STATUSES,
-    SETTABLE_STATUSES, ONE_TURN_STATUSES, fragility_bonus, magnitude_to_hint_tier,
+    SETTABLE_STATUSES, ONE_TURN_STATUSES, POTENCY_TURN_STATUSES, fragility_bonus,
+    damage_down_penalty, magnitude_to_hint_tier,
 )
 from game.resistances import DAMAGE_TYPES, ALL_RESISTANCE_TYPES, apply_resistance, parse_resistance_multiplier
 from game.emojis import status_emoji, coin_emoji, coin_roll_emoji, damage_type_emoji, stat_emoji, skill_slot_emoji, hint_emoji, attack_weight_icons, stagger_tier_emoji, stagger_action_emoji
@@ -878,11 +879,16 @@ def apply_incoming_hit(
         total_damage = boosted
 
     frag = fragility_bonus(target.statuses, attacker_skill.damage_type)
-    if frag > 0 and total_damage > 0:
-        boosted = round(total_damage * (1 + frag))
+    down = damage_down_penalty(caster.statuses)
+    if (frag > 0 or down > 0) and total_damage > 0:
+        boosted = round(total_damage * max(0.0, 1 + frag - down))
+        parts = []
+        if frag > 0:
+            parts.append(f"{target.name} Fragile +{round(frag * 100)}%")
+        if down > 0:
+            parts.append(f"{caster.name} Damage Down -{round(down * 100)}%")
         log.append(
-            f"{status_emoji('fragile')} {target.name} is Fragile: {total_damage} -> {boosted} damage "
-            f"(+{round(frag * 100)}%)"
+            f"{status_emoji('fragile')} {', '.join(parts)}: {total_damage} -> {boosted} damage"
         )
         total_damage = boosted
 
@@ -1065,8 +1071,24 @@ def apply_turn_end_status_ticks(battle: Battle) -> list[str]:
     for f in battle.fighters:
         for name in ONE_TURN_STATUSES:
             f.statuses.pop(name, None)
+        if f.immobilized_blocked:
+            f.statuses.pop("immobilized", None)
+            f.immobilized_blocked = False
         if not f.is_alive():
             continue
+
+        poison = f.get_status("poison")
+        if poison is not None and poison.count > 0:
+            shield_absorbed, hp_dmg = f.take_damage(poison.count)
+            breakdown = (
+                f" ({shield_absorbed} absorbed by {status_emoji('shield')} Shield, {hp_dmg} to HP)"
+                if shield_absorbed > 0 else ""
+            )
+            log.append(
+                f"{status_emoji('poison')} {f.name} takes {poison.count} Poison damage.{breakdown} "
+                f"({f.name}: {f.hp}/{f.max_hp} HP)"
+            )
+            f.set_status_instance(StatusInstance(name="poison", potency=poison.potency, count=poison.count // 2))
 
         burn = f.get_status("burn")
         if burn is not None and burn.count > 0:
@@ -1604,7 +1626,10 @@ class BattleCog(commands.GroupCog, name="battle"):
                 old = target_fighter.get_status(status_name.value)
                 new_inst = StatusInstance(name=status_name.value, potency=potency, count=count)
                 if status_name.value in ONE_TURN_STATUSES:
-                    new_inst = apply_status(None, status_name.value, potency, 1 if potency > 0 else 0)
+                    if status_name.value in POTENCY_TURN_STATUSES:
+                        new_inst = apply_status(None, status_name.value, potency, 1 if potency > 0 else 0)
+                    else:
+                        new_inst = apply_status(None, status_name.value, 1 if count > 0 else 0, count)
                     if status_name.value == "bind":
                         target_fighter.shift_slot_speeds(-(new_inst.potency - (old.potency if old else 0)))
                 target_fighter.set_status_instance(new_inst)
@@ -1836,6 +1861,13 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         if not caster.is_alive():
             await interaction.response.send_message(f"{caster.name} is down and can't act.", ephemeral=True)
+            return
+
+        if caster.get_status("immobilized") is not None:
+            await interaction.response.send_message(
+                f"{status_emoji('immobilized')} {caster.name} is Immobilized and can't act this turn.",
+                ephemeral=True,
+            )
             return
 
         if caster.current_stagger_tier > 0:
@@ -2130,6 +2162,12 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         # Fires [Combat Start] (first round of the battle only) and [Turn Start] (every round) against every living fighter's FULL skill list, not... See docs/ENGINEERING_NOTES.md#battle-comment-1611.
         passive_log = fire_passive_triggers(battle)
+
+        for f in battle.fighters:
+            if f.is_alive() and f.get_status("immobilized") is not None:
+                f.declared_actions = {}
+                f.immobilized_blocked = True
+                passive_log.append(f"{status_emoji('immobilized')} {f.name} is Immobilized and cannot act this turn.")
 
         entries = []
         for f in battle.fighters:
@@ -2941,11 +2979,13 @@ class BattleCog(commands.GroupCog, name="battle"):
                             splash_total = boosted_splash_total
 
                         splash_frag = fragility_bonus(splash_fighter.statuses, adjusted_skill.damage_type)
-                        if splash_frag > 0 and splash_total > 0:
-                            frag_splash_total = round(splash_total * (1 + splash_frag))
+                        splash_down = damage_down_penalty(fighter.statuses)
+                        if (splash_frag > 0 or splash_down > 0) and splash_total > 0:
+                            frag_splash_total = round(splash_total * max(0.0, 1 + splash_frag - splash_down))
                             splash_log.append(
-                                f"{status_emoji('fragile')} {splash_fighter.name} is Fragile: "
-                                f"{splash_total} -> {frag_splash_total} damage (+{round(splash_frag * 100)}%)"
+                                f"{status_emoji('fragile')} Fragile +{round(splash_frag * 100)}% / "
+                                f"Damage Down -{round(splash_down * 100)}% on {splash_fighter.name}: "
+                                f"{splash_total} -> {frag_splash_total} damage"
                             )
                             splash_total = frag_splash_total
 

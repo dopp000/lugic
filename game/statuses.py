@@ -3,29 +3,50 @@ from dataclasses import dataclass
 # The 5 target-facing statuses that can be inflicted on an opponent and resisted. See docs/ENGINEERING_NOTES.md#statuses-comment-3.
 INFLICTABLE_STATUSES = ["burn", "bleed", "tremor", "rupture", "sinking"]
 
-# One-turn debuffs: Potency is the strength, they last the rest of the
-# round they land in and are wiped at turn end (Count is just a
-# presence marker, always 1). No resistances apply to them. See
-# docs/ENGINEERING_NOTES.md#statuses-one-turn-debuffs.
-ONE_TURN_STATUSES = ["bind", "fragile", "slash_fragility", "pierce_fragility", "blunt_fragility"]
+# One-turn debuffs: they land immediately, last the rest of the round,
+# and are wiped at turn end. No resistances apply to them. Two flavours:
+# Potency-based (strength is Potency, Count is just a presence marker
+# forced to 1) and Count-based (strength is Count, Potency is just 1).
+# See docs/ENGINEERING_NOTES.md#statuses-one-turn-debuffs.
+POTENCY_TURN_STATUSES = ["bind", "power_down"]
+COUNT_TURN_STATUSES = [
+    "fragile", "slash_fragility", "pierce_fragility", "blunt_fragility",
+    "damage_down", "paralyze",
+]
+ONE_TURN_STATUSES = POTENCY_TURN_STATUSES + COUNT_TURN_STATUSES
+
+# Count-based statuses whose Count tops out at 10 (10% each, max 100%).
+PERCENT_COUNT_CAP = 10
+PERCENT_COUNT_STATUSES = [
+    "fragile", "slash_fragility", "pierce_fragility", "blunt_fragility", "damage_down",
+]
+
+# Longer-lived debuffs added alongside: Poison (Count, fixed damage at
+# turn end then halves) and Immobilized (skips acting, see
+# Fighter.immobilized_blocked).
+OTHER_DEBUFF_STATUSES = ["poison", "immobilized"]
 
 # Everything /battle setstatus can place on a fighter.
-SETTABLE_STATUSES = INFLICTABLE_STATUSES + ONE_TURN_STATUSES
+SETTABLE_STATUSES = INFLICTABLE_STATUSES + ONE_TURN_STATUSES + OTHER_DEBUFF_STATUSES
 
-# Fragile and the type Fragilities add +10% damage taken per Potency,
-# each capped at +100%.
-FRAGILITY_PCT_PER_POTENCY = 0.10
-FRAGILITY_CAP = 1.0
+PERCENT_PER_COUNT = 0.10
+
+
+def _count_of(statuses: dict, key: str) -> int:
+    inst = statuses.get(key)
+    if inst is None or inst.count <= 0:
+        return 0
+    return min(PERCENT_COUNT_CAP, inst.count)
 
 
 def fragility_bonus(statuses: dict, damage_type: str) -> float:
-    """Extra damage fraction a target takes from Fragile plus the matching type Fragility (0.0 if neither is active)."""
-    total = 0.0
-    for key in ("fragile", f"{damage_type}_fragility"):
-        inst = statuses.get(key)
-        if inst is not None and inst.count > 0:
-            total += min(FRAGILITY_CAP, inst.potency * FRAGILITY_PCT_PER_POTENCY)
-    return total
+    """Extra damage fraction a target takes from Fragile plus the matching type Fragility (0.0 if neither is active). 10% per Count, each capped at +100%."""
+    return (_count_of(statuses, "fragile") + _count_of(statuses, f"{damage_type}_fragility")) * PERCENT_PER_COUNT
+
+
+def damage_down_penalty(statuses: dict) -> float:
+    """Fraction of damage an attacker with Damage Down loses (10% per Count, max 100%)."""
+    return _count_of(statuses, "damage_down") * PERCENT_PER_COUNT
 
 
 # Maps a status's magnitude (potency * count) to a Hint tier (1-3, see
@@ -85,7 +106,9 @@ def apply_status(current: StatusInstance | None, name: str, added_potency: int, 
     new_potency = min(new_potency, 99)
     if name == "charge":
         new_count = min(new_count, 20)
-    if name in ONE_TURN_STATUSES:
+    if name in POTENCY_TURN_STATUSES:
         new_count = 1 if new_count > 0 else 0
+    if name in PERCENT_COUNT_STATUSES:
+        new_count = min(new_count, PERCENT_COUNT_CAP)
 
     return StatusInstance(name=name, potency=new_potency, count=new_count)
