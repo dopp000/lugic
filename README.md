@@ -472,7 +472,7 @@ Drill-down menu: pick a category button, then a topic from a dropdown,
 then read the full explanation; Back/Home navigate without re-running the
 command. Ephemeral, ~5 minute timeout on the buttons. Content lives in
 `game/help_content.py`, written in plain language on purpose, kept
-separate from this file. **Four categories exist so far**: **Skill Tags**
+separate from this file. **Five categories exist so far**: **Skill Tags**
 (one dropdown entry per flag, including Support and Supermove), **Damage Math** (the basic
 hit formula, resistance, Stagger's multiplier, Rupture vs. Crit, Attack
 Weight splash, Parts and Core) and **Status Effects** (21 topics: Potency and Count, the
@@ -480,13 +480,16 @@ five Sin statuses, Poise, Charge, every debuff and buff, Low Morale and
 Panic, custom statuses; each entry key is the status key so its icon comes
 from `STATUS_EMOJI_IDS` automatically) and **Trigger Syntax** (10 topics: line
 shape, skill and coin timings, conditions, number effects, Inflict/Gain/Remove,
-Consume and scaling, allies, hint tiers, worked examples). A Commands
-category is the natural next addition, same pattern, a new entry list in `game/help_content.py` plus one new
-line in `HELP_CATEGORIES`, no changes needed to `cogs/help.py` itself.
-The Trigger Syntax text is hand-written, so when a timing, condition or
-effect phrase is added to `game/conditions.py` it has to be added there too.
+Consume and scaling, allies, hint tiers, worked examples) and **Commands** (9 topics: the order of a battle, battle
+setup, declaring and fighting, battle skills, admin tools, characters,
+character skills and statuses, `/character say`, `/roll` and `/help`). A new
+category is a new entry list in `game/help_content.py` plus one new line in
+`HELP_CATEGORIES`, no changes needed to `cogs/help.py` itself.
+The Trigger Syntax and Commands text is hand-written, so when a timing,
+condition, effect phrase or slash command is added or renamed it has to be
+updated there too.
 
-Category buttons (`Skill Tags`, `Damage Math`, `Status Effects`, `Trigger Syntax`) and five of
+Category buttons (`Skill Tags`, `Damage Math`, `Status Effects`, `Trigger Syntax`, `Commands`) and five of
 the ten skill tags (`Target Fixed`, `Unclashable`, `Indiscriminate`, `Support`, `Supermove`) have no
 custom emoji yet (`HELP_CATEGORY_EMOJI_IDS` / `SKILL_TAG_EMOJI_IDS` in
 `game/emojis.py`, both `None` placeholders) — same gradual-fill

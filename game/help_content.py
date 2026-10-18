@@ -8,8 +8,8 @@ is developing this bot (code references, "see Combat Features", commit
 hashes), this is written for whoever is PLAYING on it. Keep it short,
 plain, and free of internal names a player never sees.
 
-Four categories exist so far (Skill Tags, Damage Math, Status Effects, Trigger Syntax).
-More categories (Commands) can slot in later the same way: a new list of
+Five categories exist so far (Skill Tags, Damage Math, Status Effects, Trigger Syntax,
+Commands). More can slot in later the same way: a new list of
 HelpEntry plus one new line in HELP_CATEGORIES.
 """
 
@@ -561,6 +561,128 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
 ]
 
 
+COMMANDS: list[HelpEntry] = [
+    HelpEntry(
+        key="battle_flow",
+        title="Running a battle",
+        summary="The order things happen in, start to finish.",
+        body=(
+            "1. `/battle create` starts a battle in the channel.\n"
+            "2. `/battle addfighter` puts each fighter on Side A or B, from a saved "
+            "character or as a one-off.\n"
+            "3. Fighters need skills: saved ones come with the character, or use "
+            "`/battle addskill` for this battle only.\n"
+            "4. Each round everyone uses `/battle declare` to lock in skills, in secret.\n"
+            "5. `/battle combat` resolves the round once everyone has declared. Speeds "
+            "reroll every round.\n"
+            "6. Repeat 4 and 5 until one side is done, then `/battle end`."
+        ),
+    ),
+    HelpEntry(
+        key="battle_setup",
+        title="Battle setup",
+        summary="create, addfighter, removefighter.",
+        body=(
+            "`/battle create` starts a battle. Pick Spar, Standard (Proelium Commune) "
+            "or Fatal (Proelium Fatale).\n"
+            "`/battle addfighter` adds someone. Give a `character_name` to load a saved "
+            "character (best), or a plain `name` for a one-off fighter. You can set the "
+            "Speed range the slots roll from.\n"
+            "`/battle removefighter` takes a fighter out. Only the fighter's owner or "
+            "an admin can."
+        ),
+    ),
+    HelpEntry(
+        key="battle_actions",
+        title="Declaring and fighting",
+        summary="declare, undeclare, combat, end, mystatus.",
+        body=(
+            "`/battle declare` locks a skill into one of your slots, aimed at a slot "
+            "on an enemy. Whether it Clashes depends on the enemy aiming back at you. "
+            "Support skills are aimed at an ally instead.\n"
+            "`/battle undeclare` clears one slot so you can change your mind.\n"
+            "`/battle combat` resolves the round.\n"
+            "`/battle end` closes the battle.\n"
+            "`/battle mystatus` shows you, privately, the exact statuses and numbers "
+            "on your own fighter."
+        ),
+    ),
+    HelpEntry(
+        key="battle_skills",
+        title="Battle skills",
+        summary="addskill, skills, editskill, removeskill (this battle only).",
+        body=(
+            "`/battle addskill` opens a form to teach a fighter a skill for THIS "
+            "battle only. Use `/character addskill` to keep one forever.\n"
+            "`/battle skills` lists what a fighter knows.\n"
+            "`/battle editskill` reopens the form with the skill filled in.\n"
+            "`/battle removeskill` forgets one.\n"
+            "Only the fighter's owner or an admin can add, edit or remove skills."
+        ),
+    ),
+    HelpEntry(
+        key="battle_admin",
+        title="Admin battle tools",
+        summary="setstatus, addpart, removepart, repairpart.",
+        body=(
+            "Admins only.\n"
+            "`/battle setstatus` directly sets a fighter's HP, Sanity, Speed, Power, "
+            "resistances, Stagger thresholds, or places one status.\n"
+            "`/battle addpart` makes one of a fighter's skill slots a body Part with its "
+            "own HP and resistances, for multi-part enemies. `removepart` undoes it and "
+            "`repairpart` fixes a broken one. See Parts and Core under Damage Math."
+        ),
+    ),
+    HelpEntry(
+        key="character_basics",
+        title="Characters",
+        summary="create, list, view, edit, resistance, delete.",
+        body=(
+            "`/character create` makes a saved character (name and optional avatar).\n"
+            "`/character list` shows yours. `/character view` shows one's stats, only "
+            "to you unless you set `public`.\n"
+            "`/character edit` changes only the fields you fill in: name, avatar, HP, "
+            "Speed range, Power, resistances and Stagger thresholds.\n"
+            "`/character resistance` is a shortcut for setting resistances.\n"
+            "`/character delete` removes one for good."
+        ),
+    ),
+    HelpEntry(
+        key="character_skills",
+        title="Character skills and statuses",
+        summary="Permanent skills and your own custom statuses.",
+        body=(
+            "`/character addskill`, `skills`, `editskill` and `removeskill` work like "
+            "the battle versions, but the skills are saved on the character for every "
+            "battle.\n"
+            "`/character addstatus` creates a custom status or resource for a character "
+            "(like Pulsation), with an emoji and rules. `statuses` lists them and "
+            "`removestatus` deletes one. Admins see new ones in the log channel. "
+            "See Custom statuses under Status Effects."
+        ),
+    ),
+    HelpEntry(
+        key="character_say",
+        title="Speaking in character",
+        summary="/character say posts as your character.",
+        body=(
+            "`/character say` sends your message using the character's name and avatar, "
+            "so it reads like they said it. Handy for roleplay between battle rounds."
+        ),
+    ),
+    HelpEntry(
+        key="roll",
+        title="Dice and help",
+        summary="/roll and /help.",
+        body=(
+            "`/roll` rolls a dice expression like `1d20+4+2` or `2d6-1`. It shows the "
+            "total and the full breakdown to the whole channel.\n"
+            "`/help` opens this guidebook."
+        ),
+    ),
+]
+
+
 HELP_CATEGORIES: list[tuple[str, str, str, list[HelpEntry]]] = [
     (
         "skill_tags",
@@ -585,5 +707,11 @@ HELP_CATEGORIES: list[tuple[str, str, str, list[HelpEntry]]] = [
         "Trigger Syntax",
         "How to write the trigger lines on a skill.",
         TRIGGER_SYNTAX,
+    ),
+    (
+        "commands",
+        "Commands",
+        "What every slash command is for.",
+        COMMANDS,
     ),
 ]

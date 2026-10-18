@@ -1938,3 +1938,11 @@ Immobilized fighter's cleared declarations all refund through
 `apply_turn_end_status_ticks` before the Panic check. `supermove_uses` is per
 Fighter, so it resets with each battle. A Supermove that never fires because its
 user was killed or Staggered mid-round still costs what it cost, by design.
+
+<a id="help-commands"></a>
+## /help Commands page
+
+`COMMANDS` in `game/help_content.py` is the fifth help category (9 entries,
+`commands` key). The command names and descriptions were checked against the
+registered slash commands at the time of writing, but the text is hand-written:
+renaming or adding a command means editing it by hand.
