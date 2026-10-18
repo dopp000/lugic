@@ -1953,10 +1953,17 @@ user was killed or Staggered mid-round still costs what it cost, by design.
 <a id="help-commands"></a>
 ## /help Commands page
 
-`COMMANDS` in `game/help_content.py` is the fifth help category (10 entries,
+`COMMANDS` in `game/help_content.py` is the fifth help category (11 entries,
 `commands` key). The command names and descriptions were checked against the
 registered slash commands at the time of writing, but the text is hand-written:
 renaming or adding a command means editing it by hand.
+
+An entry body becomes one embed description, which Discord caps at 4096
+characters, and `decorate_text` adds roughly 20% on top (emoji tags). The Build
+Points page grew past that over several patches and could not be sent, so it is
+now two entries (`build_points`, `build_points_skills`). Keep any one body under
+about 3,000 characters, and check with `len(decorate_text(entry.body))` after
+editing a long one.
 
 <a id="autocomplete"></a>
 ## Autocomplete

@@ -703,6 +703,23 @@ COMMANDS: list[HelpEntry] = [
             "**Level gap in a clash:** the fighter with the higher level adds the gap to its Power in every "
             "clash round (Level 4 against Level 2 is +2). Equal levels get nothing. It only decides who wins "
             "a round, it does not add damage.\n"
+            "**Limits that stop one-sided builds:** no single stat can use more than 40% of "
+            "your pool, and Power plus Speed, or Power plus HP, can use at most 60%.\n"
+            "**Power sets how strong your skills can be.** A skill's Base Power can be at "
+            "most 2 + 0.4 x Power, and its Coin Power at most 1 + 0.2 x Power (rounded down). "
+            "At Power 6 that is Base 4 and Coin 2.\n"
+            "If a build breaks these rules it is turned away, and a character that breaks "
+            "them cannot join a battle until an admin fixes it. You get a message when that happens.\n"
+            "Ranks, defense archetypes, non-keyword effects, Passive Points and Skill Points are on the next page."
+        ),
+    ),
+    HelpEntry(
+        key="build_points_skills",
+        title="Ranks, archetypes, passives, points",
+        summary="Status ranks, defense archetypes, non-keyword effects, Passive Points and Skill Points.",
+        body=(
+            "More things Build Points, Passive Points and Skill Points pay for. The basics are on the "
+            "Build Points and levels page.\n"
             "- **Status ranks:** a character can own up to 2 of Burn, Bleed, Tremor, Rupture, Sinking, Poise "
             "and Charge, at Rank 1 to 5 (1, 2, 4, 7, 11 BP). A normal skill can only inflict or gain a status "
             "you own, within the rank: for Bleed, Tremor, Poise and Charge, Potency x Count added up over the "
@@ -732,13 +749,7 @@ COMMANDS: list[HelpEntry] = [
             "**Skill Points (SP)** are a second pool. You start with 0 and an admin grants more. The first "
             "trigger line on a skill is free, and each extra line costs 1 SP. Skills you already had keep "
             "working, but a new extra line is refused until you have the SP. Supermoves cost BP instead.\n"
-            "**Limits that stop one-sided builds:** no single stat can use more than 40% of "
-            "your pool, and Power plus Speed, or Power plus HP, can use at most 60%.\n"
-            "**Power sets how strong your skills can be.** A skill's Base Power can be at "
-            "most 2 + 0.4 x Power, and its Coin Power at most 1 + 0.2 x Power (rounded down). "
-            "At Power 6 that is Base 4 and Coin 2.\n"
-            "If a build breaks these rules it is turned away, and a character that breaks "
-            "them cannot join a battle until an admin fixes it. You get a message when that happens."
+            "If a build goes over, it is flagged and cannot join a battle until an admin fixes it."
         ),
     ),
     HelpEntry(
