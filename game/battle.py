@@ -219,6 +219,14 @@ class Fighter:
     def is_alive(self) -> bool:
         return self.hp > 0
 
+    def can_act(self) -> bool:
+        """False for a downed, Staggered or Immobilized fighter. /battle declare already refuses all three, so combat must not wait for them to declare."""
+        return (
+            self.is_alive()
+            and self.current_stagger_tier == 0
+            and self.get_status("immobilized") is None
+        )
+
     def take_damage(self, amount: int) -> tuple[int, int]:
         """Consumes Shield first (1:1, no reduction of its own -- Shield isn't a resistance, it's a literal overhead HP pool), then spills... See docs/ENGINEERING_NOTES.md#battle-fighter-take-damage for the full rationale."""
         shield_absorbed = min(self.shield, amount)
@@ -354,7 +362,7 @@ class Battle:
         return all(
             f.has_declared()
             for f in self.fighters
-            if f.is_alive() and f.get_status("immobilized") is None
+            if f.can_act()
         )
 
     def find_mutual_clash_partner(self, target: Fighter, target_slot: int) -> tuple[Fighter, int] | None:

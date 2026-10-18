@@ -530,10 +530,11 @@ same-side targeting, so it doesn't yet actually let a skill hit allies.
   actually redirected and landed, not a sweep. Deliberate, not a gap.
 - Animated combat reveal pacing (`COIN_FACE_DELAY`/`COIN_DETAIL_DELAY`) is
   untuned beyond "verified it works"; a busy round can run long.
-- A Staggered fighter cannot declare (`/battle declare` blocks them), but
-  `Battle.all_declared` still waits for them, so `/battle combat` refuses
-  to run until an admin clears the Stagger. Their resistances also don't
-  flip to a Fatal-style override; only the flat tier-multiplier applies.
+- A Staggered fighter cannot declare (`/battle declare` blocks them), and
+  `/battle combat` no longer waits for them (`Fighter.can_act` is false for a
+  downed, Staggered or Immobilized fighter, and `Battle.all_declared` skips
+  them). Their resistances still don't flip to a Fatal-style override; only
+  the flat tier-multiplier applies to damage they take.
 
 ## Design Divergences From Canon Limbus, and Where This Is Headed
 
