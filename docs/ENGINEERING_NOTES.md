@@ -2042,7 +2042,16 @@ a new status gets an icon.
   14, but every table stops at 12, so 12 is the cap. Change the tables at the top
   of the module if that is wrong.
 - Resistances are part of the build, so only admins can set them for now
-  (`/character edit` and `/character resistance`). They are not priced yet.
+  (`/character edit` and `/character resistance`). Status dials are priced by
+  `STATUS_RESIST_COSTS` (0.5x costs 3, 0.75x costs 1, 1.25x gives 1, 1.5x gives 3,
+  1.75x gives 6, 2.0x gives 10); refunds beyond `RESIST_REFUND_CAP` (18) are a
+  problem, not silently trimmed. Values outside 0.5 to 2.0 (including immune) are
+  problems. The sheet also had a Poise/Crit dial, but the bot has no Poise
+  resistance yet, so only the five existing statuses are priced. The physical
+  three are free but must be all 1.0 or one each of 0.5 / 1.0 / 1.5.
+- The edit and resistance commands check a copy first. A change may leave an old
+  problem standing (so an admin can fix a flagged character step by step), but it
+  is refused if it adds a new problem without fixing at least as many.
 - The 40% / 60% caps use the whole pool (`bp_total`), not what is spent.
 - Enforcement points: `/character edit` (copy of the character is checked first,
   nothing saved on failure; non-admins cannot touch HP/Speed/Power/Stagger),
@@ -2069,7 +2078,6 @@ a new status gets an icon.
   creates a new problem (over budget, over the slot or severity limit), even for
   admins. Skills saved before this change keep working (grandfathered): the tag
   and Attack Weight rules only apply when a skill is created or edited.
-- Next: base-skill status ranks and the 18 BP-capped resistance dials, defense
-  archetypes, Passive Points, then the player request/approval flow that replaces
+- Next: base-skill status ranks, defense archetypes, Passive Points, then the player request/approval flow that replaces
   admin-only stat and Supermove edits. After that: Level clash bonus,
   Offense/Defense Level, NPC tier presets and Skill Points.

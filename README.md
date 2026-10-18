@@ -383,9 +383,11 @@ logic. Part names and HP show under the fighter in the battle embed. See
   demanding timings, minus an admin-set drawback (`/character drawback`). Only
   a Supermove can use the strongest tags (Turn Start, Clash Win, Unclashable
   and so on), only admins add Supermoves for now, and they skip the Power
-  ceiling but cannot hit for more than about 200. Not built yet:
-  status ranks, resistance dials, defense archetypes and Passive Points,
-  plus the player request and approval flow. See
+  ceiling but cannot hit for more than about 200. Status resistances (Burn,
+  Bleed, Tremor, Rupture, Sinking: 0.5x to 2.0x) are priced, with at most 18 BP
+  banked from vulnerabilities; Slash/Blunt/Pierce are all 1.0x or one each of
+  0.5 / 1.0 / 1.5. Not built yet: status ranks, defense archetypes and Passive
+  Points, plus the player request and approval flow. See
   `docs/ENGINEERING_NOTES.md#build-points`.
 - Still missing: Offense/Defense Level (and Level Up/Down), Clash Power
   Down, Plus/Minus Coin Drop/Boost, HP Healing Down, Curse.

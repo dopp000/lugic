@@ -6,14 +6,15 @@ the top. The design comes from the original wiki guide: a single pool,
 level as a label on the pool's size, and caps that stop one-stat builds.
 
 What this module covers so far: HP, Power, Speed, Stagger tier removal,
-the Power ceiling on skills, and Supermove slots (priced in
-game/supermoves.py). Status ranks, status resistance dials, defense
-archetypes and Passive Points come later.
+the Power ceiling on skills, Supermove slots (priced in
+game/supermoves.py) and resistances. Status ranks, defense archetypes and
+Passive Points come later.
 """
 
 from dataclasses import dataclass, field
 import math
 
+from game.resistances import DAMAGE_TYPES, STATUS_RESISTANCE_TYPES
 from game.supermoves import (
     MAX_SEVERITY as SUPERMOVE_MAX_SEVERITY,
     MAX_SLOTS as SUPERMOVE_MAX_SLOTS,
@@ -51,6 +52,16 @@ SPEED_AVG_COSTS = {1: 0, 2: 1, 3: 2, 4: 4, 5: 6, 6: 9, 7: 12, 8: 16}
 
 # --- Stagger -----------------------------------------------------------------
 STAGGER_REMOVE_COSTS = {2: 5, 3: 7}
+
+# --- Resistances -------------------------------------------------------------
+# Status resistance dials (Burn, Bleed, Tremor, Rupture, Sinking). 1.0x is free.
+# Resisting costs BP, being vulnerable gives BP back (negative price).
+STATUS_RESIST_COSTS = {0.5: 3, 0.75: 1, 1.0: 0, 1.25: -1, 1.5: -3, 1.75: -6, 2.0: -10}
+# Most BP a character can bank from vulnerabilities, all dials together.
+RESIST_REFUND_CAP = 18
+# Slash / Blunt / Pierce are not priced: they are either all Normal (not chosen
+# yet) or one of each 0.5x, 1.0x and 1.5x in any order.
+PHYSICAL_SETS = ([1.0, 1.0, 1.0], [0.5, 1.0, 1.5])
 
 # --- Caps that stop one-sided builds ---------------------------------------
 SINGLE_STAT_SHARE = 0.40   # no one stat above this share of the pool
@@ -170,6 +181,32 @@ def check_build(c) -> BuildReport:
         "Speed": speed_cost(lo, hi),
         "Stagger removal": stagger_cost(c.stagger_tiers_enabled),
     }
+    # Resistances: status dials are priced, with a cap on how much BP
+    # vulnerabilities can give back. The physical three are a fixed set.
+    res = getattr(c, "resistances", None) or {}
+    res_problems: list[str] = []
+    res_paid = res_refunds = 0
+    for key in STATUS_RESISTANCE_TYPES:
+        value = round(float(res.get(key, 1.0)), 2)
+        price = STATUS_RESIST_COSTS.get(value)
+        if price is None:
+            res_problems.append(f"{key.capitalize()} resistance {value}x is outside the allowed 0.5x to 2.0x.")
+        elif price > 0:
+            res_paid += price
+        else:
+            res_refunds += -price
+    if res_refunds > RESIST_REFUND_CAP:
+        res_problems.append(
+            f"Vulnerabilities give back {res_refunds} BP, but at most {RESIST_REFUND_CAP} BP can be banked."
+        )
+    if res_paid or res_refunds:
+        costs["Resistances"] = res_paid - min(res_refunds, RESIST_REFUND_CAP)
+    physical = sorted(round(float(res.get(k, 1.0)), 2) for k in DAMAGE_TYPES)
+    if physical not in PHYSICAL_SETS:
+        res_problems.append(
+            "Slash, Blunt and Pierce must be either all 1.0x, or one each of 0.5x, 1.0x and 1.5x."
+        )
+
     # Supermove slots (rules in game/supermoves.py). A Supermove is priced by
     # its damage tier, its timing and any drawback an admin attached to it.
     supers = [s for s in c.skills.values() if "supermove" in s.tags]
@@ -203,6 +240,7 @@ def check_build(c) -> BuildReport:
     report.supermove_lines = super_lines
     p = report.problems
     p.extend(super_problems)
+    p.extend(res_problems)
 
     if hp < HP_BASE:
         p.append(f"HP {hp} is below the minimum of {HP_BASE}.")

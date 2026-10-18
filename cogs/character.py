@@ -387,8 +387,14 @@ class CharacterCog(commands.GroupCog, name="character"):
                 trial.stagger_tiers_enabled = [
                     True, 2 not in parsed_disabled_tiers, 3 not in parsed_disabled_tiers,
                 ]
+            if parsed_resistances:
+                trial.resistances.update(parsed_resistances)
             trial_report = check_build(trial)
-            if trial_report.problems:
+            before_problems = check_build(character).problems
+            fresh = [p for p in trial_report.problems if p not in before_problems]
+            # A change may leave an old problem standing, but it may not add a
+            # new one unless it also fixes at least as many.
+            if trial_report.problems and fresh and len(trial_report.problems) >= len(before_problems):
                 await interaction.response.send_message(
                     f"That build breaks the Build Point rules, so nothing was changed:\n"
                     f"{_problem_lines(trial_report.problems)}\n"
@@ -501,13 +507,34 @@ class CharacterCog(commands.GroupCog, name="character"):
             await interaction.response.send_message(error, ephemeral=True)
             return
 
+        if not character.bp_exempt:
+            trial = copy.deepcopy(character)
+            trial.resistances.update(parsed)
+            now = check_build(trial).problems
+            before = check_build(character).problems
+            if [p for p in now if p not in before] and len(now) >= len(before):
+                await interaction.response.send_message(
+                    "That would break the Build Point rules, so nothing was changed:\n"
+                    f"{_problem_lines(now)}",
+                    ephemeral=True,
+                )
+                return
+
         character.resistances.update(parsed)
         save_character(character)
 
         summary = ", ".join(f"{t.capitalize()} {v}x" for t, v in parsed.items())
+        report = check_build(character)
         await interaction.response.send_message(
-            f"Set {character.name}'s resistances: {summary}.", ephemeral=True
+            f"Set {character.name}'s resistances: {summary}. Now {report.spent}/{report.total} BP spent.",
+            ephemeral=True,
         )
+        if interaction.user.id != character.owner_id and not character.bp_exempt:
+            await dm_owner(
+                self.bot, character.owner_id,
+                f"An admin changed the resistances on **{character.name}** ({summary}). "
+                f"Now {report.spent}/{report.total} BP spent.",
+            )
 
     @app_commands.command(
         name="addskill",
