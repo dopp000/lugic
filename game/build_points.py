@@ -83,6 +83,22 @@ def character_level(c) -> int:
     return level_for(c.bp_total)
 
 
+# --- Skill Points ------------------------------------------------------------
+# The first trigger line on a skill is free. Every extra line costs this many SP.
+# Supermoves are paid for in BP instead, so they cost no SP.
+SP_PER_EXTRA_LINE = 1
+
+
+def skill_sp_cost(skill) -> int:
+    if "supermove" in skill.tags:
+        return 0
+    return max(0, len(skill.triggers) - 1) * SP_PER_EXTRA_LINE
+
+
+def skill_points_spent(c) -> int:
+    return sum(skill_sp_cost(s) for s in c.skills.values())
+
+
 # --- Caps that stop one-sided builds ---------------------------------------
 SINGLE_STAT_SHARE = 0.40   # no one stat above this share of the pool
 PAIR_SHARE = 0.60          # Power+Speed and Power+HP together, at most this share

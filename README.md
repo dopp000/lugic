@@ -386,7 +386,7 @@ logic. Part names and HP show under the fighter in the battle embed. See
   ceiling but cannot hit for more than about 200. Status resistances (Burn,
   Bleed, Tremor, Rupture, Sinking: 0.5x to 2.0x) are priced, with at most 18 BP
   banked from vulnerabilities; Slash/Blunt/Pierce are all 1.0x or one each of
-  0.5 / 1.0 / 1.5. Offense/Defense Level (0 to 5, 4% damage per step, 0 / 1 / 2 /
+  0.5 / 1.0 / 1.5. Skill Points (granted by admins, start at 0) pay for extra trigger lines: the first line on a skill is free, each extra costs 1 SP, old skills are grandfathered. Offense/Defense Level (0 to 5, 4% damage per step, 0 / 1 / 2 /
   4 / 4 / 6 BP) change damage dealt and taken. In a clash the higher Level adds the
   Level gap to its Power every round (`/character exempt level:` and `/battle
   setstatus level:` set it for NPCs). Not built yet: status ranks, defense archetypes and Passive
@@ -450,6 +450,7 @@ three. All closed since the last README pass.
 | --- | --- |
 | `create` | Starts a battle (Spar / Standard / Fatal). One per channel. Battle type is currently cosmetic only, no mechanical branching (no permanent-death enforcement for Fatal, etc. — though see Elimination in Combat Features, which applies regardless of battle type). |
 | `addfighter` | From a saved `/character` or as a one-off. |
+| `addnpc` | Admin. Adds a ready-made Fodder / Elite / Boss fighter (`game/npc_tiers.py`) with HP, Speed, Power, Level, slots and Stagger preset, optional `name`/`hp`/`level`. Battle only, never saved, no Build Point checks. |
 | `addskill` | Owner-or-admin (`_can_manage_fighter`). `AddSkillModal`: one popup, packed comma-separated stats (Discord caps a modal at 5 fields), per-coin statuses, Trigger text box, `attack_weight_input`. 1-coin enforcement on `[Guard]`/`[Evade]`/`[Clashable Guard]`. **Temporary, battle-only** — teaches the in-battle `Fighter`, not the saved `Character`. Use `/character addskill` to keep a skill permanently. |
 | `skills` | Lists everything a fighter currently knows (this battle only — see `/character skills` for a character's permanent list). |
 | `removeskill` | Removes one named skill from a fighter's known skills, for this battle only. `skill_name` autocompletes from that fighter's own known skills. |
@@ -522,6 +523,7 @@ that flag.
 | `view` | Owner or admin; `public:True` posts to channel. |
 | `edit` | Owner-or-admin for name, avatar and resistances. HP, Speed, Power, Stagger, resistances and Offense/Defense Level are admin-only (they cost Build Points) and a build that breaks the rules is rejected before anything is saved. `speed_min`/`speed_max` must be given together, no implicit flat-speed shortcut anymore. Also where `stagger_thresholds`/`stagger_tiers_enabled` get set, applied at battle-start via `Fighter.from_character()`. |
 | `bp` | Owner-or-admin. Level, BP spent and available, per-stat breakdown, anything breaking the rules, and the last few BP changes. |
+| `grantsp` | Admin. Adds (or removes) Skill Points like `grantbp`, logs the reason and DMs the owner. |
 | `grantbp` | Admin. Adds (or removes, with a negative number) BP, logs the reason, and DMs the owner. Warns if the build is now over budget. |
 | `exempt` | Admin. Skips every Build Point check for a character (NPCs and bosses). Optional `level` fixes the Level it fights at (0 clears it). |
 | `recheck` | Admin. Checks every saved character against the rules and DMs each owner what to fix. |

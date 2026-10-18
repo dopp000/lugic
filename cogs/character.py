@@ -17,7 +17,7 @@ from game.character import (
 )
 from game.build_points import (
     check_build, build_summary, level_for, next_level_at, character_level,
-    OFFDEF_PERCENT_PER_STEP, STARTING_BP,
+    OFFDEF_PERCENT_PER_STEP, STARTING_BP, skill_points_spent,
 )
 from game.resistances import ALL_RESISTANCE_TYPES, DAMAGE_TYPES, parse_resistance_multiplier
 from game.emojis import status_emoji, damage_type_emoji, register_custom_status_emoji
@@ -949,6 +949,7 @@ class CharacterCog(commands.GroupCog, name="character"):
             text += "\nEverything is within the rules."
         else:
             text += f"\n**To fix:**\n{_problem_lines(report.all_problems(), 12)}"
+        text += f"\nSkill Points: {skill_points_spent(character)}/{character.sp_total} used (the first trigger line on a skill is free)"
         notes = [
             f"- {k}: {', '.join(t.capitalize() for t in d.get('tiers', []))}" + (f" ({d['note']})" if d.get("note") else "")
             for k, d in character.supermove_drawbacks.items() if d.get("tiers")
@@ -1006,6 +1007,44 @@ class CharacterCog(commands.GroupCog, name="character"):
         await interaction.response.send_message(msg, ephemeral=True)
         if interaction.user.id != character.owner_id:
             await dm_owner(self.bot, character.owner_id, owner_text)
+
+    @app_commands.command(name="grantsp", description="Admin only: give a character Skill Points (or take some away)")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(
+        name="Character to change",
+        amount="Skill Points to add (use a negative number to remove)",
+        reason="Why, e.g. the scene or event (shown in the history and sent to the owner)",
+    )
+    async def grantsp(self, interaction: discord.Interaction, name: str, amount: int, reason: str | None = None):
+        if not is_admin(interaction):
+            await interaction.response.send_message("Only an admin can change Skill Points.", ephemeral=True)
+            return
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
+            return
+        new_total = max(0, character.sp_total + amount)
+        applied = new_total - character.sp_total
+        character.sp_total = new_total
+        character.sp_log.append({
+            "amount": applied,
+            "reason": reason or "",
+            "by": interaction.user.id,
+            "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        })
+        save_character(character)
+        used = skill_points_spent(character)
+        msg = f"{character.name} now has {new_total} Skill Points, {used} used."
+        if used > new_total:
+            msg += "\nThey use more than they have. Existing skills keep working, but new trigger lines are refused until the total catches up."
+        await interaction.response.send_message(msg, ephemeral=True)
+        if interaction.user.id != character.owner_id:
+            await dm_owner(
+                self.bot, character.owner_id,
+                f"Your character **{character.name}** {'gained' if applied >= 0 else 'lost'} "
+                f"{abs(applied)} Skill Points" + (f" ({reason})" if reason else "") +
+                f". Now {used}/{new_total} used.",
+            )
 
     @app_commands.command(name="drawback", description="Admin only: attach a drawback to a Supermove so it costs fewer Build Points")
     @app_commands.default_permissions(manage_guild=True)

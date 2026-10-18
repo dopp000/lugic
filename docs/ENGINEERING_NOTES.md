@@ -2090,5 +2090,14 @@ a new status gets an icon.
   target into the same additive multiplier as Fragile/Protection/Damage Up/Down,
   so the splash loop gets it too. Fixed-damage statuses (Burn and so on) do not use
   it. Admin-only through `/character edit offense_level/defense_level`.
+- Skill Points: `Character.sp_total` / `sp_log`, granted with `/character grantsp`.
+  Spent is computed (`skill_points_spent`): `max(0, len(skill.triggers) - 1)` per
+  non-Supermove skill. It is NOT part of `check_build` problems, so old characters are
+  not flagged; `AddSkillModal.on_submit` only refuses a change that raises the SP used
+  above what the character has. Battle-only fighters and exempt characters are not
+  checked.
+- NPC tiers: `game/npc_tiers.py` holds Fodder / Elite / Boss numbers. `/battle addnpc`
+  (admin) builds a plain `Fighter` from one, not a `Character`, so nothing is saved
+  and no Build Point check applies.
 - Next: base-skill status ranks, defense archetypes, Passive Points, then the player request/approval flow that replaces
-  admin-only stat and Supermove edits. After that: NPC tier presets and Skill Points.
+  admin-only stat and Supermove edits.

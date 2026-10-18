@@ -70,6 +70,10 @@ class Character:
     # An admin can fix the Level of an exempt NPC here (1 to 10). Normal
     # characters get their Level from their Build Point pool instead.
     level_override: int | None = None
+    # Skill Points: granted by admins like BP, spent on extra trigger lines
+    # (game/build_points.py). Spent is worked out from the skills, never stored.
+    sp_total: int = 0
+    sp_log: list[dict] = field(default_factory=list)
 
     def add_skill(self, skill: Skill):
         self.skills[skill.name.lower()] = skill
@@ -107,6 +111,8 @@ class Character:
             "offense_level": self.offense_level,
             "defense_level": self.defense_level,
             "level_override": self.level_override,
+            "sp_total": self.sp_total,
+            "sp_log": self.sp_log,
             "supermove_drawbacks": self.supermove_drawbacks,
         }
 

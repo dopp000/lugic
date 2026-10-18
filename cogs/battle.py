@@ -20,7 +20,10 @@ from game.recap import RoundRecord, MAX_HISTORY, take_snapshot, build_recap
 from game.skills import Skill, SkillResult, ClashOutcome, resolve_skill, resolve_round_clash, resolve_triggers
 from game.conditions import Trigger, TriggerContext, parse_trigger_text, TriggerParseError
 from game.character import Character, load_character, list_character_summaries
-from game.build_points import OFFDEF_PERCENT_PER_STEP, check_build, skill_power_problem
+from game.build_points import (
+    OFFDEF_PERCENT_PER_STEP, SP_PER_EXTRA_LINE, check_build, skill_points_spent, skill_power_problem,
+)
+from game.npc_tiers import NPC_TIERS, describe as describe_tier
 from game.statuses import (
     StatusInstance, decay_after_trigger, apply_status, INFLICTABLE_STATUSES,
     SETTABLE_STATUSES, ONE_TURN_STATUSES, POTENCY_TURN_STATUSES, fragility_bonus,
@@ -507,6 +510,26 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
                     + "\n".join(f"- {p}" for p in fresh[:6])
                     + "\nGrant more Build Points with /character grantbp, set a drawback first with "
                     "/character drawback, or change the skill.",
+                    ephemeral=True,
+                )
+                return
+
+        # Extra trigger lines are bought with Skill Points (admins grant them).
+        # Skills saved before this rule are grandfathered: only a change that
+        # raises the Skill Points used past what the character has is refused.
+        if isinstance(self.target_fighter, Character) and not self.target_fighter.bp_exempt:
+            used_before = skill_points_spent(self.target_fighter)
+            sp_trial = copy.deepcopy(self.target_fighter)
+            if old_skill is not None:
+                sp_trial.skills.pop(old_skill.name.lower(), None)
+            sp_trial.skills[draft.name.lower()] = draft
+            used_after = skill_points_spent(sp_trial)
+            if used_after > used_before and used_after > self.target_fighter.sp_total:
+                await interaction.response.send_message(
+                    f"This skill has {len(draft.triggers)} trigger lines. The first line is free and each "
+                    f"extra line costs {SP_PER_EXTRA_LINE} Skill Point. {self.target_fighter.name} would use "
+                    f"{used_after} but has {self.target_fighter.sp_total}. An admin can grant more with "
+                    "/character grantsp, or remove a trigger line.",
                     ephemeral=True,
                 )
                 return
@@ -1704,6 +1727,70 @@ class BattleCog(commands.GroupCog, name="battle"):
         await interaction.response.send_message(embed=build_battle_embed(battle))
         message = await interaction.original_response()
         battle.message_id = message.id
+
+    @app_commands.command(
+        name="addnpc",
+        description="Admin only: add a ready-made enemy (Fodder, Elite or Boss) to this battle",
+    )
+    @app_commands.choices(
+        side=[app_commands.Choice(name="Side A", value="A"), app_commands.Choice(name="Side B", value="B")],
+        tier=[app_commands.Choice(name=t.label, value=t.key) for t in NPC_TIERS.values()],
+    )
+    @app_commands.describe(
+        side="Which side it fights on",
+        tier="Fodder (weak), Elite (solid) or Boss (big and hard to stagger)",
+        name="Name for this enemy (default: the tier name and a number)",
+        hp="Replace the tier's HP",
+        level="Replace the tier's Level (1 to 10)",
+    )
+    async def addnpc(
+        self,
+        interaction: discord.Interaction,
+        side: str,
+        tier: str,
+        name: str | None = None,
+        hp: app_commands.Range[int, 1, 100000] | None = None,
+        level: app_commands.Range[int, 1, 10] | None = None,
+    ):
+        if not _is_admin(interaction):
+            await interaction.response.send_message("Only an admin can add a ready-made enemy.", ephemeral=True)
+            return
+        battle = self.battles.get(interaction.channel_id)
+        if battle is None:
+            await interaction.response.send_message(
+                "No active battle here yet. Use /battle create first.", ephemeral=True
+            )
+            return
+        preset = NPC_TIERS.get(tier)
+        if preset is None:
+            await interaction.response.send_message("Unknown tier.", ephemeral=True)
+            return
+        if name is None:
+            n = 1
+            while battle.get_fighter(f"{preset.label} {n}") is not None:
+                n += 1
+            name = f"{preset.label} {n}"
+        elif battle.get_fighter(name) is not None:
+            await interaction.response.send_message(
+                f"A fighter named {name} already exists in this battle.", ephemeral=True
+            )
+            return
+        max_hp = hp or preset.hp
+        fighter = Fighter(
+            name=name, side=side.upper(), hp=max_hp, max_hp=max_hp, power=preset.power,
+            skill_slots=preset.skill_slots, speed_min=preset.speed_min, speed_max=preset.speed_max,
+            level=level or preset.level, owner_id=interaction.user.id,
+        )
+        fighter.stagger_tiers_enabled = list(preset.stagger_tiers_enabled)
+        fighter.stagger_thresholds = list(preset.stagger_thresholds)
+        battle.add_fighter(fighter)
+        await interaction.response.send_message(
+            f"Added {name} to Side {side.upper()}: {describe_tier(preset)}"
+            + (f" (HP {max_hp})" if hp else "") + (f" (Level {fighter.level})" if level else "")
+            + ". It is for this battle only. Give it skills with /battle addskill.",
+            ephemeral=True,
+        )
+        await sync_battle_message(self.bot, battle)
 
     @app_commands.command(
         name="addfighter",
