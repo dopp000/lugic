@@ -1,7 +1,7 @@
 import random
 from dataclasses import dataclass, field, replace
 
-from game.conditions import Trigger, TriggerContext, evaluate_condition, pay_cost
+from game.conditions import Trigger, TriggerContext, evaluate_condition, pay_cost, effective_value
 
 
 @dataclass
@@ -195,8 +195,8 @@ def resolve_skill(
                 and evaluate_condition(t.condition, context)
                 and pay_cost(t, context)
             ]
-            power += sum(t.effect_value for t in coin_start_fired if t.effect_type == "bonus_power")
-            coin_power += sum(t.effect_value for t in coin_start_fired if t.effect_type == "bonus_coin_power")
+            power += sum(effective_value(t, context) for t in coin_start_fired if t.effect_type == "bonus_power")
+            coin_power += sum(effective_value(t, context) for t in coin_start_fired if t.effect_type == "bonus_coin_power")
             fired_triggers.extend(
                 t for t in coin_start_fired if t.effect_type in ("inflict_status", "sanity_gain", "gain_status")
             )
@@ -269,8 +269,8 @@ def resolve_triggers(
         if t.timing == timing and evaluate_condition(t.condition, context) and pay_cost(t, context)
     ]
 
-    bonus_power = sum(t.effect_value for t in fired if t.effect_type == "bonus_power")
-    bonus_coin_power = sum(t.effect_value for t in fired if t.effect_type == "bonus_coin_power")
+    bonus_power = sum(effective_value(t, context) for t in fired if t.effect_type == "bonus_power")
+    bonus_coin_power = sum(effective_value(t, context) for t in fired if t.effect_type == "bonus_coin_power")
 
     if bonus_power or bonus_coin_power:
         skill = replace(

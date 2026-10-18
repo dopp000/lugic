@@ -83,6 +83,10 @@ class Fighter:
     # This fighter's own player-made statuses (copied from the Character).
     custom_statuses: dict[str, CustomStatus] = field(default_factory=dict)
 
+    # Total Count this fighter has spent on each resource this battle
+    # (status key -> total), drives a custom status's potency_every.
+    consumed_totals: dict[str, int] = field(default_factory=dict)
+
     # Keyed by the CASTER's own slot number (1-based), not a plain list,
     # so a specific slot can be individually re-declared (moved) or
     # cancelled (undeclare) without disturbing the others.
@@ -201,7 +205,9 @@ class Fighter:
         return self.statuses.get(name)
 
     def set_status_instance(self, instance: StatusInstance):
-        if instance.count <= 0:
+        cs = self.custom_statuses.get(instance.name)
+        keeps = cs is not None and cs.keep_potency and instance.potency > 0
+        if instance.count <= 0 and not keeps:
             self.statuses.pop(instance.name, None)
         else:
             self.statuses[instance.name] = instance

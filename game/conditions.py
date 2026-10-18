@@ -306,6 +306,12 @@ class Trigger:
     # caster can pay N Count of X, which is then spent. See pay_cost.
     consume_status: str | None = None
     consume_amount: int = 0
+    # Scaled bonus_power / bonus_coin_power: effect_value for every
+    # scale_per of the caster's scale_status Potency or Count
+    # (scale_basis), e.g. "Coin Power +1 per 3 Pulsation Potency".
+    scale_status: str | None = None
+    scale_per: int = 0
+    scale_basis: str = "potency"
 
     def to_dict(self) -> dict:
         """Used so a Skill carrying this Trigger can be saved to a
@@ -328,6 +334,9 @@ class Trigger:
             "raw_text": self.raw_text,
             "consume_status": self.consume_status,
             "consume_amount": self.consume_amount,
+            "scale_status": self.scale_status,
+            "scale_per": self.scale_per,
+            "scale_basis": self.scale_basis,
         }
 
     @classmethod
@@ -346,10 +355,28 @@ def pay_cost(trigger: Trigger, context: "TriggerContext") -> bool:
     current = caster.get_status(trigger.consume_status)
     if current is None or current.count < trigger.consume_amount:
         return False
+    new_potency = current.potency
+    cs = caster.custom_statuses.get(trigger.consume_status)
+    if cs is not None and cs.potency_every > 0:
+        before = caster.consumed_totals.get(trigger.consume_status, 0)
+        after = before + trigger.consume_amount
+        caster.consumed_totals[trigger.consume_status] = after
+        new_potency = min(99, new_potency + after // cs.potency_every - before // cs.potency_every)
     caster.set_status_instance(StatusInstance(
-        name=current.name, potency=current.potency, count=current.count - trigger.consume_amount,
+        name=current.name, potency=new_potency, count=current.count - trigger.consume_amount,
     ))
     return True
+
+
+def effective_value(trigger: Trigger, context: "TriggerContext") -> int:
+    """A trigger's bonus amount, scaled by the caster's current Potency or Count if the line says so ('+1 per 3 Pulsation Potency' gives 1 for every full 3). Read right after any cost was paid, so a spend that raised Potency counts."""
+    if trigger.scale_status is None or trigger.scale_per < 1:
+        return trigger.effect_value
+    inst = context.caster.get_status(trigger.scale_status)
+    if inst is None:
+        return 0
+    stat = inst.potency if trigger.scale_basis == "potency" else inst.count
+    return trigger.effect_value * (stat // trigger.scale_per)
 
 
 class TriggerParseError(ValueError):
@@ -395,6 +422,9 @@ _EFFECT_INFLICT_EXPLICIT = re.compile(
 _EFFECT_INFLICT_COUNT = re.compile(r"inflict \+(\d+) ([a-z ]+?) count", re.IGNORECASE)
 _EFFECT_INFLICT_BARE = re.compile(r"inflict (\d+) ([a-z ]+)", re.IGNORECASE)
 _EFFECT_GAIN_STATUS = re.compile(r"gain (\d+) ([a-z ]+)", re.IGNORECASE)
+_EFFECT_SCALED = re.compile(
+    r"(deal|coin power) \+(\d+)(?: damage)? per (\d+) ([a-z ]+?) (potency|count)", re.IGNORECASE
+)
 _EFFECT_CONSUME = re.compile(r"consume (\d+) ([a-z ]+?):\s*(.+)", re.IGNORECASE)
 _EFFECT_GAIN_COUNT = re.compile(r"gain \+(\d+) ([a-z ]+?) count", re.IGNORECASE)
 _EFFECT_GAIN_EXPLICIT = re.compile(
@@ -664,7 +694,22 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
             raise TriggerParseError(
                 line, "Consume lines look like 'Consume 3 Pulsation: Coin Power +2' (amount, resource, colon, payoff)"
             )
-        effect_type, effect_value, status_name, status_count = _parse_effect_text(effect_text)
+        scale_status = None
+        scale_per = 0
+        scale_basis = "potency"
+        scaled_match = _EFFECT_SCALED.fullmatch(_TRAILING_PAREN_RE.sub("", effect_text).strip())
+        if scaled_match:
+            kind_word, n, per, scale_name, basis = scaled_match.groups()
+            scale_status = _norm_status(scale_name)
+            scale_per = int(per)
+            scale_basis = basis.lower()
+            if scale_per < 1:
+                raise TriggerParseError(line, "the 'per' number must be at least 1")
+            _check_gainable(scale_status, line)
+            effect_type = "bonus_power" if kind_word.lower() == "deal" else "bonus_coin_power"
+            effect_value, status_name, status_count = int(n), None, 0
+        else:
+            effect_type, effect_value, status_name, status_count = _parse_effect_text(effect_text)
 
         # A hand-typed "(Hint N)" always wins. Otherwise, a trigger that
         # inflicts a status gets its tier worked out the same way an
@@ -695,6 +740,9 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
             raw_text=line,
             consume_status=consume_status,
             consume_amount=consume_amount,
+            scale_status=scale_status,
+            scale_per=scale_per,
+            scale_basis=scale_basis,
         ))
 
     return triggers, flags

@@ -45,12 +45,18 @@ class CustomStatus:
     emoji_id: int | None = None
     animated: bool = False
     description: str = ""
+    # Stays on the fighter at 0 Count if it has Potency (a permanent buff).
+    keep_potency: bool = False
+    # Every this many Count spent in total (per battle) adds +1 Potency.
+    # 0 turns it off.
+    potency_every: int = 0
 
     def to_dict(self) -> dict:
         return {
             "name": self.name, "key": self.key, "kind": self.kind,
             "lifetime": self.lifetime, "emoji_id": self.emoji_id,
             "animated": self.animated, "description": self.description,
+            "keep_potency": self.keep_potency, "potency_every": self.potency_every,
         }
 
     @classmethod
@@ -60,4 +66,6 @@ class CustomStatus:
             kind=data.get("kind", "buff"), lifetime=data.get("lifetime", "persistent"),
             emoji_id=data.get("emoji_id"), animated=bool(data.get("animated", False)),
             description=data.get("description", ""),
+            keep_potency=bool(data.get("keep_potency", False)),
+            potency_every=int(data.get("potency_every", 0)),
         )

@@ -1629,6 +1629,17 @@ Hooks:
   Count is part of the permanent-Potency patch.
 - Condition parsing also gained a comma form for multi-word names
   (`At 2+ Death Mark, ...`).
+- Permanent Potency: `CustomStatus.potency_every` and `keep_potency`.
+  `Fighter.consumed_totals` tracks Count spent per resource this battle (a
+  Fighter is rebuilt each battle, so it resets by itself), and `pay_cost`
+  adds `after // N - before // N` Potency (cap 99). `Fighter.set_status_instance`
+  keeps a 0 Count instance alive only if its custom status has `keep_potency`
+  and Potency above 0. Other code treats count <= 0 as inactive already.
+- Scaling: `Trigger.scale_status/scale_per/scale_basis`, parsed by
+  `_EFFECT_SCALED` for `Coin Power +N per M X Potency|Count` and
+  `Deal +N damage per M X Potency|Count` only. `effective_value` computes
+  N * (stat // M), called where bonus_power and bonus_coin_power get summed
+  (`resolve_skill` coin start, `resolve_triggers`), after `pay_cost`.
 
 <a id="statuses-magnitude-to-hint-tier"></a>
 

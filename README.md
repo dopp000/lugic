@@ -276,8 +276,16 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   `[Turn Start] Consume 2 Pulsation: Gain +1 Charge Count`. The payoff is any
   normal effect. If the fighter has less Count than the cost, the trigger
   simply does not fire and nothing is spent. Only Count is spent, Potency
-  stays. Count-to-permanent-Potency is the next patch. Note that the
-  `At N+ X,` condition checks Potency, not Count.
+  stays. Note that the `At N+ X,` condition checks Potency, not Count.
+- **Permanent Potency and scaling** (the Pulsation style). Two settings when
+  making a status with `/character addstatus`: `potency_every` (every N Count
+  spent in total this battle adds +1 Potency, 0 = off, Limbus Pulsation is 10)
+  and `keep_potency` (the status stays at 0 Count while it has Potency).
+  Payoffs can scale off Potency or Count:
+  `[On Use] Coin Power +1 per 3 Pulsation Potency`,
+  `[On Use] Deal +2 damage per 5 Pulsation Count`. Scaling works on Coin
+  Power and Deal damage only, and it reads the value after any cost on the
+  same line was paid. The spent total resets every battle.
   See `docs/ENGINEERING_NOTES.md#consume-triggers`.
 - Still missing: Offense/Defense Level (and Level Up/Down), Clash Power
   Down, Plus/Minus Coin Drop/Boost, HP Healing Down, Curse, and the matching

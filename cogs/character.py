@@ -566,6 +566,8 @@ class CharacterCog(commands.GroupCog, name="character"):
         lifetime="Persistent: stays until used up. Turn: wiped at every turn end",
         emoji_id="ID of an existing Discord emoji the bot can see (optional)",
         description="What it does, shown to admins and in /character statuses",
+        keep_potency="Stay on the fighter at 0 Count while it has Potency (a permanent buff)",
+        potency_every="Every this many Count spent adds +1 Potency (0 = off, like Pulsation's 10)",
     )
     @app_commands.choices(
         kind=[app_commands.Choice(name=k.capitalize(), value=k) for k in KINDS],
@@ -580,6 +582,8 @@ class CharacterCog(commands.GroupCog, name="character"):
         lifetime: app_commands.Choice[str],
         emoji_id: str | None = None,
         description: str = "",
+        keep_potency: bool = False,
+        potency_every: app_commands.Range[int, 0, 99] = 0,
     ):
         character = load_character(name)
         if character is None:
@@ -632,6 +636,7 @@ class CharacterCog(commands.GroupCog, name="character"):
         cs = CustomStatus(
             name=status_name.strip(), key=key, kind=kind.value, lifetime=lifetime.value,
             emoji_id=parsed_emoji_id, animated=animated, description=description.strip()[:300],
+            keep_potency=keep_potency, potency_every=potency_every,
         )
         character.custom_statuses[key] = cs
         save_character(character)
@@ -667,7 +672,10 @@ class CharacterCog(commands.GroupCog, name="character"):
             )
             return
         lines = [
-            f"{status_emoji(cs.key)} **{cs.name}** ({cs.kind}, {cs.lifetime}): {cs.description or 'no description'}"
+            f"{status_emoji(cs.key)} **{cs.name}** ({cs.kind}, {cs.lifetime}"
+            f"{', keeps Potency' if cs.keep_potency else ''}"
+            f"{f', +1 Potency per {cs.potency_every} spent' if cs.potency_every else ''}): "
+            f"{cs.description or 'no description'}"
             for cs in character.custom_statuses.values()
         ]
         await interaction.response.send_message(

@@ -251,7 +251,7 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
         style=discord.TextStyle.paragraph,
         placeholder=(
             "[On Use] Coin Power +1\n"
-            ":Coin1: [On Hit] Inflict 2 Rupture Potency, 1 Count\n"
+            ":Coin1: [On Hit] Inflict Rupture Potency 2, Count 1\n"
             "[Target Fixed]"
         ),
         required=False,
