@@ -150,6 +150,7 @@ SKILL_FLAG_TAGS = {
     "clashable guard": "clashable_guard",
     "evade": "evade",
     "support": "support",
+    "supermove": "supermove",
 }
 
 # The only statuses a caster can hold on themselves as a self-buff

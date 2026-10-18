@@ -12,6 +12,7 @@ from game.battle import (
     STAGGER_MULTIPLIERS,
 )
 from game.custom_statuses import slugify
+from game.supermoves import describe_profile, supermove_profile
 from game.skills import Skill, SkillResult, ClashOutcome, resolve_skill, resolve_round_clash, resolve_triggers
 from game.conditions import Trigger, TriggerContext, parse_trigger_text, TriggerParseError
 from game.character import load_character
@@ -102,6 +103,15 @@ def _mystatus_text(fighter: Fighter) -> str:
             if cs and cs.description:
                 line += f"  ({cs.description})"
             lines.append(line)
+
+    for drain in fighter.sanity_drains:
+        lines.append(
+            f"E.G.O aftermath ({drain.source}): -{drain.amount} Sanity at each turn end, {drain.turns_left} more turn(s)"
+        )
+    if fighter.supermove_uses:
+        lines.append(
+            "Supermoves used: " + ", ".join(f"{n} x{c}" for n, c in sorted(fighter.supermove_uses.items()) if c)
+        )
 
     if fighter.consumed_totals:
         spent = ", ".join(
@@ -211,6 +221,8 @@ def _skill_preview_text(skill: Skill) -> str:
         text += f"\n{trigger_lines}"
     if skill.tags:
         text += f"\n  Flags: {', '.join(sorted(skill.tags))}"
+    if "supermove" in skill.tags:
+        text += f"\n  E.G.O Supermove: {describe_profile(supermove_profile(skill))}. Each reuse in a battle costs 50% more."
     return text
 
 
@@ -408,6 +420,13 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
             )
             return
 
+        if "supermove" in flags and flags & {"support", "guard", "evade", "clashable_guard", "counter", "clashable_counter"}:
+            await interaction.response.send_message(
+                "A [Supermove] has to be an attack skill, it can't also be Support, Guard, Evade or Counter.",
+                ephemeral=True,
+            )
+            return
+
         skill = Skill(
             name=self.skill_name.value,
             base_power=base_power,
@@ -514,12 +533,22 @@ class ClashDeclareView(discord.ui.View):
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.caster.declare_in_slot(
+        profile, _ = self.caster.supermove_check(self.slot, self.skill)
+        if not self.caster.declare_in_slot(
             self.slot, self.skill, self.target, self.target_slot, self.extra_targets
-        )
+        ):
+            for child in self.children:
+                child.disabled = True
+            await interaction.response.edit_message(
+                content=f"{self.caster.name} no longer has the Sanity to use **{self.skill.name}**.",
+                view=self,
+            )
+            self.stop()
+            return
 
         for child in self.children:
             child.disabled = True
+        sm_note = f"\nE.G.O: {self.skill.name} {describe_profile(profile)}. Paid." if profile else ""
         extra_note = (
             f" (Attack Weight {attack_weight_icons(self.skill.attack_weight)} also reaches " + ", ".join(
                 f"{f.name} Slot {s}" for f, s in self.extra_targets
@@ -529,7 +558,7 @@ class ClashDeclareView(discord.ui.View):
         await interaction.response.edit_message(
             content=(
                 f"**Locked in.** {self.caster.name}'s Slot {self.slot} ({self.skill.name}) "
-                f"targets {self.target.name}'s Slot {self.target_slot}{extra_note}."
+                f"targets {self.target.name}'s Slot {self.target_slot}{extra_note}.{sm_note}"
             ),
             view=self,
         )
@@ -1222,6 +1251,19 @@ def apply_turn_end_status_ticks(battle: Battle) -> list[str]:
                 log.append(f"{status_emoji('panic')} {f.name} recovers from Panic. (Sanity reset to 0)")
         if not f.is_alive():
             continue
+
+        # Supermove aftermath: queued Sanity drains tick before the Panic check,
+        # so a drain that hits the floor Panics this same turn.
+        for drain in list(f.sanity_drains):
+            f.lose_sanity(drain.amount)
+            drain.turns_left -= 1
+            left = f"{drain.turns_left} turn(s) left" if drain.turns_left > 0 else "last tick"
+            log.append(
+                f"{f.name} loses {drain.amount} Sanity to the aftermath of {drain.source}. "
+                f"({f.name}: {f.sanity} SP, {left})"
+            )
+            if drain.turns_left <= 0:
+                f.sanity_drains.remove(drain)
 
         # Panic: Sanity at the floor Immobilizes next turn, Sanity resets
         # to 0 once that turn has been served.
@@ -2264,6 +2306,19 @@ class BattleCog(commands.GroupCog, name="battle"):
             )
             return
 
+        sm_profile, sm_affordable = caster.supermove_check(slot, skill)
+        if not sm_affordable:
+            await interaction.response.send_message(
+                f"{caster.name} can't afford **{skill.name}** right now: it {describe_profile(sm_profile)}, "
+                f"and {caster.name} has {caster.sanity} Sanity.",
+                ephemeral=True,
+            )
+            return
+        sm_note = (
+            f"\nE.G.O: {skill.name} {describe_profile(sm_profile)}. The cost is paid when you lock it in."
+            if sm_profile else ""
+        )
+
         target_fighter = battle.get_fighter(target)
         if target_fighter is None:
             await interaction.response.send_message(f"No fighter named {target}.", ephemeral=True)
@@ -2407,7 +2462,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                         f"{target_fighter.name}'s Slot {target_slot} is already clashing "
                         f"{partner.name}'s **{partner_action.skill.name}**, which is Target Fixed "
                         f"and can't be taken over. Falling through to unopposed against "
-                        f"{target_fighter.name} instead.",
+                        f"{target_fighter.name} instead.{sm_note}",
                         ephemeral=True,
                     )
                     await sync_battle_message(self.bot, battle)
@@ -2419,7 +2474,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                         f"{target_fighter.name}'s Slot {target_slot} is already clashing "
                         f"{partner.name}, and taking it over needs {partner.name}'s owner to "
                         f"approve, but {partner.name} has no linked owner. Falling through to "
-                        f"unopposed against {target_fighter.name} instead.",
+                        f"unopposed against {target_fighter.name} instead.{sm_note}",
                         ephemeral=True,
                     )
                     await sync_battle_message(self.bot, battle)
@@ -2459,7 +2514,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                     await interaction.response.send_message(
                         f"Couldn't DM {partner.name}'s owner to ask for approval (DMs closed or "
                         f"user not found), so this falls through to unopposed against "
-                        f"{target_fighter.name} instead.",
+                        f"{target_fighter.name} instead.{sm_note}",
                         ephemeral=True,
                     )
                     await sync_battle_message(self.bot, battle)
@@ -2469,7 +2524,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                     f"{target_fighter.name}'s Slot {target_slot} is already clashing "
                     f"{partner.name}. {partner.name}'s owner has been DMed to ask whether "
                     f"{caster.name} can take it over instead. Your action locks in either way, "
-                    f"you'll just find out later whether it's a clash or unopposed.",
+                    f"you'll just find out later whether it's a clash or unopposed.{sm_note}",
                     ephemeral=True,
                 )
                 return
@@ -2486,7 +2541,7 @@ class BattleCog(commands.GroupCog, name="battle"):
             f"aimed at {target_fighter.name}'s Slot {target_slot}.{indiscriminate_note}{attack_weight_note}\n\n"
             f"This only becomes a Clash if {target_fighter.name} targets your Slot {slot} back with "
             f"their Slot {target_slot}. Otherwise it resolves unopposed. You won't know which until "
-            f"combat actually runs.\n\n"
+            f"combat actually runs.{sm_note}\n\n"
             f"Confirm to lock it in?"
         )
 
@@ -2569,6 +2624,7 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         for f in battle.fighters:
             if f.is_alive() and f.get_status("immobilized") is not None:
+                f.refund_all_supermoves()
                 f.declared_actions = {}
                 f.immobilized_blocked = True
                 passive_log.append(f"{status_emoji('immobilized')} {f.name} is Immobilized and cannot act this turn.")

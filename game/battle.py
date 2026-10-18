@@ -6,6 +6,7 @@ from game.statuses import StatusInstance
 from game.resistances import DEFAULT_RESISTANCES
 from game.custom_statuses import CustomStatus
 from game.emojis import register_custom_status_emoji
+from game.supermoves import supermove_profile
 
 SANITY_MIN = -45
 SANITY_MAX = 45
@@ -53,6 +54,23 @@ class DeclaredAction:
     # only ever happen once, against the primary target).
     extra_targets: list[tuple["Fighter", int]] = field(default_factory=list)
 
+    # Supermove bookkeeping: Sanity paid when this slot was declared (refunded
+    # if it is cleared or replaced) and the id of the aftermath drain it queued.
+    supermove_cost: int = 0
+    drain_token: int = 0
+
+
+@dataclass
+class SanityDrain:
+    """Sanity lost at each turn end for a few turns, queued by a Supermove."""
+    token: int
+    amount: int
+    turns_left: int
+    source: str
+
+
+_drain_tokens = [0]
+
 
 @dataclass
 class Part:
@@ -93,6 +111,11 @@ class Fighter:
     slot_speeds: list[int] = field(default_factory=list)
 
     skills: dict[str, Skill] = field(default_factory=dict)
+
+    # Supermoves (E.G.O): times each has been declared this battle, and the
+    # aftermath Sanity drains still running. See game/supermoves.py.
+    supermove_uses: dict[str, int] = field(default_factory=dict)
+    sanity_drains: list[SanityDrain] = field(default_factory=list)
 
     # Body parts of a multi-part enemy, keyed by skill slot number (1-based).
     parts: dict[int, Part] = field(default_factory=dict)
@@ -333,23 +356,66 @@ class Fighter:
     def remove_skill(self, name: str) -> bool:
         return self.skills.pop(name.lower(), None) is not None
 
+    def _refund_supermove(self, slot: int):
+        """Gives back what a Supermove in `slot` cost and cancels its queued drain."""
+        action = self.declared_actions.get(slot)
+        if action is None or not action.supermove_cost:
+            return
+        self.sanity = min(SANITY_MAX, self.sanity + action.supermove_cost)
+        name = action.skill.name
+        self.supermove_uses[name] = max(0, self.supermove_uses.get(name, 0) - 1)
+        self.sanity_drains = [d for d in self.sanity_drains if d.token != action.drain_token]
+
+    def refund_all_supermoves(self):
+        for slot in list(self.declared_actions):
+            self._refund_supermove(slot)
+
+    def supermove_check(self, slot: int, skill: Skill):
+        """(profile, affordable) for declaring `skill` in `slot`. Counts a refund of whatever Supermove already sits in that slot. profile is None for a normal skill."""
+        if "supermove" not in skill.tags:
+            return None, True
+        uses = self.supermove_uses.get(skill.name, 0)
+        sanity = self.sanity
+        existing = self.declared_actions.get(slot)
+        if existing is not None and existing.supermove_cost:
+            sanity += existing.supermove_cost
+            if existing.skill.name == skill.name:
+                uses = max(0, uses - 1)
+        profile = supermove_profile(skill, uses)
+        return profile, sanity >= profile.cost
+
     def declare_in_slot(
         self, slot: int, skill: Skill, target: "Fighter", target_slot: int,
         extra_targets: list[tuple["Fighter", int]] | None = None,
     ) -> bool:
-        """Fills (or overwrites/moves) one specific skill slot. See docs/ENGINEERING_NOTES.md#battle-fighter-declare-in-slot for the full rationale."""
+        """Fills (or overwrites/moves) one specific skill slot. See docs/ENGINEERING_NOTES.md#battle-fighter-declare-in-slot for the full rationale. A [Supermove] pays its Sanity cost here and queues its aftermath drain (docs: #supermoves)."""
         if not (1 <= slot <= self.skill_slots):
             return False
+        if not self.supermove_check(slot, skill)[1]:
+            return False
+        self._refund_supermove(slot)
+        paid, token = 0, 0
+        if "supermove" in skill.tags:
+            profile = supermove_profile(skill, self.supermove_uses.get(skill.name, 0))
+            paid = profile.cost
+            self.sanity = max(SANITY_MIN, self.sanity - paid)
+            self.supermove_uses[skill.name] = self.supermove_uses.get(skill.name, 0) + 1
+            if profile.drain:
+                _drain_tokens[0] += 1
+                token = _drain_tokens[0]
+                self.sanity_drains.append(
+                    SanityDrain(token=token, amount=profile.drain, turns_left=profile.drain_turns, source=skill.name)
+                )
         self.declared_actions[slot] = DeclaredAction(
             skill=skill, target=target, slot=slot, target_slot=target_slot,
             extra_targets=list(extra_targets) if extra_targets else [],
+            supermove_cost=paid, drain_token=token,
         )
         return True
 
     def undeclare(self, slot: int) -> bool:
-        """Clears one slot's declaration. Returns False if that slot
-        wasn't declared in the first place.
-        """
+        """Clears one slot's declaration (refunding a Supermove's cost). Returns False if that slot wasn't declared in the first place."""
+        self._refund_supermove(slot)
         return self.declared_actions.pop(slot, None) is not None
 
     def get_declared_skill_in_slot(self, slot: int) -> Skill | None:

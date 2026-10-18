@@ -1915,3 +1915,26 @@ Core always takes it too. Breaking does NOT pop the Part's own declared
 action mid-combat, because the resolution loop reads `declared_actions`
 while it runs. It only blocks future declares via `slot_disabled`. Parts
 are battle-only for now and are not saved on a Character.
+
+<a id="supermoves"></a>
+## Supermoves
+
+A Supermove is an ordinary Skill with the `supermove` flag (`SKILL_FLAG_TAGS`),
+so it Clashes, splashes and fires triggers like any other. Pricing lives in
+`game/supermoves.py`: `skill_severity` is the expected total damage (each coin's
+power grows by half its Coin Power on average, flat Deal / Coin Power trigger
+bonuses are counted as if they always fire), `supermove_profile(skill, uses)`
+turns that into a cost, an aftermath drain and a drain length, with +50% per
+earlier use. All tuning constants are at the top of that file.
+
+Payment happens inside `Fighter.declare_in_slot`, the one place every declare
+path goes through (the Confirm button, the steal fall-throughs, the Support
+branch), so the cost cannot be skipped. `declare_in_slot` returns False when the
+fighter cannot afford it. `DeclaredAction.supermove_cost` and `drain_token`
+remember what was paid, so `undeclare`, re-declaring the same slot, and an
+Immobilized fighter's cleared declarations all refund through
+`_refund_supermove` and cancel the queued `SanityDrain`. Round-end
+`clear_declaration` does not refund: the move was used. Drains tick in
+`apply_turn_end_status_ticks` before the Panic check. `supermove_uses` is per
+Fighter, so it resets with each battle. A Supermove that never fires because its
+user was killed or Staggered mid-round still costs what it cost, by design.

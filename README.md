@@ -340,6 +340,15 @@ logic. Part names and HP show under the fighter in the battle embed. See
   caster, and a Consume cost is always paid by the caster. Passives that react
   to allies (`[Ally On Hit]` and friends) are the next patch.
   See `docs/ENGINEERING_NOTES.md#ally-support`.
+- **Supermoves (E.G.O)**: a normal attack skill with `[Supermove]` on its own
+  line. The bot prices it from its expected total damage (`game/supermoves.py`,
+  every number in one place): Sanity cost about damage / 6 (min 4, max 30), paid
+  when it is declared and needed in hand to declare it, refunded on undeclare.
+  Hard hitters also drain Sanity at every turn end afterwards (40+ damage:
+  5 x 2 turns, 80+: 8 x 3, 130+: 10 x 3), before the Panic check. Every reuse
+  of the same Supermove in a battle adds 50% to both cost and drain. Cannot be
+  combined with Support, Guard, Evade or Counter. `/battle mystatus` shows a
+  running drain and the uses so far. See `docs/ENGINEERING_NOTES.md#supermoves`.
 - **Ally reaction timings** (second half of `[Ally ...]`): put these on a
   passive and they fire when one of the owner's allies (same side, not the
   owner) does or suffers something: `[Ally On Hit]`, `[Ally On Crit]`,
@@ -464,7 +473,7 @@ then read the full explanation; Back/Home navigate without re-running the
 command. Ephemeral, ~5 minute timeout on the buttons. Content lives in
 `game/help_content.py`, written in plain language on purpose, kept
 separate from this file. **Four categories exist so far**: **Skill Tags**
-(one dropdown entry per flag, including Support), **Damage Math** (the basic
+(one dropdown entry per flag, including Support and Supermove), **Damage Math** (the basic
 hit formula, resistance, Stagger's multiplier, Rupture vs. Crit, Attack
 Weight splash, Parts and Core) and **Status Effects** (21 topics: Potency and Count, the
 five Sin statuses, Poise, Charge, every debuff and buff, Low Morale and
@@ -477,8 +486,8 @@ line in `HELP_CATEGORIES`, no changes needed to `cogs/help.py` itself.
 The Trigger Syntax text is hand-written, so when a timing, condition or
 effect phrase is added to `game/conditions.py` it has to be added there too.
 
-Category buttons (`Skill Tags`, `Damage Math`, `Status Effects`, `Trigger Syntax`) and four of
-the nine skill tags (`Target Fixed`, `Unclashable`, `Indiscriminate`, `Support`) have no
+Category buttons (`Skill Tags`, `Damage Math`, `Status Effects`, `Trigger Syntax`) and five of
+the ten skill tags (`Target Fixed`, `Unclashable`, `Indiscriminate`, `Support`, `Supermove`) have no
 custom emoji yet (`HELP_CATEGORY_EMOJI_IDS` / `SKILL_TAG_EMOJI_IDS` in
 `game/emojis.py`, both `None` placeholders) — same gradual-fill
 convention as every other icon in that file. The other five tags already
@@ -577,10 +586,10 @@ Durante, and Backups, none of those fit what this bot is for.
   Physical Type additively. This server uses only the five status-resistance
   types (Burn/Bleed/Tremor/Rupture/Sinking, `ALL_RESISTANCE_TYPES` in
   `game/resistances.py`), one resistance value per hit, never two stacked.
-- **E.G.O → Supermoves.** Setting is an MHA x Project Moon crossover, so
-  E.G.O Skills become Supermoves. No E.G.O resource system, Sanity-cost
-  formula, or Overclocking is planned to be ported as-is; needs its own
-  design pass when actually built.
+- **E.G.O → Supermoves.** Built, see Status Effects above. Setting is an MHA x Project Moon crossover, so
+  E.G.O Skills are Supermoves. No E.G.O resource system or Overclocking is
+  ported. Still open: the exact numbers (they are first guesses, tune them in
+  `game/supermoves.py`) and Build Point costs for owning one.
 - **Corrosion**: not implemented, not planned near-term.
 - **No Skill Deck / pull system.** `/battle declare` picking a known skill
   directly is the intended design, not a placeholder.

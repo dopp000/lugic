@@ -62,6 +62,25 @@ SKILL_TAGS: list[HelpEntry] = [
         ),
     ),
     HelpEntry(
+        key="supermove",
+        title="Supermove",
+        summary="A powerful E.G.O-style skill with a Sanity price.",
+        body=(
+            "Put **[Supermove]** on its own line to make an attack skill a Supermove. "
+            "The bot prices it from how hard it hits (its expected total damage):\n"
+            "- **Cost:** about damage / 6 Sanity (at least 4), paid the moment you "
+            "lock it in. You need at least that much Sanity to declare it. Undeclaring "
+            "gives it back.\n"
+            "- **Aftermath:** a skill that hits for about 40+ keeps draining Sanity at every "
+            "turn end afterwards (5 for 2 turns, 8 for 3 turns at 80+, 10 for 3 turns at 130+). "
+            "The drain can push you into Panic.\n"
+            "- **Reuse:** every time you use the same Supermove again in one battle, the "
+            "cost and the drain are 50% bigger.\n"
+            "It can't also be Support, Guard, Evade or Counter. Check `/battle mystatus` "
+            "to see a drain that is still running."
+        ),
+    ),
+    HelpEntry(
         key="indiscriminate",
         title="Indiscriminate",
         summary="Meant to let a skill hit allies too -- not live yet.",
