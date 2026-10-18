@@ -49,6 +49,20 @@ SKILL_TAGS: list[HelpEntry] = [
         ),
     ),
     HelpEntry(
+        key="support",
+        title="Support",
+        summary="Aim this skill at an ally. It never attacks or Clashes.",
+        body=(
+            "A **Support** skill is declared on an ally (or yourself) instead of an enemy. "
+            "It is always 1 coin, never Clashes and deals no damage. When combat "
+            "starts it fires its **[On Use]** lines. Add **to the ally** to a line "
+            "to put its effect on the ally you aimed at, for example "
+            "`[On Use] Heal 8 HP to the ally` or `[On Use] Gain +2 Haste Count to the ally`. "
+            "Heal, Gain, Gain Sanity and Remove (clear a status) can go to an ally. "
+            "Lines without it affect you."
+        ),
+    ),
+    HelpEntry(
         key="indiscriminate",
         title="Indiscriminate",
         summary="Meant to let a skill hit allies too -- not live yet.",

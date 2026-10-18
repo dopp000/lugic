@@ -145,6 +145,7 @@ SKILL_TAG_EMOJI_IDS: dict[str, int | None] = {
     "target_fixed": None,
     "unclashable": None,
     "indiscriminate": None,
+    "support": None,
 }
 
 def emoji_tag(display_name: str, emoji_id: int | None, animated: bool = False) -> str:

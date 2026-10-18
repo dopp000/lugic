@@ -202,7 +202,7 @@ def resolve_skill(
             power += sum(effective_value(t, context) for t in coin_start_fired if t.effect_type == "bonus_power")
             coin_power += sum(effective_value(t, context) for t in coin_start_fired if t.effect_type == "bonus_coin_power")
             fired_triggers.extend(
-                t for t in coin_start_fired if t.effect_type in ("inflict_status", "sanity_gain", "gain_status", "heal")
+                t for t in coin_start_fired if t.effect_type in ("inflict_status", "sanity_gain", "gain_status", "heal", "remove_status")
             )
 
         heads = flip_coin(heads_chance)
@@ -249,7 +249,7 @@ def resolve_skill(
                     continue
                 if t.timing == "on_crit_tails_hit" and heads:
                     continue
-                if t.effect_type not in ("inflict_status", "sanity_gain", "gain_status", "heal"):
+                if t.effect_type not in ("inflict_status", "sanity_gain", "gain_status", "heal", "remove_status"):
                     continue
                 if evaluate_condition(t.condition, context) and pay_cost(t, context):
                     fired_triggers.append(t)
@@ -283,7 +283,7 @@ def resolve_triggers(
             coin_power=skill.coin_power + bonus_coin_power,
         )
 
-    post_hit = [t for t in fired if t.effect_type in ("inflict_status", "sanity_gain", "gain_status", "heal")]
+    post_hit = [t for t in fired if t.effect_type in ("inflict_status", "sanity_gain", "gain_status", "heal", "remove_status")]
     return skill, post_hit
 
 

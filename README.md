@@ -310,6 +310,18 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   **Protection** (-10% damage taken per Count, max 10). Damage Up,
   Protection, Fragile and Damage Down all add into one multiplier applied
   once to the whole hit, floored at 0. Protection has no emoji yet.
+- **Support skills and ally effects** (first half of the `[Ally ...]` work):
+  give a skill the `[Support]` flag (on its own line, 1 coin) and it is
+  declared on an ally or yourself with `/battle declare`. It never attacks or
+  Clashes, and at combat start (fastest slot first, listed with the passive
+  triggers) its `[On Use]` lines fire. Add `to the ally` at the end of a line
+  to put the effect on the declared ally: `[On Use] Heal 8 HP to the ally`,
+  `[On Use] Gain +2 Haste Count to the ally`, `[On Use] Gain 3 Sanity to the
+  ally`, `[On Use] Remove Bleed to the ally`. Only Heal, Gain, Gain Sanity and
+  the new `Remove <status>` can go to an ally. Lines without it affect the
+  caster, and a Consume cost is always paid by the caster. Passives that react
+  to allies (`[Ally On Hit]` and friends) are the next patch.
+  See `docs/ENGINEERING_NOTES.md#ally-support`.
 - Still missing: Offense/Defense Level (and Level Up/Down), Clash Power
   Down, Plus/Minus Coin Drop/Boost, HP Healing Down, Curse.
 - Charge has no consumption payoff (see above) — smaller, but still open.
@@ -555,9 +567,9 @@ Durante, and Backups, none of those fit what this bot is for.
 
 1. **`[Failed ...]` trigger prefix**: fires when a conditional (e.g. a Kill)
    would have activated but didn't. Not present.
-2. **`[Ally ...]` trigger prefix**: scopes an existing timing to allies
-   only, for support effects. `Indiscriminate` is targeting-only; this would
-   be trigger-scoping instead. Not present.
+2. **`[Ally ...]` trigger prefix**: support skills and `to the ally` effects
+   are built. Still to do: ally reaction timings (`[Ally On Hit]`, `[Ally On
+   Kill]`, an ally being hit or Staggered, `[Ally Turn Start]`).
 3. **More non-Sin statuses**: Offense/Defense Level first (several statuses
    depend on it), then Clash Power, Coin Drop/Boost and the matching buffs.
    Bind, Fragile, type Fragility, Power Down, Damage Down, Paralyze, Poison

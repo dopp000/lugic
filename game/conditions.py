@@ -20,7 +20,10 @@ CONDITION_TYPES = [
     "caster_morale", "target_morale",
 ]
 
-EFFECT_TYPES = ["bonus_power", "bonus_coin_power", "inflict_status", "gain_status", "sanity_gain", "heal"]
+EFFECT_TYPES = [
+    "bonus_power", "bonus_coin_power", "inflict_status", "gain_status", "sanity_gain", "heal",
+    "remove_status",
+]
 
 COMPARISONS = {
     "gte": lambda a, b: a >= b,
@@ -133,6 +136,7 @@ SKILL_FLAG_TAGS = {
     "guard": "guard",
     "clashable guard": "clashable_guard",
     "evade": "evade",
+    "support": "support",
 }
 
 # The only statuses a caster can hold on themselves as a self-buff
@@ -225,6 +229,7 @@ class TriggerContext:
     caster: "Fighter"
     target: "Fighter | None"
     battle: "Battle"
+    ally: "Fighter | None" = None
     is_first_hit_of_round: bool = False
     caster_slot_speed: int = 0
     target_slot_speed: int = 0
@@ -328,6 +333,10 @@ class Trigger:
     # heal effect: effect_value is the amount, heal_percent says it is a
     # percentage of the caster's max HP instead of flat HP.
     heal_percent: bool = False
+    # Effect lands on the ally this skill was aimed at (a [Support] skill)
+    # instead of the caster. Only for heal, gain_status, sanity_gain and
+    # remove_status.
+    to_ally: bool = False
 
     def to_dict(self) -> dict:
         """Used so a Skill carrying this Trigger can be saved to a
@@ -354,6 +363,7 @@ class Trigger:
             "scale_per": self.scale_per,
             "scale_basis": self.scale_basis,
             "heal_percent": self.heal_percent,
+            "to_ally": self.to_ally,
         }
 
     @classmethod
@@ -442,6 +452,8 @@ _EFFECT_INFLICT_EXPLICIT = re.compile(
 _EFFECT_INFLICT_COUNT = re.compile(r"inflict \+(\d+) ([a-z ]+?) count", re.IGNORECASE)
 _EFFECT_INFLICT_BARE = re.compile(r"inflict (\d+) ([a-z ]+)", re.IGNORECASE)
 _EFFECT_GAIN_STATUS = re.compile(r"gain (\d+) ([a-z ]+)", re.IGNORECASE)
+_TO_ALLY_RE = re.compile(r"\s+to (?:the |an |that )?ally\s*$", re.IGNORECASE)
+_EFFECT_REMOVE = re.compile(r"remove ([a-z ]+)", re.IGNORECASE)
 _EFFECT_HEAL = re.compile(r"heal (\d+)\s*(%)?(?: max)?\s*(?:hp)?", re.IGNORECASE)
 _EFFECT_SCALED = re.compile(
     r"(deal|coin power) \+(\d+)(?: damage)? per (\d+) ([a-z ]+?) (potency|count)", re.IGNORECASE
@@ -708,6 +720,10 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
             raise TriggerParseError(line, "no effect text after the timing tag")
 
         condition, effect_text = _parse_condition_and_effect_text(rest)
+        to_ally = False
+        if _TO_ALLY_RE.search(effect_text):
+            to_ally = True
+            effect_text = _TO_ALLY_RE.sub("", effect_text)
         consume_status = None
         consume_amount = 0
         consume_match = _EFFECT_CONSUME.fullmatch(effect_text.strip())
@@ -728,7 +744,16 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
         heal_percent = False
         heal_match = _EFFECT_HEAL.fullmatch(_TRAILING_PAREN_RE.sub("", effect_text).strip())
         scaled_match = _EFFECT_SCALED.fullmatch(_TRAILING_PAREN_RE.sub("", effect_text).strip())
-        if heal_match:
+        remove_match = _EFFECT_REMOVE.fullmatch(_TRAILING_PAREN_RE.sub("", effect_text).strip())
+        if remove_match:
+            removed = _norm_status(remove_match.group(1))
+            if (
+                removed not in TARGET_STATUSES and removed not in SELF_BUFF_STATUSES
+                and removed not in _active_custom
+            ):
+                raise TriggerParseError(line, f"'{removed}' isn't a status that can be removed")
+            effect_type, effect_value, status_name, status_count = "remove_status", 0, removed, 0
+        elif heal_match:
             if int(heal_match.group(1)) < 1:
                 raise TriggerParseError(line, "Heal needs an amount of at least 1")
             heal_percent = heal_match.group(2) is not None
@@ -765,6 +790,11 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
         else:
             hint_tier = 1
 
+        if to_ally and effect_type not in ("heal", "gain_status", "sanity_gain", "remove_status"):
+            raise TriggerParseError(
+                line, "'to the ally' only works with Heal, Gain, Remove and Gain Sanity effects"
+            )
+
         triggers.append(Trigger(
             condition=condition,
             effect_type=effect_type,
@@ -781,6 +811,7 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
             scale_per=scale_per,
             scale_basis=scale_basis,
             heal_percent=heal_percent,
+            to_ally=to_ally,
         ))
 
     return triggers, flags

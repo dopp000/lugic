@@ -1614,6 +1614,30 @@ Hooks:
 - Statuses are deliberately not shown in the battle embed (only hint tiers
   are), so a custom resource is hidden in the same way.
 
+<a id="ally-support"></a>
+### Support skills and ally effects
+
+- `support` is a skill flag (`SKILL_FLAG_TAGS`), forced to exactly 1 coin
+  with Guard/Evade. `/battle declare` branches early for it: the target must
+  be on the caster's side (self allowed), alive and not eliminated, and it
+  skips target-slot validation, Clash stealing and Attack Weight. The action
+  is stored with `target_slot=1`, which nothing reads for it.
+- `combat()` pulls support entries out of `entries` before any pairing, so
+  they can never clash or be paired, sorts them by slot Speed (fastest
+  first), and for each fires the skill's `on_use` triggers through
+  `resolve_triggers` with `TriggerContext.ally` set to the declared ally.
+  The result lines go into `passive_log`.
+- `Trigger.to_ally` is set by a trailing `to the ally` / `to an ally` /
+  `to that ally` on any effect line (stripped before the rest is parsed, so it
+  also works on a Consume payoff). It is only allowed on heal, gain_status,
+  sanity_gain and remove_status. `apply_trigger_effects(..., ally=)` routes
+  those to the ally, and silently skips them when no ally is in play.
+  Consume costs always come from the caster.
+- `remove_status` (`Remove <status>`): pops the whole status from the
+  recipient and undoes Bind or Haste's Speed change.
+- Only `[On Use]` fires on a support skill for now. Coin and other skill
+  timings do not, since there is no attack.
+
 <a id="healing"></a>
 ### Healing
 

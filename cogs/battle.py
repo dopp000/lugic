@@ -343,7 +343,7 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
         # coin -- the whole defense-skill cascade (find_eligible_evade,
         # the Clashable Guard/Counter interception passes) assumes one
         # clean win/lose roll per declared defense skill.
-        ONE_COIN_ONLY_TAGS = {"guard", "evade", "clashable_guard"}
+        ONE_COIN_ONLY_TAGS = {"guard", "evade", "clashable_guard", "support"}
         offending_tags = flags & ONE_COIN_ONLY_TAGS
         if offending_tags and coins != 1:
             await interaction.response.send_message(
@@ -1288,8 +1288,10 @@ def _warn_wrap(line: str, hint_tier: int) -> str:
     return f"{icon} **{upper}** {icon}"
 
 
-def apply_trigger_effects(triggers: list[Trigger], caster: Fighter, target: Fighter | None) -> list[str]:
-    """Applies the post-hit effects (inflict_status, sanity_gain, gain_status) from whichever triggers fired AND actually landed a hit. Dangerous ones (hint_tier 2+) get run through _warn_wrap so they stand out in the fight log. See docs/ENGINEERING_NOTES.md#battle-apply-trigger-effects for the full rationale."""
+def apply_trigger_effects(
+    triggers: list[Trigger], caster: Fighter, target: Fighter | None, ally: Fighter | None = None,
+) -> list[str]:
+    """Applies the post-hit effects (inflict_status, sanity_gain, gain_status, heal, remove_status) from whichever triggers fired AND actually landed a hit. Dangerous ones (hint_tier 2+) get run through _warn_wrap so they stand out in the fight log. A trigger written with 'to the ally' lands on `ally` (the fighter a [Support] skill was aimed at) instead of the caster, and is skipped if there is no ally. See docs/ENGINEERING_NOTES.md#battle-apply-trigger-effects and #ally-support for the full rationale."""
     log: list[str] = []
     for t in triggers:
         if t.effect_type == "inflict_status":
@@ -1307,32 +1309,47 @@ def apply_trigger_effects(triggers: list[Trigger], caster: Fighter, target: Figh
                 f"{status_label(t.status_name)}: {new_instance.potency}/{new_instance.count}"
             )
             log.append(_warn_wrap(line, t.hint_tier) if t.hint_tier >= 2 else line)
-        elif t.effect_type == "heal":
-            if not caster.is_alive() or caster.eliminated:
+            continue
+
+        who = ally if t.to_ally else caster
+        if who is None:
+            continue
+
+        if t.effect_type == "heal":
+            if not who.is_alive() or who.eliminated:
                 continue
             amount = (
-                max(1, round(caster.max_hp * t.effect_value / 100)) if t.heal_percent else t.effect_value
+                max(1, round(who.max_hp * t.effect_value / 100)) if t.heal_percent else t.effect_value
             )
-            healed = min(amount, caster.max_hp - caster.hp)
-            caster.hp += healed
-            log.append(
-                f"Trigger: {caster.name} heals {healed} HP ({caster.hp}/{caster.max_hp})"
-            )
+            healed = min(amount, who.max_hp - who.hp)
+            who.hp += healed
+            log.append(f"Trigger: {who.name} heals {healed} HP ({who.hp}/{who.max_hp})")
         elif t.effect_type == "sanity_gain":
-            caster.gain_sanity(t.effect_value)
-            line = f"Trigger: {caster.name} Sanity +{t.effect_value} ({caster.sanity})"
+            who.gain_sanity(t.effect_value)
+            line = f"Trigger: {who.name} Sanity +{t.effect_value} ({who.sanity})"
             log.append(_warn_wrap(line, t.hint_tier) if t.hint_tier >= 2 else line)
         elif t.effect_type == "gain_status":
-            current = caster.get_status(t.status_name)
+            current = who.get_status(t.status_name)
             new_instance = apply_status(current, t.status_name, t.effect_value, t.status_count)
-            caster.set_status_instance(new_instance)
+            who.set_status_instance(new_instance)
             if t.status_name == "haste":
-                caster.shift_slot_speeds(new_instance.count - (current.count if current else 0))
+                who.shift_slot_speeds(new_instance.count - (current.count if current else 0))
             line = (
-                f"Trigger: {caster.name} gains {status_emoji(t.status_name)} "
+                f"Trigger: {who.name} gains {status_emoji(t.status_name)} "
                 f"{status_label(t.status_name)}: {new_instance.potency}/{new_instance.count}"
             )
             log.append(_warn_wrap(line, t.hint_tier) if t.hint_tier >= 2 else line)
+        elif t.effect_type == "remove_status":
+            removed = who.statuses.pop(t.status_name, None)
+            if removed is None:
+                continue
+            if t.status_name == "bind":
+                who.shift_slot_speeds(removed.potency)
+            elif t.status_name == "haste":
+                who.shift_slot_speeds(-removed.count)
+            log.append(
+                f"Trigger: {who.name} loses {status_emoji(t.status_name)} {status_label(t.status_name)}"
+            )
     return log
 
 
@@ -1980,6 +1997,30 @@ class BattleCog(commands.GroupCog, name="battle"):
             await interaction.response.send_message(f"No fighter named {target}.", ephemeral=True)
             return
 
+        # [Support] skills are aimed at an ally (or the caster), never an
+        # enemy, and skip the whole clash/target-slot flow below.
+        if "support" in skill.tags:
+            if target_fighter.side != caster.side:
+                await interaction.response.send_message(
+                    f"{skill.name} is a Support skill, it can only be aimed at an ally "
+                    f"(Side {caster.side}).",
+                    ephemeral=True,
+                )
+                return
+            if not target_fighter.is_alive() or target_fighter.eliminated:
+                await interaction.response.send_message(
+                    f"{target_fighter.name} is down and can't be helped.", ephemeral=True
+                )
+                return
+            caster.declare_in_slot(slot, skill, target_fighter, 1)
+            await interaction.response.send_message(
+                f"{caster.name} declared **{skill.name}** (Support) on {target_fighter.name} "
+                f"in Slot {slot}.",
+                ephemeral=True,
+            )
+            await sync_battle_message(self.bot, battle)
+            return
+
         if target_fighter is caster:
             await interaction.response.send_message(
                 f"{caster.name} can't target themselves.", ephemeral=True
@@ -1989,7 +2030,8 @@ class BattleCog(commands.GroupCog, name="battle"):
         if target_fighter.side == caster.side:
             await interaction.response.send_message(
                 f"{caster.name} can't target {target_fighter.name}, they're on the same side "
-                f"(Side {caster.side}). Only enemies can be targeted.",
+                f"(Side {caster.side}). Only enemies can be targeted, unless the skill has the "
+                f"[Support] flag.",
                 ephemeral=True,
             )
             return
@@ -2263,6 +2305,25 @@ class BattleCog(commands.GroupCog, name="battle"):
                     "slot": slot_num, "target_slot": action.target_slot,
                     "extra_targets": action.extra_targets, "used": False,
                 })
+
+        # [Support] skills never clash or attack: pulled out of the
+        # entries here, before any pairing happens, and resolved right
+        # away fastest slot first. Their [On Use] lines land on the
+        # declared ally (or on the caster, for lines without 'to the
+        # ally'). See docs/ENGINEERING_NOTES.md#ally-support.
+        support_entries = [e for e in entries if "support" in e["skill"].tags]
+        entries = [e for e in entries if "support" not in e["skill"].tags]
+        support_entries.sort(key=lambda e: e["caster"].slot_speed(e["slot"]), reverse=True)
+        for e in support_entries:
+            sup_caster, sup_ally = e["caster"], e["target"]
+            if not sup_caster.is_alive():
+                continue
+            sup_context = TriggerContext(caster=sup_caster, target=None, battle=battle, ally=sup_ally)
+            _, sup_post = resolve_triggers(e["skill"], sup_context, "on_use")
+            sup_lines = apply_trigger_effects(sup_post, sup_caster, None, ally=sup_ally)
+            ally_note = f" on {sup_ally.name}" if sup_ally is not sup_caster else ""
+            passive_log.append(f"**{sup_caster.name}** uses **{e['skill'].name}**{ally_note}.")
+            passive_log.extend(sup_lines)
 
         DEFENSE_TAGS_NO_ATTACK = {"guard", "evade", "counter", "clashable_guard", "clashable_counter"}
 
