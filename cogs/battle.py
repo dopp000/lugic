@@ -421,7 +421,7 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
             return
         if any(t.timing in PASSIVE_ONLY_TIMINGS for t in triggers):
             await interaction.response.send_message(
-                "Self Is Hit, Self On Stagger and Self On Kill are only for passives, an admin sets those "
+                "Self Is Hit, Self On Stagger, Self On Kill and Self On Death are only for passives, an admin sets those "
                 "with /character passive. They would never fire on a skill.",
                 ephemeral=True,
             )
@@ -1385,6 +1385,7 @@ def fire_hit_ally_reactions(
     log = fire_self_reactions(battle, target, "self_is_hit", attacker)
     if not target.is_alive():
         log += fire_self_reactions(battle, attacker, "self_on_kill", target)
+        log += fire_self_reactions(battle, target, "self_on_death", attacker)
     if stagger_before == 0 and target.current_stagger_tier > 0:
         log += fire_self_reactions(battle, target, "self_on_stagger", attacker)
     log += fire_ally_reactions(battle, attacker, "ally_on_hit", target)
@@ -1429,6 +1430,8 @@ def apply_turn_end_status_ticks(battle: Battle) -> list[str]:
     for f in battle.fighters:
         f.temp_offense = 0
         f.temp_defense = 0
+        f.hp_floor = 0
+        f.stagger_immune = False
         for name in ONE_TURN_STATUSES:
             f.statuses.pop(name, None)
         for name in turn_custom_keys:
@@ -1476,6 +1479,7 @@ def apply_turn_end_status_ticks(battle: Battle) -> list[str]:
                 f"{status_emoji('poison')} {f.name} takes {poison.count} Poison damage.{breakdown} "
                 f"({f.name}: {f.hp}/{f.max_hp} HP)"
             )
+            log.extend(f.drain_survival_notes())
             f.set_status_instance(StatusInstance(name="poison", potency=poison.potency, count=poison.count // 2))
 
         burn = f.get_status("burn")
@@ -1489,6 +1493,7 @@ def apply_turn_end_status_ticks(battle: Battle) -> list[str]:
                 f"{status_emoji('burn')} {f.name} takes {burn.potency} Burn damage.{breakdown} "
                 f"({f.name}: {f.hp}/{f.max_hp} HP)"
             )
+            log.extend(f.drain_survival_notes())
             f.set_status_instance(decay_after_trigger(burn))
 
         sinking = f.get_status("sinking")
@@ -1584,6 +1589,7 @@ def apply_bleed_self_damage(fighter: Fighter, skill: Skill) -> list[str]:
         return []
     total = bleed.potency * skill.coins
     shield_absorbed, hp_dmg = fighter.take_damage(total)
+    notes = fighter.drain_survival_notes()
     breakdown = (
         f" ({shield_absorbed} absorbed by {status_emoji('shield')} Shield, {hp_dmg} to HP)"
         if shield_absorbed > 0 else ""
@@ -1592,7 +1598,7 @@ def apply_bleed_self_damage(fighter: Fighter, skill: Skill) -> list[str]:
     return [
         f"{status_emoji('bleed')} {fighter.name} takes {total} Bleed damage from using "
         f"{skill.name}.{breakdown} ({fighter.name}: {fighter.hp}/{fighter.max_hp} HP)"
-    ]
+    ] + notes
 
 
 def _resolve_pre_roll_chain(
@@ -1708,6 +1714,26 @@ def apply_trigger_effects(
         elif t.effect_type == "level_mod":
             _bump_level(who, t)
             log.append(f"Trigger: {who.name} {_level_text(t)}")
+        elif t.effect_type == "hp_floor":
+            if not who.is_alive():
+                continue
+            who.hp_floor = max(who.hp_floor, t.effect_value)
+            log.append(f"Trigger: {who.name}'s HP cannot drop below {who.hp_floor} this turn")
+        elif t.effect_type == "nullify_lethal":
+            if not who.is_alive():
+                continue
+            who.nullify_lethal = 1
+            log.append(f"Trigger: {who.name} will nullify the next lethal damage")
+        elif t.effect_type == "stagger_immune":
+            if not who.is_alive():
+                continue
+            who.stagger_immune = True
+            log.append(f"Trigger: {who.name} cannot be Staggered this turn")
+        elif t.effect_type == "remove_stagger":
+            if who.is_alive() and who.current_stagger_tier > 0:
+                who.current_stagger_tier = 0
+                who.stagger_clears_end_of_round = None
+                log.append(f"Trigger: {who.name} recovers from Stagger")
         elif t.effect_type == "sanity_loss":
             who.lose_sanity(t.effect_value)
             line = f"Trigger: {who.name} Sanity -{t.effect_value} ({who.sanity})"
@@ -3369,6 +3395,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                     total_damage = reduced
 
             loser.take_damage(total_damage)
+            status_log += loser.drain_survival_notes()
             status_log += loser.hit_part(loser_slot, total_damage)
             loser_stagger_before = loser.current_stagger_tier
             loser.check_stagger(battle.round_number)
@@ -3649,6 +3676,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                         )
                         status_log += hit_log
                     target.take_damage(total_damage)
+                    status_log += target.drain_survival_notes()
                     status_log += target.hit_part(entry["target_slot"], total_damage)
                     target_stagger_before = target.current_stagger_tier
                     target.check_stagger(battle.round_number)
@@ -3833,6 +3861,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                             splash_total = frag_splash_total
 
                         splash_shield_absorbed, splash_hp_lost = splash_fighter.take_damage(splash_total)
+                        splash_log.extend(splash_fighter.drain_survival_notes())
                         splash_log += splash_fighter.hit_part(splash_slot, splash_total)
                         splash_stagger_before = splash_fighter.current_stagger_tier
                         splash_fighter.check_stagger(battle.round_number)

@@ -33,14 +33,14 @@ FATAL_AT = 1.5
 EFFECT_TYPES = [
     "bonus_power", "bonus_coin_power", "bonus_damage_pct", "bonus_clash_power", "bonus_final_power",
     "inflict_status", "gain_status", "sanity_gain", "sanity_loss", "heal", "remove_status",
-    "gain_shield", "level_mod",
+    "gain_shield", "level_mod", "hp_floor", "nullify_lethal", "stagger_immune", "remove_stagger",
 ]
 
 # Effects that land after the toss, once a hit connects (everything but the three
 # power effects below).
 POST_HIT_EFFECTS = (
     "inflict_status", "sanity_gain", "sanity_loss", "gain_status", "heal", "remove_status",
-    "gain_shield", "level_mod",
+    "gain_shield", "level_mod", "hp_floor", "nullify_lethal", "stagger_immune", "remove_stagger",
 )
 
 # Effects that reshape the hit itself. They only do something at the timings
@@ -139,6 +139,7 @@ SKILL_LEVEL_TIMINGS = {
     "self is hit": "self_is_hit",
     "self on stagger": "self_on_stagger",
     "self on kill": "self_on_kill",
+    "self on death": "self_on_death",
 }
 
 # Per-coin timing tags: need a :CoinN: prefix on the line, fire once per
@@ -531,6 +532,8 @@ class Trigger:
     to_ally: bool = False
     # "(2 times per turn)" / "(once per turn)": 0 means no limit.
     max_per_turn: int = 0
+    # "(once per Encounter)" / "(N times per Encounter)": 0 means no limit. Counted for the whole battle.
+    max_per_encounter: int = 0
     # "(30% chance)": rolled each time the line would fire, 0 = always.
     chance: int = 0
     # "... next turn": queued and applied when the next round opens.
@@ -571,6 +574,7 @@ class Trigger:
             "heal_percent": self.heal_percent,
             "to_ally": self.to_ally,
             "max_per_turn": self.max_per_turn,
+            "max_per_encounter": self.max_per_encounter,
             "chance": self.chance,
             "delayed": self.delayed,
             "on_target": self.on_target,
@@ -598,12 +602,16 @@ def pay_cost(trigger: Trigger, context: "TriggerContext") -> bool:
     caster = context.caster
     if trigger.max_per_turn and caster.trigger_uses.get(id(trigger), 0) >= trigger.max_per_turn:
         return False
+    if trigger.max_per_encounter and caster.encounter_uses.get(id(trigger), 0) >= trigger.max_per_encounter:
+        return False
     if trigger.chance and random.randint(1, 100) > trigger.chance:
         return False
     if not _pay_consume(trigger, context):
         return False
     if trigger.max_per_turn:
         caster.trigger_uses[id(trigger)] = caster.trigger_uses.get(id(trigger), 0) + 1
+    if trigger.max_per_encounter:
+        caster.encounter_uses[id(trigger)] = caster.encounter_uses.get(id(trigger), 0) + 1
     return True
 
 
@@ -670,6 +678,13 @@ _TAG_RE = re.compile(r"^\s*(?::coin(\d+):\s*)?\[([^\]]+)\]\s*(.*)$", re.IGNORECA
 _TRAILING_PAREN_RE = re.compile(r"\s*\([^()]*\)\s*$")
 
 _COND_TARGET_SIDE = re.compile(r"if (?:the )?target is an? (ally|enemy),?\s*(.*)", re.IGNORECASE)
+_PER_ENCOUNTER_RE = re.compile(
+    r"\(\s*(?:(\d+) times?|once|twice) per (?:encounter|battle)\s*\)", re.IGNORECASE
+)
+_EFFECT_HP_FLOOR = re.compile(r"hp cannot drop below (\d+)(?: this turn)?", re.IGNORECASE)
+_EFFECT_NULLIFY = re.compile(r"nullify (?:the next )?lethal damage", re.IGNORECASE)
+_EFFECT_NO_STAGGER = re.compile(r"cannot be staggered(?: this turn)?", re.IGNORECASE)
+_EFFECT_RECOVER_STAGGER = re.compile(r"recover from stagger", re.IGNORECASE)
 _PER_TURN_RE = re.compile(r"\(\s*(?:(\d+) times?|once|twice) per turn\s*\)", re.IGNORECASE)
 _COND_SPEED_FASTER = re.compile(r"if this unit'?s speed is faster than the target'?s,?\s*(.*)", re.IGNORECASE)
 _COND_TARGET_STATUS_ANY = re.compile(r"if (?:the )?target has any ([a-z]+),?\s*(.*)", re.IGNORECASE)
@@ -752,7 +767,8 @@ _NOTE_RE = re.compile(r"\s*\(([^()]*)\)\s*$")
 _MAX_NOTE_RE = re.compile(r"max\s+(\d+)\s*(%)?", re.IGNORECASE)
 
 NOTE_HELP = (
-    "Notes the bot enforces: (Hint 1-3), (once per turn), (N times per turn), (N% chance), and "
+    "Notes the bot enforces: (Hint 1-3), (once per turn), (N times per turn), (once per Encounter), "
+    "(N times per Encounter), (N% chance), and "
     "(max N) on a line that scales with 'per N <status> Count'."
 )
 
@@ -780,7 +796,7 @@ def _take_notes(rest: str, line: str, strict: bool) -> tuple[str, int, bool, int
             continue
         low = note.lower()
         if "encounter" in low or "battle" in low or "scene" in low:
-            why = "per-Encounter limits aren't supported yet, so it would fire every time"
+            why = "write it as (once per Encounter) or (N times per Encounter)"
         else:
             why = "the bot can't enforce it, so it would be ignored"
         raise TriggerParseError(line, f"the note ({note}) can't be used: {why}. {NOTE_HELP}")
@@ -969,6 +985,19 @@ def _parse_effect_text(text: str) -> tuple[str, int, str | None, int]:
         if m:
             return effect_type, int(m.group(1)), None, 0
 
+    m = _EFFECT_HP_FLOOR.fullmatch(core)
+    if m:
+        n = int(m.group(1))
+        if n < 1:
+            raise TriggerParseError(text, "the HP floor must be at least 1")
+        return "hp_floor", n, None, 0
+    if _EFFECT_NULLIFY.fullmatch(core):
+        return "nullify_lethal", 1, None, 0
+    if _EFFECT_NO_STAGGER.fullmatch(core):
+        return "stagger_immune", 1, None, 0
+    if _EFFECT_RECOVER_STAGGER.fullmatch(core):
+        return "remove_stagger", 1, None, 0
+
     m = _EFFECT_INFLICT_EXPLICIT.fullmatch(core)
     if m:
         status, potency, count = _norm_status(m.group(1)), int(m.group(2)), int(m.group(3))
@@ -1112,6 +1141,15 @@ def _parse_trigger_lines(text: str, strict: bool = True) -> tuple[list[Trigger],
             if max_per_turn < 1:
                 raise TriggerParseError(line, "the per-turn limit must be at least 1")
             rest = _PER_TURN_RE.sub("", rest).strip()
+
+        max_per_encounter = 0
+        per_enc = _PER_ENCOUNTER_RE.search(rest)
+        if per_enc:
+            word = per_enc.group(0).lower()
+            max_per_encounter = int(per_enc.group(1)) if per_enc.group(1) else (2 if "twice" in word else 1)
+            if max_per_encounter < 1:
+                raise TriggerParseError(line, "the per-Encounter limit must be at least 1")
+            rest = _PER_ENCOUNTER_RE.sub("", rest).strip()
 
         rest, note_max, note_max_percent, chance = _take_notes(rest, line, strict)
         rest = rest.strip()
@@ -1297,6 +1335,7 @@ def _parse_trigger_lines(text: str, strict: bool = True) -> tuple[list[Trigger],
             heal_percent=heal_percent,
             to_ally=to_ally,
             max_per_turn=max_per_turn,
+            max_per_encounter=max_per_encounter,
             chance=chance,
             delayed=delayed,
             on_target=on_target,

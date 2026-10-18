@@ -15,7 +15,7 @@ MAX_PASSIVE_LINES = 3
 
 # Timings only a passive may use. They are swept over passive skills only, so on a
 # normal skill they would never fire.
-PASSIVE_ONLY_TIMINGS = {"self_is_hit", "self_on_stagger", "self_on_kill"}
+PASSIVE_ONLY_TIMINGS = {"self_is_hit", "self_on_stagger", "self_on_kill", "self_on_death"}
 
 # Timings where a passive shapes every skill its owner uses (Before Use, On Use,
 # Clash Start in a clash, Before Attack on an unopposed attack or a clash win).
@@ -46,7 +46,7 @@ def parse_passive(lines: list[str], custom_kinds: dict[str, str] | None = None, 
                 f"`{t.raw_text.strip() or t.timing}` uses a timing a passive never reacts to. "
                 "Use Turn Start, Combat Start, Ally Turn Start, Ally Combat Start, On Evade, "
                 "Before Use, On Use, Clash Start, Before Attack, "
-                "Ally On Hit / Crit / Kill / Is Hit / On Stagger, or Self Is Hit / Self On Stagger / Self On Kill."
+                "Ally On Hit / Crit / Kill / Is Hit / On Stagger, or Self Is Hit / Self On Stagger / Self On Kill / Self On Death."
             )
     return triggers, None
 

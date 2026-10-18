@@ -175,6 +175,14 @@ class Fighter:
     # and are wiped at turn end.
     temp_offense: int = 0
     temp_defense: int = 0
+    # Survival rules from trigger lines. hp_floor and stagger_immune last one turn,
+    # nullify_lethal lasts until it saves the unit. encounter_uses counts "(once per
+    # Encounter)" lines for the whole battle (a Fighter lives for one battle only).
+    hp_floor: int = 0
+    stagger_immune: bool = False
+    nullify_lethal: int = 0
+    encounter_uses: dict = field(default_factory=dict)
+    survival_notes: list = field(default_factory=list)
     # "... next turn" effects waiting for the next round: (Trigger, target, ally) tuples.
     pending_effects: list = field(default_factory=list)
 
@@ -326,18 +334,35 @@ class Fighter:
         )
 
     def take_damage(self, amount: int) -> tuple[int, int]:
-        """Consumes Shield first (1:1, no reduction of its own -- Shield isn't a resistance, it's a literal overhead HP pool), then spills... See docs/ENGINEERING_NOTES.md#battle-fighter-take-damage for the full rationale."""
+        """Consumes Shield first (1:1, no reduction of its own -- Shield isn't a resistance, it's a literal overhead HP pool), then spills the rest onto HP. Two survival rules can stop that spill: a charge of Nullify Lethal Damage cancels a hit that would kill, and an HP floor keeps HP from dropping below it (never raising HP that is already lower). Returns (absorbed by Shield, HP actually lost). See docs/ENGINEERING_NOTES.md#battle-fighter-take-damage for the full rationale."""
         shield_absorbed = min(self.shield, amount)
         self.shield -= shield_absorbed
         remaining = amount - shield_absorbed
-        self.hp = max(0, self.hp - remaining)
-        return shield_absorbed, remaining
+        new_hp = max(0, self.hp - remaining)
+        if new_hp <= 0 < self.hp and self.nullify_lethal > 0:
+            self.nullify_lethal -= 1
+            new_hp = self.hp
+            self.survival_notes.append(f"{self.name}'s lethal damage was nullified!")
+        floor = min(self.hp_floor, self.hp)
+        if new_hp < floor:
+            new_hp = floor
+            self.survival_notes.append(f"{self.name}'s HP cannot drop below {floor} this turn.")
+        lost = self.hp - new_hp
+        self.hp = new_hp
+        return shield_absorbed, lost
+
+    def drain_survival_notes(self) -> list[str]:
+        """Log lines for survival rules that just saved this fighter (cleared once read)."""
+        notes, self.survival_notes = self.survival_notes, []
+        return notes
 
     def check_stagger(self, current_round: int) -> int:
         """Checks current HP% against every ENABLED Stagger threshold and updates current_stagger_tier / stagger_clears_end_of_round if the deepest... See docs/ENGINEERING_NOTES.md#battle-fighter-check-stagger for the full rationale."""
         if self.max_hp <= 0:
             return self.current_stagger_tier
 
+        if self.stagger_immune:
+            return self.current_stagger_tier
         hp_pct = self.hp / self.max_hp
         deepest = 0
         for i, threshold in enumerate(self.stagger_thresholds):

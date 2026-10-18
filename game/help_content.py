@@ -436,10 +436,11 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
             "Blank lines are ignored. A tag on its own line (like `[Duality]`) just "
             "switches a skill flag on.\n"
             "Per-coin tags need a coin number first: `:Coin1: [On Hit] ...`.\n"
-            "Add `(2 times per turn)` or `(once per turn)` to a line to cap how often it can fire each round.\n"
+            "Add `(2 times per turn)` or `(once per turn)` to a line to cap how often it can fire each round, "
+            "or `(once per Encounter)` / `(2 times per Encounter)` to cap it for the whole battle.\n"
             "Those, `(Hint N)`, `(30% chance)` (rolled each time the line would fire) and `(max N)` on a "
             "scaling line are the only notes the bot understands. "
-            "Anything else in brackets, like `(once per Encounter)`, is refused so "
+            "Anything else in brackets is refused so "
             "nobody thinks a limit is being enforced when it is not."
         ),
     ),
@@ -519,6 +520,9 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
             "round opens: `Gain 2 Haste next turn`.\n"
             "`Gain 5 Sanity` / `Lose 5 Sanity`: your Sanity goes up or down.\n"
             "`Heal 8 HP` or `Heal 10% max HP`: restores HP (up to 100%).\n"
+            "**Survival** (on yourself): `HP cannot drop below 1 this turn`, `Cannot be Staggered this turn`, "
+            "`Nullify the next lethal damage` (saves you once, lasts until used or the battle ends), "
+            "`Recover from Stagger`. Pair them with `(once per Encounter)`.\n"
             "Chaining effects with `;` is not supported, write one line per effect."
         ),
     ),
@@ -759,7 +763,7 @@ COMMANDS: list[HelpEntry] = [
             "  - **Identity passives**: named, always-on rules (up to 3 passives, up to 3 lines each) that sit "
             "apart from your skills, so they cannot be declared and take no slot. They run on their own at Turn "
             "Start, Combat Start, Ally Turn/Combat Start, On Evade, the Ally On Hit / Crit / Kill / Is Hit / "
-            "On Stagger reactions, and the passive-only **Self Is Hit**, **Self On Stagger** and **Self On Kill**. "
+            "On Stagger reactions, and the passive-only **Self Is Hit**, **Self On Stagger**, **Self On Kill** and **Self On Death**. "
             "They also shape every skill you use at **Before Use**, **On Use**, **Clash Start** and **Before "
             "Attack**, which is how a passive adds `Deal +10% damage` or `Coin Power +1`. "
             "An admin sets the PP price (1 to 6) with `/character passive`. A Support Passive works the same, it is a label.\n"

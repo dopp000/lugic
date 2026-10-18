@@ -2245,3 +2245,24 @@ a new status gets an icon.
   `[Ally ...]` timing or a Support skill, where the context has an ally.
 - A delayed (next turn) selector line picks its ally when it fires, not when it is applied.
 - The Support Passive kind is still the same as a normal passive; selectors are what make it useful.
+
+<a id="survival-rules-patch-5"></a>
+## Survival rules, per-Encounter limits and Self On Death
+
+- `(once per Encounter)` / `(twice ...)` / `(N times per Encounter)` (`battle` also works) fills
+  `Trigger.max_per_encounter`. `pay_cost` checks and counts it in `Fighter.encounter_uses`, keyed by trigger id like
+  the per-turn counter but never cleared by `clear_declaration`. A Fighter exists for one battle only, so the count
+  resets each battle. Passives saved before this honour the note too (it was refused for a while, so none should exist).
+- New self effects (`POST_HIT_EFFECTS`): `hp_floor` ("HP cannot drop below N this turn"), `nullify_lethal`
+  ("Nullify the next lethal damage"), `stagger_immune` ("Cannot be Staggered this turn"), `remove_stagger`
+  ("Recover from Stagger"). They never take `to the ally`.
+- `Fighter.take_damage` is the one place HP is lost (hits, splash, Bleed, Burn, Poison), so both rules live there.
+  A charge of `nullify_lethal` cancels a hit that would take HP to 0 (Shield already spent stays spent). `hp_floor`
+  keeps HP from going below the floor, but never raises HP that is already lower. It returns the HP actually lost.
+  Both leave a line in `Fighter.survival_notes`, which the callers read with `drain_survival_notes()`.
+- `hp_floor` and `stagger_immune` are wiped at turn end next to the temporary levels. `check_stagger` returns early
+  while `stagger_immune` is on. `nullify_lethal` lasts until used. Because they only help when set before the damage,
+  use them from Turn Start / Combat Start / Before Use style timings.
+- `Self On Death` (`self_on_death`, passive only): fired from `fire_hit_ally_reactions` when a landed hit kills the
+  owner, with the killer as the target (`Inflict 3 Burn` hits the killer). Deaths from Burn, Poison or Bleed do not
+  fire it yet (those paths have no attacker).

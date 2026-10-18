@@ -37,6 +37,10 @@ EFFECT_TEMPLATES = [
     "Gain 2 Haste next turn",
     "Gain N Sanity",
     "Lose N Sanity",
+    "HP cannot drop below N this turn",
+    "Nullify the next lethal damage",
+    "Cannot be Staggered this turn",
+    "Recover from Stagger",
     "Heal N HP",
     "Heal N to the ally with the lowest HP",
     "Heal N% max HP",
@@ -164,6 +168,14 @@ def _describe_effect(t: Trigger, names) -> str:
         text = f"{'Inflict' if t.on_target else 'Gain'} {t.status_name.title()} Level {sign}{abs(t.effect_value)} (this turn)"
     elif t.effect_type == "sanity_loss":
         text = f"Lose {t.effect_value} Sanity"
+    elif t.effect_type == "hp_floor":
+        text = f"HP cannot drop below {t.effect_value} this turn"
+    elif t.effect_type == "nullify_lethal":
+        text = "Nullify the next lethal damage"
+    elif t.effect_type == "stagger_immune":
+        text = "Cannot be Staggered this turn"
+    elif t.effect_type == "remove_stagger":
+        text = "Recover from Stagger"
     elif t.effect_type == "heal":
         text = f"Heal {t.effect_value}{'% max HP' if t.heal_percent else ' HP'}"
     elif t.effect_type == "remove_status":
@@ -191,6 +203,8 @@ def describe_trigger(t: Trigger, names: dict[str, str] | None = None) -> str:
     cond = _describe_condition(t, names)
     effect = _describe_effect(t, names)
     limit = f" (max {t.max_per_turn}x per turn)" if t.max_per_turn else ""
+    if t.max_per_encounter:
+        limit += f" (max {t.max_per_encounter}x per Encounter)"
     return f"{when}: " + (f"if {cond} -> " if cond else "") + effect + limit
 
 
