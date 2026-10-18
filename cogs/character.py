@@ -11,7 +11,10 @@ from game.character import (
     list_characters_by_owner,
 )
 from game.resistances import ALL_RESISTANCE_TYPES, DAMAGE_TYPES, parse_resistance_multiplier
-from game.emojis import status_emoji, damage_type_emoji
+from game.emojis import status_emoji, damage_type_emoji, register_custom_status_emoji
+from game.custom_statuses import (
+    CustomStatus, KINDS, LIFETIMES, MAX_CUSTOM_STATUSES_PER_CHARACTER, slugify, validate_name,
+)
 
 # Reused rather than duplicated: the skill-creation form (stat parsing,
 # 1-coin-only Guard/Evade/Clashable Guard enforcement, the Trigger DSL)
@@ -56,6 +59,16 @@ def build_character_embed(character: Character, owner_name: str) -> discord.Embe
         icon = damage_type_emoji(k) if k in DAMAGE_TYPES else status_emoji(k)
         resist_lines.append(f"{icon} {k.capitalize()}: {v}x")
     embed.add_field(name="Resistances", value="\n".join(resist_lines), inline=False)
+
+    if character.custom_statuses:
+        embed.add_field(
+            name="Custom statuses",
+            value="\n".join(
+                f"{status_emoji(cs.key)} {cs.name} ({cs.kind}, {cs.lifetime})"
+                for cs in character.custom_statuses.values()
+            ),
+            inline=False,
+        )
 
     embed.set_footer(text=f"Owner: {owner_name}")
     return embed
@@ -541,6 +554,167 @@ class CharacterCog(commands.GroupCog, name="character"):
     @editskill.autocomplete("skill_name")
     async def editskill_skill_name_autocomplete(self, interaction: discord.Interaction, current: str):
         return await self._skill_name_autocomplete_choices(interaction, current)
+
+    @app_commands.command(
+        name="addstatus",
+        description="Create a custom status or resource for a character (e.g. Pulsation)",
+    )
+    @app_commands.describe(
+        name="Which character owns this status",
+        status_name="The status's name, letters and spaces only",
+        kind="Buff: the character gains it. Debuff: it gets inflicted on enemies",
+        lifetime="Persistent: stays until used up. Turn: wiped at every turn end",
+        emoji_id="ID of an existing Discord emoji the bot can see (optional)",
+        description="What it does, shown to admins and in /character statuses",
+    )
+    @app_commands.choices(
+        kind=[app_commands.Choice(name=k.capitalize(), value=k) for k in KINDS],
+        lifetime=[app_commands.Choice(name=l.capitalize(), value=l) for l in LIFETIMES],
+    )
+    async def addstatus(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        status_name: str,
+        kind: app_commands.Choice[str],
+        lifetime: app_commands.Choice[str],
+        emoji_id: str | None = None,
+        description: str = "",
+    ):
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            return
+
+        if not (interaction.user.id == character.owner_id or is_admin(interaction)):
+            await interaction.response.send_message(
+                "Only this character's owner or an admin can add a status to it.", ephemeral=True
+            )
+            return
+
+        error = validate_name(status_name)
+        if error:
+            await interaction.response.send_message(error, ephemeral=True)
+            return
+
+        key = slugify(status_name)
+        if key in character.custom_statuses:
+            await interaction.response.send_message(
+                f"{character.name} already has a status called {status_name}. Remove it first to redo it.",
+                ephemeral=True,
+            )
+            return
+        if len(character.custom_statuses) >= MAX_CUSTOM_STATUSES_PER_CHARACTER:
+            await interaction.response.send_message(
+                f"A character can have at most {MAX_CUSTOM_STATUSES_PER_CHARACTER} custom statuses.",
+                ephemeral=True,
+            )
+            return
+
+        parsed_emoji_id = None
+        animated = False
+        if emoji_id:
+            if not emoji_id.strip().isdigit():
+                await interaction.response.send_message(
+                    "emoji_id must be the number ID of a Discord emoji.", ephemeral=True
+                )
+                return
+            parsed_emoji_id = int(emoji_id.strip())
+            emoji = interaction.client.get_emoji(parsed_emoji_id)
+            if emoji is None:
+                await interaction.response.send_message(
+                    "I can't see an emoji with that ID. It has to be from a server the bot is in.",
+                    ephemeral=True,
+                )
+                return
+            animated = emoji.animated
+
+        cs = CustomStatus(
+            name=status_name.strip(), key=key, kind=kind.value, lifetime=lifetime.value,
+            emoji_id=parsed_emoji_id, animated=animated, description=description.strip()[:300],
+        )
+        character.custom_statuses[key] = cs
+        save_character(character)
+        register_custom_status_emoji(cs)
+
+        log_channel = interaction.client.get_channel(battle_cog.LOG_CHANNEL_ID)
+        if log_channel is not None:
+            await log_channel.send(
+                f"{interaction.user.mention} created a custom status for **{character.name}**: "
+                f"{status_emoji(key)} **{cs.name}** ({cs.kind}, {cs.lifetime})\n"
+                f"{cs.description or '(no description)'}"
+            )
+
+        usage = (
+            f"`Gain +2 {cs.name} Count` in a trigger line"
+            if cs.kind == "buff" else f"`Inflict +2 {cs.name} Count` in a trigger line"
+        )
+        await interaction.response.send_message(
+            f"Created {status_emoji(key)} **{cs.name}** for {character.name}. Use it with {usage}.",
+            ephemeral=True,
+        )
+
+    @app_commands.command(name="statuses", description="Show a character's custom statuses")
+    @app_commands.describe(name="Character to check")
+    async def statuses(self, interaction: discord.Interaction, name: str):
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            return
+        if not character.custom_statuses:
+            await interaction.response.send_message(
+                f"{character.name} has no custom statuses. Use /character addstatus.", ephemeral=True
+            )
+            return
+        lines = [
+            f"{status_emoji(cs.key)} **{cs.name}** ({cs.kind}, {cs.lifetime}): {cs.description or 'no description'}"
+            for cs in character.custom_statuses.values()
+        ]
+        await interaction.response.send_message(
+            f"**{character.name}**'s custom statuses:\n" + "\n".join(lines), ephemeral=True
+        )
+
+    @app_commands.command(name="removestatus", description="Remove one of a character's custom statuses")
+    @app_commands.describe(name="Character to remove it from", status_name="Which status to remove")
+    async def removestatus(self, interaction: discord.Interaction, name: str, status_name: str):
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            return
+        if not (interaction.user.id == character.owner_id or is_admin(interaction)):
+            await interaction.response.send_message(
+                "Only this character's owner or an admin can remove a status.", ephemeral=True
+            )
+            return
+        removed = character.custom_statuses.pop(slugify(status_name), None)
+        if removed is None:
+            await interaction.response.send_message(
+                f"{character.name} has no custom status called '{status_name}'.", ephemeral=True
+            )
+            return
+        save_character(character)
+        log_channel = interaction.client.get_channel(battle_cog.LOG_CHANNEL_ID)
+        if log_channel is not None:
+            await log_channel.send(
+                f"{interaction.user.mention} removed the custom status **{removed.name}** from **{character.name}**."
+            )
+        await interaction.response.send_message(
+            f"Removed **{removed.name}** from {character.name}. Skills that mention it "
+            "keep running, but the line has to be changed before they can be edited and re-saved.",
+            ephemeral=True,
+        )
+
+    @removestatus.autocomplete("status_name")
+    async def removestatus_autocomplete(self, interaction: discord.Interaction, current: str):
+        character_name = getattr(interaction.namespace, "name", None)
+        character = load_character(character_name) if character_name else None
+        if character is None:
+            return []
+        cur = current.lower()
+        return [
+            app_commands.Choice(name=cs.name, value=cs.name)
+            for cs in character.custom_statuses.values() if cur in cs.name.lower()
+        ][:25]
 
     @app_commands.command(name="delete", description="Delete one of your characters")
     @app_commands.describe(name="Character to delete")

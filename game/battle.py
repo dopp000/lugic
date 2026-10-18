@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from game.skills import Skill
 from game.statuses import StatusInstance
 from game.resistances import DEFAULT_RESISTANCES
+from game.custom_statuses import CustomStatus
+from game.emojis import register_custom_status_emoji
 
 SANITY_MIN = -45
 SANITY_MAX = 45
@@ -77,6 +79,9 @@ class Fighter:
     slot_speeds: list[int] = field(default_factory=list)
 
     skills: dict[str, Skill] = field(default_factory=dict)
+
+    # This fighter's own player-made statuses (copied from the Character).
+    custom_statuses: dict[str, CustomStatus] = field(default_factory=dict)
 
     # Keyed by the CASTER's own slot number (1-based), not a plain list,
     # so a specific slot can be individually re-declared (moved) or
@@ -167,6 +172,9 @@ class Fighter:
         # character's own saved copy, and two simultaneous battles using
         # the same character don't secretly share one skill dict.
         fighter.skills = copy.deepcopy(character.skills)
+        fighter.custom_statuses = copy.deepcopy(character.custom_statuses)
+        for cs in fighter.custom_statuses.values():
+            register_custom_status_emoji(cs)
         return fighter
 
     def roll_slot_speeds(self):

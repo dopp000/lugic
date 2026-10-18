@@ -372,6 +372,37 @@ _EFFECT_INFLICT_EXPLICIT = re.compile(
 _EFFECT_INFLICT_COUNT = re.compile(r"inflict \+(\d+) ([a-z ]+?) count", re.IGNORECASE)
 _EFFECT_INFLICT_BARE = re.compile(r"inflict (\d+) ([a-z ]+)", re.IGNORECASE)
 _EFFECT_GAIN_STATUS = re.compile(r"gain (\d+) ([a-z ]+)", re.IGNORECASE)
+_EFFECT_GAIN_COUNT = re.compile(r"gain \+(\d+) ([a-z ]+?) count", re.IGNORECASE)
+_EFFECT_GAIN_EXPLICIT = re.compile(
+    r"gain ([a-z ]+?) potency:?\s*(\d+),?\s*count:?\s*(\d+)", re.IGNORECASE
+)
+
+# The player-made statuses the line being parsed is allowed to use
+# (key -> "buff" or "debuff"). Set by parse_trigger_text for the length
+# of one call and always reset, parsing never awaits so this is safe.
+_active_custom: dict[str, str] = {}
+
+
+def _check_inflictable(status: str, text: str):
+    if status in TARGET_STATUSES or _active_custom.get(status) == "debuff":
+        return
+    raise TriggerParseError(
+        text,
+        f"'{status}' isn't a status that can be inflicted. Built-in: "
+        f"{', '.join(s.replace('_', ' ').title() for s in TARGET_STATUSES)}. "
+        "A custom status has to be created first (/character addstatus) and be a debuff.",
+    )
+
+
+def _check_gainable(status: str, text: str):
+    if status in SELF_BUFF_STATUSES or _active_custom.get(status) == "buff":
+        return
+    raise TriggerParseError(
+        text,
+        f"'{status}' isn't a self-buff this character can gain. Built-in: "
+        f"{', '.join(s.capitalize() for s in SELF_BUFF_STATUSES)}. "
+        "A custom resource has to be created first (/character addstatus) and be a buff.",
+    )
 
 
 def _parse_condition_and_effect_text(text: str) -> tuple[Condition, str]:
@@ -404,7 +435,8 @@ def _parse_condition_and_effect_text(text: str) -> tuple[Condition, str]:
         n, thing = int(m.group(1)), m.group(2).strip().lower()
         if thing == "speed":
             return Condition(type="caster_speed_at_least", value=n), m.group(3)
-        if thing in SELF_BUFF_STATUSES or thing in TARGET_STATUSES:
+        thing = "_".join(thing.split())
+        if thing in SELF_BUFF_STATUSES or thing in TARGET_STATUSES or thing in _active_custom:
             return Condition(type="caster_status", status_name=thing, min_potency=n), m.group(3)
         raise TriggerParseError(
             text,
@@ -458,28 +490,37 @@ def _parse_effect_text(text: str) -> tuple[str, int, str | None, int]:
     m = _EFFECT_INFLICT_EXPLICIT.fullmatch(core)
     if m:
         status, potency, count = _norm_status(m.group(1)), int(m.group(2)), int(m.group(3))
+        _check_inflictable(status, text)
         return "inflict_status", potency, status, count
 
     m = _EFFECT_INFLICT_COUNT.fullmatch(core)
     if m:
         n, status = int(m.group(1)), _norm_status(m.group(2))
+        _check_inflictable(status, text)
         return "inflict_status", 1, status, n
 
     m = _EFFECT_INFLICT_BARE.fullmatch(core)
     if m:
         n, status = int(m.group(1)), _norm_status(m.group(2))
+        _check_inflictable(status, text)
         return "inflict_status", n, status, 1
+
+    m = _EFFECT_GAIN_EXPLICIT.fullmatch(core)
+    if m:
+        status, potency, count = _norm_status(m.group(1)), int(m.group(2)), int(m.group(3))
+        _check_gainable(status, text)
+        return "gain_status", potency, status, count
+
+    m = _EFFECT_GAIN_COUNT.fullmatch(core)
+    if m:
+        n, status = int(m.group(1)), _norm_status(m.group(2))
+        _check_gainable(status, text)
+        return "gain_status", 0, status, n
 
     m = _EFFECT_GAIN_STATUS.fullmatch(core)
     if m:
-        n, status = int(m.group(1)), m.group(2).strip().lower()
-        if status not in SELF_BUFF_STATUSES:
-            raise TriggerParseError(
-                text,
-                f"'{status}' isn't a self-buff resource the engine tracks yet "
-                f"(only {', '.join(s.capitalize() for s in SELF_BUFF_STATUSES)} exist right now, "
-                "custom resources like Strider/Assist Defense/Deathrite are queued separately)",
-            )
+        n, status = int(m.group(1)), _norm_status(m.group(2))
+        _check_gainable(status, text)
         return "gain_status", n, status, 1
 
     if ";" in text:
@@ -492,7 +533,7 @@ def _parse_effect_text(text: str) -> tuple[str, int, str | None, int]:
     raise TriggerParseError(text, "effect phrase not recognized, see the format guide")
 
 
-def parse_trigger_text(text: str) -> tuple[list[Trigger], set[str]]:
+def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
     """Parses a full multi-line trigger block, as pasted into the trigger
     modal. One line is one Trigger (or one skill-flag tag), blank lines
     are ignored.
@@ -617,3 +658,15 @@ def parse_trigger_text(text: str) -> tuple[list[Trigger], set[str]]:
         ))
 
     return triggers, flags
+
+
+def parse_trigger_text(
+    text: str, custom_statuses: dict[str, str] | None = None,
+) -> tuple[list[Trigger], set[str]]:
+    """Parses a trigger block (see _parse_trigger_lines above for the full format). `custom_statuses` maps the slug of each player-made status the owner has to its kind ("buff" or "debuff"), which is what lets lines like 'Gain +2 Pulsation Count' pass."""
+    _active_custom.clear()
+    _active_custom.update(custom_statuses or {})
+    try:
+        return _parse_trigger_lines(text)
+    finally:
+        _active_custom.clear()

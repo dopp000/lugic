@@ -11,6 +11,7 @@ from game.battle import (
     SANITY_PER_COIN_CLASH_WIN, SANITY_CLASH_LOSS, SANITY_PER_HEADS_UNOPPOSED,
     STAGGER_MULTIPLIERS,
 )
+from game.custom_statuses import slugify
 from game.skills import Skill, SkillResult, ClashOutcome, resolve_skill, resolve_round_clash, resolve_triggers
 from game.conditions import Trigger, TriggerContext, parse_trigger_text, TriggerParseError
 from game.character import load_character
@@ -20,7 +21,7 @@ from game.statuses import (
     damage_down_penalty, magnitude_to_hint_tier,
 )
 from game.resistances import DAMAGE_TYPES, ALL_RESISTANCE_TYPES, apply_resistance, parse_resistance_multiplier
-from game.emojis import status_emoji, coin_emoji, coin_roll_emoji, damage_type_emoji, stat_emoji, skill_slot_emoji, hint_emoji, attack_weight_icons, stagger_tier_emoji, stagger_action_emoji
+from game.emojis import status_label, status_emoji, coin_emoji, coin_roll_emoji, damage_type_emoji, stat_emoji, skill_slot_emoji, hint_emoji, attack_weight_icons, stagger_tier_emoji, stagger_action_emoji
 
 LOG_CHANNEL_ID = 1538071557560213595  # #bot-combat-logs
 ADMIN_ROLE_ID = 1468446442430533737  # can manage any fighter, not just their own
@@ -325,7 +326,10 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
             return
 
         try:
-            triggers, flags = parse_trigger_text(self.triggers_input.value or "")
+            triggers, flags = parse_trigger_text(
+                self.triggers_input.value or "",
+                {k: cs.kind for k, cs in getattr(self.target_fighter, "custom_statuses", {}).items()},
+            )
         except TriggerParseError as e:
             await interaction.response.send_message(
                 f"Trigger line error on `{e.line.strip()}`: {e.reason}",
@@ -865,7 +869,7 @@ def apply_incoming_hit(
             target.set_status_instance(new_instance)
             log.append(
                 f"Coin {i + 1}: {target.name} gains {status_emoji(status_name)} "
-                f"{status_name.capitalize()}: {new_instance.potency}/{new_instance.count}"
+                f"{status_label(status_name)}: {new_instance.potency}/{new_instance.count}"
             )
 
         total_damage += coin_total
@@ -1068,8 +1072,15 @@ def apply_turn_end_status_ticks(battle: Battle) -> list[str]:
     nothing visibly happened.
     """
     log: list[str] = []
+    # Player-made statuses with a "turn" lifetime are wiped from EVERY
+    # fighter, since a debuff made by one character sits on another.
+    turn_custom_keys = {
+        k for fi in battle.fighters for k, cs in fi.custom_statuses.items() if cs.lifetime == "turn"
+    }
     for f in battle.fighters:
         for name in ONE_TURN_STATUSES:
+            f.statuses.pop(name, None)
+        for name in turn_custom_keys:
             f.statuses.pop(name, None)
         if f.immobilized_blocked:
             f.statuses.pop("immobilized", None)
@@ -1266,7 +1277,7 @@ def apply_trigger_effects(triggers: list[Trigger], caster: Fighter, target: Figh
                 target.shift_slot_speeds(-added_potency)
             line = (
                 f"Trigger: {target.name} gains {status_emoji(t.status_name)} "
-                f"{t.status_name.replace('_', ' ').title()}: {new_instance.potency}/{new_instance.count}"
+                f"{status_label(t.status_name)}: {new_instance.potency}/{new_instance.count}"
             )
             log.append(_warn_wrap(line, t.hint_tier) if t.hint_tier >= 2 else line)
         elif t.effect_type == "sanity_gain":
@@ -1279,7 +1290,7 @@ def apply_trigger_effects(triggers: list[Trigger], caster: Fighter, target: Figh
             caster.set_status_instance(new_instance)
             line = (
                 f"Trigger: {caster.name} gains {status_emoji(t.status_name)} "
-                f"{t.status_name.capitalize()}: {new_instance.potency}/{new_instance.count}"
+                f"{status_label(t.status_name)}: {new_instance.potency}/{new_instance.count}"
             )
             log.append(_warn_wrap(line, t.hint_tier) if t.hint_tier >= 2 else line)
     return log
@@ -1461,6 +1472,7 @@ class BattleCog(commands.GroupCog, name="battle"):
     @app_commands.describe(
         fighter="Fighter name",
         status_name="A status to set, or 'none' to clear all statuses",
+        custom_status="A player-made status to set instead (pick from the list)",
         potency="Potency for status_name",
         count="Count for status_name",
         hp="Set current HP",
@@ -1482,6 +1494,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         interaction: discord.Interaction,
         fighter: str,
         status_name: app_commands.Choice[str] | None = None,
+        custom_status: str | None = None,
         potency: int = 0,
         count: int = 0,
         hp: int | None = None,
@@ -1618,6 +1631,20 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         changes = []
 
+        if custom_status is not None:
+            key = slugify(custom_status)
+            known = {
+                k: cs for fi in battle.fighters for k, cs in fi.custom_statuses.items()
+            }
+            if key not in known:
+                await interaction.response.send_message(
+                    f"No custom status called '{custom_status}' in this battle.", ephemeral=True
+                )
+                return
+            custom_inst = StatusInstance(name=key, potency=potency, count=count)
+            target_fighter.set_status_instance(custom_inst)
+            changes.append(f"{status_emoji(key)} {known[key].name} -> {potency}/{count}")
+
         if status_name is not None:
             if status_name.value == "none":
                 target_fighter.statuses.clear()
@@ -1688,6 +1715,21 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         await interaction.response.send_message(f"Updated {target_fighter.name}: {', '.join(changes)}.")
         await sync_battle_message(self.bot, battle)
+
+    @setstatus.autocomplete("custom_status")
+    async def setstatus_custom_status_autocomplete(self, interaction: discord.Interaction, current: str):
+        battle = self.battles.get(interaction.channel_id)
+        if battle is None:
+            return []
+        seen: dict[str, str] = {}
+        for fi in battle.fighters:
+            for k, cs in fi.custom_statuses.items():
+                seen.setdefault(k, cs.name)
+        cur = current.lower()
+        return [
+            app_commands.Choice(name=name, value=name)
+            for k, name in seen.items() if cur in name.lower()
+        ][:25]
 
     @app_commands.command(
         name="addskill",

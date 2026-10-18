@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 from game.resistances import DEFAULT_RESISTANCES, migrate_percent_to_multiplier
 from game.skills import Skill
+from game.custom_statuses import CustomStatus
 
 CHARACTERS_DIR = "data/characters"
 
@@ -46,6 +47,11 @@ class Character:
     # joins a new battle, so a skill only has to be taught once, ever.
     skills: dict[str, Skill] = field(default_factory=dict)
 
+    # Player-made statuses (e.g. a "Pulsation" resource), keyed by slug.
+    # Per character, copied onto the Fighter when it joins a battle. See
+    # game/custom_statuses.py.
+    custom_statuses: dict[str, CustomStatus] = field(default_factory=dict)
+
     def add_skill(self, skill: Skill):
         self.skills[skill.name.lower()] = skill
 
@@ -75,6 +81,7 @@ class Character:
             "stagger_thresholds": self.stagger_thresholds,
             "stagger_tiers_enabled": self.stagger_tiers_enabled,
             "skills": {name: s.to_dict() for name, s in self.skills.items()},
+            "custom_statuses": {k: c.to_dict() for k, c in self.custom_statuses.items()},
         }
 
     @classmethod
@@ -110,6 +117,10 @@ class Character:
         # as speed_min/speed_max below.
         data["skills"] = {
             name: Skill.from_dict(sd) for name, sd in data.get("skills", {}).items()
+        }
+
+        data["custom_statuses"] = {
+            k: CustomStatus.from_dict(cd) for k, cd in data.get("custom_statuses", {}).items()
         }
 
         # Forward-compatible: drop any keys that no longer exist as real

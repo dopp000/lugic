@@ -256,6 +256,20 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
     dropped at combat start. It is removed at the end of the round it blocked.
     If it lands mid-combat it carries into next round.
   See `docs/ENGINEERING_NOTES.md#statuses-one-turn-debuffs`.
+- **Custom statuses and resources** (e.g. a "Pulsation" counter): a
+  character can own up to 10, made with `/character addstatus`
+  (name, buff or debuff, persistent or turn-only, optional emoji ID of an
+  emoji the bot can see, description). Anyone who owns the character can
+  make one, every create and remove is posted to the log channel for admins,
+  and `/character removestatus` / `/character statuses` manage them. Use
+  them in trigger lines: `[Turn Start] Gain +2 Pulsation Count`,
+  `Gain Pulsation Potency 2, Count 3`, `Inflict +2 Death Mark Count`,
+  `At 5 Pulsation, ...` as a condition. Buffs are gained by the owner, debuffs
+  are inflicted on enemies. A turn-only status is wiped at every turn end.
+  Admins can place one with `/battle setstatus custom_status`. They do
+  nothing by themselves. Spending them (a `Consume` trigger) and turning
+  total consumed into permanent Potency are the next patches.
+  See `docs/ENGINEERING_NOTES.md#custom-statuses`.
 - Still missing: Offense/Defense Level (and Level Up/Down), Clash Power
   Down, Plus/Minus Coin Drop/Boost, HP Healing Down, Curse, and the matching
   buffs (Power Up, Haste, Protection, Damage Up).

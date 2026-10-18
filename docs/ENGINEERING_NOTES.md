@@ -1579,6 +1579,32 @@ Hooks:
 - Known gap: a Stagger'd fighter also cannot declare yet `all_declared`
   still waits for them. Left alone here.
 
+<a id="custom-statuses"></a>
+### Custom statuses (game/custom_statuses.py)
+
+- `CustomStatus` lives on `Character.custom_statuses` (saved in its JSON)
+  and is deep-copied onto `Fighter.custom_statuses` in `from_character`.
+  A custom status on a fighter is an ordinary `StatusInstance` keyed by its
+  slug, so `apply_status`, `set_status_instance` and the hint tier maths work
+  unchanged. Names cannot shadow built-ins (`RESERVED_NAMES`).
+- Parsing: `parse_trigger_text(text, custom_statuses)` takes a
+  key -> "buff"/"debuff" map for the length of one call (module-level
+  `_active_custom`, reset in `finally`, safe because parsing never awaits).
+  Gain accepts built-in self buffs plus custom buffs, Inflict accepts built-in
+  target statuses plus custom debuffs. Inflict is now validated too, so a
+  typo errors instead of silently making a junk status. New gain forms:
+  `Gain +N X Count` and `Gain X Potency P, Count C`.
+- Emoji: a global registry `CUSTOM_STATUS_EMOJIS` in game/emojis.py, filled
+  on create and on `from_character`. Two characters reusing a name with
+  different emoji means the last registered wins (cosmetic only). The emoji ID
+  is taken as a string (IDs are larger than slash command ints allow) and
+  checked with `client.get_emoji`.
+- A "turn" lifetime custom status is wiped from every fighter at turn end in
+  `apply_turn_end_status_ticks`, since a debuff made by one character sits on
+  another. Persistent ones are never touched.
+- Statuses are deliberately not shown in the battle embed (only hint tiers
+  are), so a custom resource is hidden in the same way.
+
 <a id="statuses-magnitude-to-hint-tier"></a>
 
 Maps a potency*count magnitude to a danger Hint tier (1-3, see

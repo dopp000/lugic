@@ -155,8 +155,28 @@ def emoji_tag(display_name: str, emoji_id: int | None, animated: bool = False) -
     return f"<{prefix}:{display_name}:{emoji_id}>"
 
 
+# Emoji for player-made statuses, filled in when a custom status is
+# created or a Character joins a battle: key -> (emoji_id, animated).
+# Global, so two characters using the same status name with different
+# emoji means the last one registered wins (cosmetic only).
+CUSTOM_STATUS_EMOJIS: dict[str, tuple[int, bool]] = {}
+
+
+def register_custom_status_emoji(cs) -> None:
+    if cs.emoji_id is not None:
+        CUSTOM_STATUS_EMOJIS[cs.key] = (cs.emoji_id, cs.animated)
+
+
+def status_label(status_name: str) -> str:
+    """'slash_fragility' -> 'Slash Fragility', for logs and embeds."""
+    return status_name.replace("_", " ").title()
+
+
 def status_emoji(status_name: str) -> str:
     key = status_name.lower()
+    if key in CUSTOM_STATUS_EMOJIS:
+        eid, animated = CUSTOM_STATUS_EMOJIS[key]
+        return emoji_tag(key.title().replace(" ", "_"), eid, animated)
     # Internal status keys don't always match the emoji's actual name on
     # Discord -- the engine calls this status "evasion" everywhere (it
     # reads better next to poise/charge/counter), but the uploaded emoji
