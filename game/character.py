@@ -186,3 +186,20 @@ def list_characters_by_owner(owner_id: int) -> list[Character]:
         if data.get("owner_id") == owner_id:
             owned.append(Character.from_dict(data))
     return owned
+
+def list_character_summaries() -> list[tuple[str, int | None]]:
+    """(name, owner_id) for every saved character, for autocomplete. Same linear folder scan as list_characters_by_owner."""
+    if not os.path.isdir(CHARACTERS_DIR):
+        return []
+    found = []
+    for filename in os.listdir(CHARACTERS_DIR):
+        if not filename.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(CHARACTERS_DIR, filename)) as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if data.get("name"):
+            found.append((data["name"], data.get("owner_id")))
+    return found

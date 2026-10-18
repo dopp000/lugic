@@ -9,6 +9,7 @@ from game.character import (
     character_exists,
     delete_character,
     list_characters_by_owner,
+    list_character_summaries,
 )
 from game.resistances import ALL_RESISTANCE_TYPES, DAMAGE_TYPES, parse_resistance_multiplier
 from game.emojis import status_emoji, damage_type_emoji, register_custom_status_emoji
@@ -784,6 +785,23 @@ class CharacterCog(commands.GroupCog, name="character"):
             avatar_url=character.avatar_url,
         )
         await interaction.followup.send("Sent.", ephemeral=True)
+
+    async def _character_name_autocomplete(self, interaction: discord.Interaction, current: str):
+        """Suggests your own saved characters (admins see everyone's). See docs/ENGINEERING_NOTES.md#autocomplete."""
+        cur = current.lower()
+        see_all = is_admin(interaction)
+        names = sorted(
+            name for name, owner in list_character_summaries()
+            if cur in name.lower() and (see_all or owner == interaction.user.id)
+        )
+        return [app_commands.Choice(name=n[:100], value=n) for n in names][:25]
+
+    for _command in (
+        view, edit, resistance, addskill, skills, removeskill, editskill,
+        addstatus, statuses, removestatus, delete, say,
+    ):
+        _command.autocomplete("name")(_character_name_autocomplete)
+    del _command
 
 
 async def setup(bot: commands.Bot):

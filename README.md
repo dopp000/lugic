@@ -432,6 +432,14 @@ three. All closed since the last README pass.
 | `combat` | Resolves the round. See Animated Combat Phase. Also where Turn-End status ticks (Burn/Sinking/Charge) and Elimination checks run, once per round. |
 | `end` | Ends the battle. |
 
+**Autocomplete.** Name and number options suggest values as you type: your own fighters
+(`fighter` on declare, undeclare, addskill, removeskill, editskill, removefighter),
+any fighter on skills, setstatus and the Parts commands, enemies (or allies for a
+`[Support]` skill) for `target`, your fighter's own free slots for `slot`, the
+target's slots with Part names and HP for `target_slot`, saved characters for
+`addfighter` and every `/character` `name` (your own, or everyone's for an admin).
+See `docs/ENGINEERING_NOTES.md#autocomplete`.
+
 No `/battle status`; the synced embed (`build_battle_embed`, kept current
 via `sync_battle_message`) already shows everything it did. No skip/pass
 action exists; every declared slot needs a real skill, and combat won't run

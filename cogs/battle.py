@@ -15,7 +15,7 @@ from game.custom_statuses import slugify
 from game.supermoves import describe_profile, supermove_profile
 from game.skills import Skill, SkillResult, ClashOutcome, resolve_skill, resolve_round_clash, resolve_triggers
 from game.conditions import Trigger, TriggerContext, parse_trigger_text, TriggerParseError
-from game.character import load_character
+from game.character import load_character, list_character_summaries
 from game.statuses import (
     StatusInstance, decay_after_trigger, apply_status, INFLICTABLE_STATUSES,
     SETTABLE_STATUSES, ONE_TURN_STATUSES, POTENCY_TURN_STATUSES, fragility_bonus,
@@ -3692,6 +3692,167 @@ class BattleCog(commands.GroupCog, name="battle"):
             await interaction.response.send_message("Battle ended.")
         else:
             await interaction.response.send_message("No active battle here.", ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # Autocomplete: suggest fighter, target, skill, slot and character names
+    # as you type. Registered here, after every command exists, through two
+    # small factories. See docs/ENGINEERING_NOTES.md#autocomplete.
+    # ------------------------------------------------------------------
+
+    def _fighter_choices(
+        self, interaction: discord.Interaction, current: str, *, manage_only: bool, living_only: bool = False,
+    ) -> list[app_commands.Choice[str]]:
+        battle = self.battles.get(interaction.channel_id)
+        if battle is None:
+            return []
+        cur = current.lower()
+        out = []
+        for f in battle.fighters:
+            if cur not in f.name.lower():
+                continue
+            if manage_only and not _can_manage_fighter(interaction, f):
+                continue
+            if living_only and (not f.is_alive() or f.eliminated):
+                continue
+            out.append(app_commands.Choice(name=f.name[:100], value=f.name))
+        return out[:25]
+
+    @declare.autocomplete("target")
+    async def declare_target_autocomplete(self, interaction: discord.Interaction, current: str):
+        """Enemies for an attack, allies (and yourself) for a Support skill."""
+        battle = self.battles.get(interaction.channel_id)
+        if battle is None:
+            return []
+        caster = battle.get_fighter(getattr(interaction.namespace, "fighter", None) or "")
+        skill = caster.get_skill(getattr(interaction.namespace, "skill_name", None) or "") if caster else None
+        cur = current.lower()
+        out = []
+        for f in battle.fighters:
+            if not f.is_alive() or f.eliminated or cur not in f.name.lower():
+                continue
+            if caster is not None:
+                support = skill is not None and "support" in skill.tags
+                if support != (f.side == caster.side):
+                    continue
+                if not support and f is caster:
+                    continue
+            out.append(app_commands.Choice(name=f.name[:100], value=f.name))
+        return out[:25]
+
+    @declare.autocomplete("slot")
+    async def declare_slot_autocomplete(self, interaction: discord.Interaction, current: str):
+        battle = self.battles.get(interaction.channel_id)
+        caster = battle.get_fighter(getattr(interaction.namespace, "fighter", None) or "") if battle else None
+        if caster is None:
+            return []
+        out = []
+        for n in range(1, caster.skill_slots + 1):
+            if caster.slot_disabled(n):
+                continue
+            label = f"Slot {n} (Speed {caster.slot_speed(n)})"
+            action = caster.declared_actions.get(n)
+            if action is not None:
+                label += f" - declared: {action.skill.name}"
+            if current and not str(n).startswith(current.strip()):
+                continue
+            out.append(app_commands.Choice(name=label[:100], value=n))
+        return out
+
+    @declare.autocomplete("target_slot")
+    async def declare_target_slot_autocomplete(self, interaction: discord.Interaction, current: str):
+        battle = self.battles.get(interaction.channel_id)
+        target = battle.get_fighter(getattr(interaction.namespace, "target", None) or "") if battle else None
+        if target is None:
+            return []
+        out = []
+        for n in range(1, target.skill_slots + 1):
+            label = f"Slot {n} (Speed {target.slot_speed(n)})"
+            part = target.parts.get(n)
+            if part is not None:
+                label += f" - {part.name} " + ("(broken)" if part.broken else f"{part.hp}/{part.max_hp}")
+            if current and not str(n).startswith(current.strip()):
+                continue
+            out.append(app_commands.Choice(name=label[:100], value=n))
+        return out
+
+    @undeclare.autocomplete("slot")
+    async def undeclare_slot_autocomplete(self, interaction: discord.Interaction, current: str):
+        battle = self.battles.get(interaction.channel_id)
+        caster = battle.get_fighter(getattr(interaction.namespace, "fighter", None) or "") if battle else None
+        if caster is None:
+            return []
+        return [
+            app_commands.Choice(name=f"Slot {n}: {a.skill.name}"[:100], value=n)
+            for n, a in sorted(caster.declared_actions.items())
+            if not current or str(n).startswith(current.strip())
+        ]
+
+    @declare.autocomplete("skill_name")
+    async def declare_skill_name_autocomplete(self, interaction: discord.Interaction, current: str):
+        return await self._skill_name_autocomplete_choices(interaction, current)
+
+    @addfighter.autocomplete("character_name")
+    async def addfighter_character_autocomplete(self, interaction: discord.Interaction, current: str):
+        battle = self.battles.get(interaction.channel_id)
+        cur = current.lower()
+        rows = [
+            (name, owner) for name, owner in list_character_summaries()
+            if cur in name.lower() and (battle is None or battle.get_fighter(name) is None)
+        ]
+        rows.sort(key=lambda r: (r[1] != interaction.user.id, r[0].lower()))
+        return [app_commands.Choice(name=n[:100], value=n) for n, _ in rows][:25]
+
+    def _part_slot_choices(self, interaction: discord.Interaction, current: str, *, only_parts: bool):
+        battle = self.battles.get(interaction.channel_id)
+        target = battle.get_fighter(getattr(interaction.namespace, "fighter", None) or "") if battle else None
+        if target is None:
+            return []
+        out = []
+        for n in range(1, target.skill_slots + 1):
+            part = target.parts.get(n)
+            if only_parts and part is None:
+                continue
+            label = f"Slot {n}" + (f" - {part.name}" if part else "")
+            if current and not str(n).startswith(current.strip()):
+                continue
+            out.append(app_commands.Choice(name=label[:100], value=n))
+        return out
+
+    @addpart.autocomplete("slot")
+    async def addpart_slot_autocomplete(self, interaction: discord.Interaction, current: str):
+        return self._part_slot_choices(interaction, current, only_parts=False)
+
+    @removepart.autocomplete("slot")
+    async def removepart_slot_autocomplete(self, interaction: discord.Interaction, current: str):
+        return self._part_slot_choices(interaction, current, only_parts=True)
+
+    @repairpart.autocomplete("slot")
+    async def repairpart_slot_autocomplete(self, interaction: discord.Interaction, current: str):
+        return self._part_slot_choices(interaction, current, only_parts=True)
+
+    async def _fighter_ac_manage(self, interaction: discord.Interaction, current: str):
+        return self._fighter_choices(interaction, current, manage_only=True)
+
+    async def _fighter_ac_all(self, interaction: discord.Interaction, current: str):
+        return self._fighter_choices(interaction, current, manage_only=False)
+
+    # Command objects are plain class attributes here, so the `fighter`
+    # option of each one can be pointed at the right suggestion method.
+    for _command, _suggest in (
+        (declare, _fighter_ac_manage),
+        (undeclare, _fighter_ac_manage),
+        (addskill, _fighter_ac_manage),
+        (removeskill, _fighter_ac_manage),
+        (editskill, _fighter_ac_manage),
+        (removefighter, _fighter_ac_manage),
+        (skills, _fighter_ac_all),
+        (setstatus, _fighter_ac_all),
+        (addpart, _fighter_ac_all),
+        (removepart, _fighter_ac_all),
+        (repairpart, _fighter_ac_all),
+    ):
+        _command.autocomplete("fighter")(_suggest)
+    del _command, _suggest
 
 
 async def setup(bot: commands.Bot):

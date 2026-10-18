@@ -575,7 +575,8 @@ COMMANDS: list[HelpEntry] = [
             "4. Each round everyone uses `/battle declare` to lock in skills, in secret.\n"
             "5. `/battle combat` resolves the round once everyone has declared. Speeds "
             "reroll every round.\n"
-            "6. Repeat 4 and 5 until one side is done, then `/battle end`."
+            "6. Repeat 4 and 5 until one side is done, then `/battle end`.\n"
+            "Most name and slot options suggest choices as you type."
         ),
     ),
     HelpEntry(

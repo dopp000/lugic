@@ -1946,3 +1946,20 @@ user was killed or Staggered mid-round still costs what it cost, by design.
 `commands` key). The command names and descriptions were checked against the
 registered slash commands at the time of writing, but the text is hand-written:
 renaming or adding a command means editing it by hand.
+
+<a id="autocomplete"></a>
+## Autocomplete
+
+Suggestions are read from live state, never cached. `BattleCog._fighter_choices`
+filters the channel's fighters (optionally to ones the caller may manage). The
+`declare` options read the other options already typed from
+`interaction.namespace`: `target` flips to allies when the chosen skill has the
+`support` tag, `target_slot` labels slots with Part name and HP, `slot` hides
+slots whose Part is broken. The per-command wiring is a loop at the bottom of
+the `BattleCog` class body: discord.py rejects a nested function as a callback
+because it counts parameters from `__qualname__`, so the three suggestion
+methods have to be real methods of the class. `/character` uses one method for
+every `name` option, listing the caller's own characters (an admin sees all) via
+`list_character_summaries`. `/character create` is deliberately left out, since
+that name is new. Slash command option VALUES are still validated by each
+command, autocomplete is only a convenience.
