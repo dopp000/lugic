@@ -378,9 +378,14 @@ logic. Part names and HP show under the fighter in the battle embed. See
   form rejects anything higher (admins are exempt). Only admins change HP,
   Speed, Power and Stagger. A character that breaks the rules cannot join a
   battle (an admin can still add it, with a note), `/character recheck` DMs
-  every owner what to fix, and `/character exempt` is for NPCs. Not built yet:
-  status ranks, resistance dials, defense archetypes, Supermove slots and
-  Passive Points, plus the player request and approval flow. See
+  every owner what to fix, and `/character exempt` is for NPCs. Supermoves
+  (up to 3) cost BP too: Low 10 / Mid 16 / High 22 by damage, plus 1 to 6 for
+  demanding timings, minus an admin-set drawback (`/character drawback`). Only
+  a Supermove can use the strongest tags (Turn Start, Clash Win, Unclashable
+  and so on), only admins add Supermoves for now, and they skip the Power
+  ceiling but cannot hit for more than about 200. Not built yet:
+  status ranks, resistance dials, defense archetypes and Passive Points,
+  plus the player request and approval flow. See
   `docs/ENGINEERING_NOTES.md#build-points`.
 - Still missing: Offense/Defense Level (and Level Up/Down), Clash Power
   Down, Plus/Minus Coin Drop/Boost, HP Healing Down, Curse.

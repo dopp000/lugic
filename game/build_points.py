@@ -6,12 +6,21 @@ the top. The design comes from the original wiki guide: a single pool,
 level as a label on the pool's size, and caps that stop one-stat builds.
 
 What this module covers so far: HP, Power, Speed, Stagger tier removal,
-and the Power ceiling on skills. Status ranks, status resistance dials,
-defense archetypes, Supermove slots and Passive Points come later.
+the Power ceiling on skills, and Supermove slots (priced in
+game/supermoves.py). Status ranks, status resistance dials, defense
+archetypes and Passive Points come later.
 """
 
 from dataclasses import dataclass, field
 import math
+
+from game.supermoves import (
+    MAX_SEVERITY as SUPERMOVE_MAX_SEVERITY,
+    MAX_SLOTS as SUPERMOVE_MAX_SLOTS,
+    describe_bp,
+    skill_severity,
+    supermove_bp,
+)
 
 # --- The pool and levels ---------------------------------------------------
 STARTING_BP = 30
@@ -130,6 +139,7 @@ class BuildReport:
     breakdown: dict[str, int]
     problems: list[str] = field(default_factory=list)        # stats and budget
     skill_problems: list[str] = field(default_factory=list)  # skills over the Power ceiling
+    supermove_lines: list[str] = field(default_factory=list)  # how each Supermove was priced
 
     @property
     def ok(self) -> bool:
@@ -160,9 +170,39 @@ def check_build(c) -> BuildReport:
         "Speed": speed_cost(lo, hi),
         "Stagger removal": stagger_cost(c.stagger_tiers_enabled),
     }
+    # Supermove slots (rules in game/supermoves.py). A Supermove is priced by
+    # its damage tier, its timing and any drawback an admin attached to it.
+    supers = [s for s in c.skills.values() if "supermove" in s.tags]
+    drawbacks = getattr(c, "supermove_drawbacks", None) or {}
+    super_problems: list[str] = []
+    super_lines: list[str] = []
+    if supers:
+        super_total = 0
+        any_severe = False
+        for s in supers:
+            tiers = list((drawbacks.get(s.name.lower()) or {}).get("tiers", []))
+            any_severe = any_severe or "severe" in tiers
+            price = supermove_bp(s, tiers)
+            super_total += price.total
+            super_lines.append(f"{s.name}: {describe_bp(s, tiers)}")
+            severity = skill_severity(s)
+            if severity > SUPERMOVE_MAX_SEVERITY:
+                super_problems.append(
+                    f"Supermove '{s.name}' hits for about {severity}, the limit is {SUPERMOVE_MAX_SEVERITY}."
+                )
+        costs["Supermoves"] = super_total
+        if len(supers) > SUPERMOVE_MAX_SLOTS:
+            super_problems.append(
+                f"{len(supers)} Supermoves, but a character can have at most {SUPERMOVE_MAX_SLOTS}."
+            )
+        if any_severe and len(supers) > 1:
+            super_problems.append("A Severe drawback uses up all the Supermove slots, so it must be the only Supermove.")
+
     spent = sum(costs.values())
     report = BuildReport(level=level_for(total), total=total, spent=spent, breakdown=costs)
+    report.supermove_lines = super_lines
     p = report.problems
+    p.extend(super_problems)
 
     if hp < HP_BASE:
         p.append(f"HP {hp} is below the minimum of {HP_BASE}.")
@@ -202,6 +242,8 @@ def check_build(c) -> BuildReport:
         p.append(f"This build costs {spent} BP but only {total} BP are available.")
 
     for skill in c.skills.values():
+        if "supermove" in skill.tags:
+            continue  # priced in BP instead, see game/supermoves.py
         issue = skill_power_problem(c.power, skill.base_power, skill.coin_power)
         if issue:
             report.skill_problems.append(f"Skill '{skill.name}': {issue}")
@@ -211,4 +253,5 @@ def check_build(c) -> BuildReport:
 def build_summary(report: BuildReport) -> str:
     lines = [f"Level {report.level}, {report.spent}/{report.total} BP spent."]
     lines += [f"- {label}: {cost} BP" for label, cost in report.breakdown.items()]
+    lines += [f"  - {text}" for text in report.supermove_lines]
     return "\n".join(lines)

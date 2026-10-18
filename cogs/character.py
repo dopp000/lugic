@@ -579,6 +579,7 @@ class CharacterCog(commands.GroupCog, name="character"):
             return
 
         if character.remove_skill(skill_name):
+            character.supermove_drawbacks.pop(skill_name.strip().lower(), None)
             save_character(character)
             await interaction.response.send_message(
                 f"Removed **{skill_name}** from {character.name}.", ephemeral=True
@@ -895,6 +896,12 @@ class CharacterCog(commands.GroupCog, name="character"):
             text += "\nEverything is within the rules."
         else:
             text += f"\n**To fix:**\n{_problem_lines(report.all_problems(), 12)}"
+        notes = [
+            f"- {k}: {', '.join(t.capitalize() for t in d.get('tiers', []))}" + (f" ({d['note']})" if d.get("note") else "")
+            for k, d in character.supermove_drawbacks.items() if d.get("tiers")
+        ]
+        if notes:
+            text += "\n**Supermove drawbacks:**\n" + "\n".join(notes)
         if character.bp_log:
             recent = character.bp_log[-5:]
             text += "\n**Recent BP changes:**\n" + "\n".join(
@@ -946,6 +953,71 @@ class CharacterCog(commands.GroupCog, name="character"):
         await interaction.response.send_message(msg, ephemeral=True)
         if interaction.user.id != character.owner_id:
             await dm_owner(self.bot, character.owner_id, owner_text)
+
+    @app_commands.command(name="drawback", description="Admin only: attach a drawback to a Supermove so it costs fewer Build Points")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(
+        name="Character",
+        skill_name="The Supermove. Set this before adding the skill if the price would not fit otherwise",
+        first="Drawback size: Minor -2 BP, Moderate -4, Severe -7 (Severe must be the only Supermove)",
+        second="A second Minor or Moderate drawback on the same Supermove (optional)",
+        note="What the drawback is, so it can be checked later",
+    )
+    @app_commands.choices(
+        first=[app_commands.Choice(name=n.capitalize(), value=n) for n in ("none", "minor", "moderate", "severe")],
+        second=[app_commands.Choice(name=n.capitalize(), value=n) for n in ("none", "minor", "moderate")],
+    )
+    async def drawback(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        skill_name: str,
+        first: app_commands.Choice[str],
+        second: app_commands.Choice[str] | None = None,
+        note: str = "",
+    ):
+        if not is_admin(interaction):
+            await interaction.response.send_message("Only an admin can set a drawback.", ephemeral=True)
+            return
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
+            return
+        tiers = [t for t in (first.value, second.value if second else "none") if t != "none"]
+        if "severe" in tiers and len(tiers) > 1:
+            await interaction.response.send_message(
+                "A Severe drawback already takes every slot, so it cannot be combined with another one.",
+                ephemeral=True,
+            )
+            return
+        key = skill_name.strip().lower()
+        existing = character.skills.get(key)
+        if not tiers:
+            character.supermove_drawbacks.pop(key, None)
+            msg = f"Cleared the drawback on {skill_name}."
+        else:
+            character.supermove_drawbacks[key] = {"tiers": tiers, "note": note.strip()}
+            msg = f"{skill_name} now has: {', '.join(t.capitalize() for t in tiers)}" + (f" ({note.strip()})" if note.strip() else "") + "."
+            if existing is None:
+                msg += " The character does not know that skill yet, the drawback will apply once it is added."
+            elif "supermove" not in existing.tags:
+                msg += " That skill is not a Supermove, so this changes nothing yet."
+        save_character(character)
+        report = check_build(character)
+        msg += f"\nNow {report.spent}/{report.total} BP spent."
+        if report.problems and not character.bp_exempt:
+            msg += f"\nThe build is over the rules:\n{_problem_lines(report.problems)}"
+        await interaction.response.send_message(msg[:1900], ephemeral=True)
+        if not character.bp_exempt:
+            await dm_owner(
+                self.bot, character.owner_id,
+                f"An admin changed the drawback on **{character.name}**'s {skill_name}. "
+                f"Now {report.spent}/{report.total} BP spent." + (f"\n{msg.splitlines()[0]}" if note else ""),
+            )
+
+    @drawback.autocomplete("skill_name")
+    async def drawback_skill_name_autocomplete(self, interaction: discord.Interaction, current: str):
+        return await self._skill_name_autocomplete_choices(interaction, current)
 
     @app_commands.command(name="exempt", description="Admin only: skip Build Point checks for a character (NPCs, bosses)")
     @app_commands.default_permissions(manage_guild=True)
@@ -1013,7 +1085,7 @@ class CharacterCog(commands.GroupCog, name="character"):
 
     for _command in (
         view, edit, resistance, addskill, skills, removeskill, editskill,
-        addstatus, statuses, removestatus, delete, say, bp, grantbp, exempt,
+        addstatus, statuses, removestatus, delete, say, bp, grantbp, exempt, drawback,
     ):
         _command.autocomplete("name")(_character_name_autocomplete)
     del _command

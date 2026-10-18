@@ -58,6 +58,9 @@ class Character:
     # (dicts with amount, reason, by, at) that an admin can read back.
     # bp_exempt skips every Build Point check (for NPCs and bosses).
     bp_total: int = 30
+    # Drawbacks an admin attached to Supermoves, keyed by lowercase skill name:
+    # {"tiers": ["minor", "moderate"], "note": "why"}. Each tier gives BP back.
+    supermove_drawbacks: dict = field(default_factory=dict)
     bp_log: list[dict] = field(default_factory=list)
     bp_exempt: bool = False
 
@@ -94,6 +97,7 @@ class Character:
             "bp_total": self.bp_total,
             "bp_log": self.bp_log,
             "bp_exempt": self.bp_exempt,
+            "supermove_drawbacks": self.supermove_drawbacks,
         }
 
     @classmethod

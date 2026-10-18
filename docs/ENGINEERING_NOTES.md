@@ -2051,6 +2051,25 @@ a new status gets an icon.
   note). Characters saved before this patch (flat Speed 10, etc.) are flagged
   until an admin fixes them; `/character recheck` tells their owners.
 - Owner notices go by DM through `dm_owner`, which swallows closed-DM errors.
-- Next: status ranks and resistance dials, defense archetypes, Supermove slots
-  (BP for the slot, Sanity per use) and Passive Points, then the player
-  request/approval flow that replaces admin-only stat edits.
+- Supermove slots: the Sanity cost per use stays (`game/supermoves.py`, top);
+  owning the slot costs BP (same file, bottom section). `supermove_bp(skill,
+  tiers)` = tier price (Low 10 / Mid 16 / High 22 from `skill_severity`, bands at
+  80 and 130) + the single highest timing surcharge (flags +1, per coin +2, per
+  skill +3, clash +4, every-turn +6, they do not stack) - drawback discount
+  (Minor 2, Moderate 4, Severe 7; at most two, Severe alone and only one
+  Supermove). `check_build` adds a "Supermoves" line, a 3-slot limit and a
+  severity cap of 200 (assumption, tune `MAX_SEVERITY`), and skips Supermoves in
+  the Power-ceiling check. Drawbacks are admin-set per skill name in
+  `Character.supermove_drawbacks` ({"tiers": [...], "note": ...}), can be set
+  before the skill exists, follow a rename and are dropped on `removeskill`.
+- Skill form rules (`AddSkillModal.on_submit`): non-admins cannot add a
+  Supermove, and cannot use the Supermove-only tags (`SUPERMOVE_ONLY_TIMINGS`,
+  `SUPERMOVE_ONLY_FLAGS`) on a normal skill. A Supermove going onto a
+  non-exempt saved `Character` is checked on a copy; the save is refused if it
+  creates a new problem (over budget, over the slot or severity limit), even for
+  admins. Skills saved before this change keep working (grandfathered): the tag
+  and Attack Weight rules only apply when a skill is created or edited.
+- Next: base-skill status ranks and the 18 BP-capped resistance dials, defense
+  archetypes, Passive Points, then the player request/approval flow that replaces
+  admin-only stat and Supermove edits. After that: Level clash bonus,
+  Offense/Defense Level, NPC tier presets and Skill Points.

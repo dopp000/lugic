@@ -73,3 +73,130 @@ def describe_profile(profile: SupermoveProfile) -> str:
     if profile.drain:
         text += f", then you lose {profile.drain} Sanity at each turn end for {profile.drain_turns} turns"
     return text
+
+
+# --- Build Point price of owning a Supermove ---------------------------------
+# A character buys Supermove slots with Build Points (game/build_points.py).
+# The Sanity cost above is what each USE costs in battle; this is what the
+# slot costs to own. Every number here is a tuning knob.
+
+MAX_SLOTS = 3          # Supermoves a character can own
+MAX_SEVERITY = 200     # expected damage of one use; players cannot buy more than this
+
+# (minimum expected damage, tier name, BP price). First row that fits wins.
+BP_TIERS = [
+    (130, "High", 22),
+    (80, "Mid", 16),
+    (0, "Low", 10),
+]
+
+# A drawback the admin attaches to a Supermove gives BP back. A slot can hold
+# up to two drawbacks (Minor and/or Moderate), or one Severe on its own.
+DRAWBACK_DISCOUNTS = {"minor": 2, "moderate": 4, "severe": 7}
+MAX_DRAWBACKS_PER_SLOT = 2
+
+# Tags only a Supermove may use: they hand out guaranteed recurring value,
+# hinge on a contested outcome, or skip the opponent's counterplay.
+SUPERMOVE_ONLY_TIMINGS = {
+    "turn_start", "combat_start", "turn_end", "before_use",
+    "clash_win", "clash_lose", "hit_after_clash_win", "hit_after_clash_lose",
+    "on_unopposed_attack", "ally_turn_start", "ally_combat_start",
+}
+SUPERMOVE_ONLY_FLAGS = {"unclashable"}
+
+# Extra BP for the most demanding timing a Supermove uses (only the highest
+# one counts, they do not stack). Anything not listed costs nothing extra.
+SURCHARGE_FLAGS = 1      # [Target Fixed], [Indiscriminate], [Unclashable]
+SURCHARGE_PER_COIN = 2   # coin start, on hit, heads/tails hit, crit, attack end per coin
+SURCHARGE_PER_SKILL = 3  # before use, before attack, attack end, on kill, on stagger ...
+SURCHARGE_CLASH = 4      # clash start/win/lose, hit after clash, unopposed attack, ally reactions
+SURCHARGE_TURN = 6       # turn start, turn end, combat start (fire every turn)
+
+_PER_COIN = {
+    "coin_start", "on_hit", "heads_hit", "tails_hit", "current_coin_attack_end",
+    "heads_attack_end", "tails_attack_end", "on_crit", "on_crit_heads_hit", "on_crit_tails_hit",
+}
+_PER_SKILL = {
+    "before_use", "before_attack", "attack_end", "on_kill", "on_crit_kill",
+    "on_stagger", "tremor_burst", "on_evade", "before_getting_hit",
+}
+_CLASH = {
+    "clash_start", "clash_win", "clash_lose", "hit_after_clash_win",
+    "hit_after_clash_lose", "on_unopposed_attack",
+    "ally_on_hit", "ally_on_crit", "ally_on_kill", "ally_is_hit", "ally_on_stagger",
+}
+_TURN = {"turn_start", "turn_end", "combat_start", "ally_turn_start", "ally_combat_start"}
+_SURCHARGE_FLAG_TAGS = {"target_fixed", "indiscriminate", "unclashable"}
+
+
+@dataclass
+class SupermoveBP:
+    tier: str
+    base: int
+    surcharge: int
+    discount: int
+    total: int
+
+
+def bp_tier(severity: int) -> tuple[str, int]:
+    for minimum, name, price in BP_TIERS:
+        if severity >= minimum:
+            return name, price
+    return BP_TIERS[-1][1], BP_TIERS[-1][2]
+
+
+def timing_surcharge(skill) -> int:
+    """BP added for the most demanding timing or flag this skill uses."""
+    best = 0
+    if set(skill.tags) & _SURCHARGE_FLAG_TAGS:
+        best = SURCHARGE_FLAGS
+    for t in skill.triggers:
+        if t.timing in _TURN:
+            best = max(best, SURCHARGE_TURN)
+        elif t.timing in _CLASH:
+            best = max(best, SURCHARGE_CLASH)
+        elif t.timing in _PER_SKILL:
+            best = max(best, SURCHARGE_PER_SKILL)
+        elif t.timing in _PER_COIN:
+            best = max(best, SURCHARGE_PER_COIN)
+    return best
+
+
+def drawback_discount(tiers) -> int:
+    return sum(DRAWBACK_DISCOUNTS.get(t, 0) for t in tiers)
+
+
+def supermove_bp(skill, tiers=()) -> SupermoveBP:
+    """What owning this Supermove costs in Build Points, after any drawbacks."""
+    tier, base = bp_tier(skill_severity(skill))
+    surcharge = timing_surcharge(skill)
+    discount = drawback_discount(tiers)
+    return SupermoveBP(tier, base, surcharge, discount, max(0, base + surcharge - discount))
+
+
+def supermove_only_tags(skill) -> list[str]:
+    """Names (as written in brackets) of Supermove-only tags this skill uses."""
+    from game.conditions import ALL_TIMING_LOOKUP
+    names = {internal: text for text, internal in reversed(list(ALL_TIMING_LOOKUP.items()))}
+    found = []
+    for t in skill.triggers:
+        if t.timing in SUPERMOVE_ONLY_TIMINGS:
+            label = "[" + names.get(t.timing, t.timing).title() + "]"
+            if label not in found:
+                found.append(label)
+    for flag in sorted(set(skill.tags) & SUPERMOVE_ONLY_FLAGS):
+        label = "[" + flag.title() + "]"
+        if label not in found:
+            found.append(label)
+    return found
+
+
+def describe_bp(skill, tiers=()) -> str:
+    """One plain line: how the BP price was worked out."""
+    p = supermove_bp(skill, tiers)
+    text = f"{p.tier} Supermove {p.base} BP"
+    if p.surcharge:
+        text += f" + {p.surcharge} for its timing"
+    if p.discount:
+        text += f" - {p.discount} for its drawback"
+    return text + f" = {p.total} BP"

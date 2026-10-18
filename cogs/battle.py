@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import difflib
 import random
 import re
@@ -13,12 +14,12 @@ from game.battle import (
     STAGGER_MULTIPLIERS,
 )
 from game.custom_statuses import slugify
-from game.supermoves import describe_profile, supermove_profile
+from game.supermoves import describe_bp, describe_profile, supermove_only_tags, supermove_profile
 from game.trigger_text import describe_trigger, damage_range, friendly_error_text
 from game.recap import RoundRecord, MAX_HISTORY, take_snapshot, build_recap
 from game.skills import Skill, SkillResult, ClashOutcome, resolve_skill, resolve_round_clash, resolve_triggers
 from game.conditions import Trigger, TriggerContext, parse_trigger_text, TriggerParseError
-from game.character import load_character, list_character_summaries
+from game.character import Character, load_character, list_character_summaries
 from game.build_points import check_build, skill_power_problem
 from game.statuses import (
     StatusInstance, decay_after_trigger, apply_status, INFLICTABLE_STATUSES,
@@ -158,6 +159,9 @@ class SkillConfirmView(discord.ui.View):
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.old_skill_name is not None and self.old_skill_name != self.skill.name.lower():
             self.fighter.remove_skill(self.old_skill_name)
+            drawbacks = getattr(self.fighter, "supermove_drawbacks", None)
+            if drawbacks and self.old_skill_name in drawbacks:
+                drawbacks[self.skill.name.lower()] = drawbacks.pop(self.old_skill_name)
         self.fighter.add_skill(self.skill)
         if self.on_saved is not None:
             self.on_saved()
@@ -367,16 +371,6 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
             await interaction.response.send_message("Coins must be between 1 and 4.", ephemeral=True)
             return
 
-        # Power is the ceiling on a skill's numbers (game/build_points.py).
-        # Admins are exempt so they can build enemies and bosses freely.
-        if not _is_admin(interaction) and not getattr(self.target_fighter, "bp_exempt", False):
-            power_issue = skill_power_problem(self.target_fighter.power, base_power, coin_power)
-            if power_issue:
-                await interaction.response.send_message(
-                    f"{power_issue} A higher Power stat raises the limit (an admin sets it).",
-                    ephemeral=True,
-                )
-                return
 
         damage_type = damage_type_raw.strip().lower()
         if damage_type not in DAMAGE_TYPES:
@@ -456,6 +450,67 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
             )
             return
 
+        is_super = "supermove" in flags
+        privileged = _is_admin(interaction) or getattr(self.target_fighter, "bp_exempt", False)
+
+        # Power is the ceiling on a normal skill's numbers (game/build_points.py).
+        # A Supermove is priced in Build Points instead. Admins are exempt so
+        # they can build enemies and bosses freely.
+        if not is_super and not privileged:
+            power_issue = skill_power_problem(self.target_fighter.power, base_power, coin_power)
+            if power_issue:
+                await interaction.response.send_message(
+                    f"{power_issue} A higher Power stat raises the limit (an admin sets it).",
+                    ephemeral=True,
+                )
+                return
+
+        # Supermoves are bought with Build Points, so an admin adds them for now.
+        if is_super and not privileged:
+            await interaction.response.send_message(
+                "A [Supermove] is bought with Build Points, so only an admin can add one. "
+                "Ask an admin to add it to your character.",
+                ephemeral=True,
+            )
+            return
+
+        draft = Skill(
+            name=self.skill_name.value, base_power=base_power, coin_power=coin_power, coins=coins,
+            damage_type=damage_type, coin_statuses=coin_statuses,
+            coin_status_potencies=coin_status_potencies, coin_status_counts=coin_status_counts,
+            triggers=triggers, tags=flags, attack_weight=attack_weight,
+        )
+        if not is_super and not privileged:
+            only = supermove_only_tags(draft)
+            if only:
+                await interaction.response.send_message(
+                    f"{', '.join(only)} can only be used on a [Supermove]. Take it out, or ask an "
+                    "admin to make this a Supermove.",
+                    ephemeral=True,
+                )
+                return
+
+        # A saved character has to stay inside its Build Points. Only Supermoves
+        # change the price of a skill, so only they need this check.
+        old_skill = getattr(self, "existing_skill", None)
+        touches_super = is_super or (old_skill is not None and "supermove" in old_skill.tags)
+        if touches_super and isinstance(self.target_fighter, Character) and not self.target_fighter.bp_exempt:
+            before = {p for p in check_build(self.target_fighter).all_problems()}
+            trial = copy.deepcopy(self.target_fighter)
+            if old_skill is not None:
+                trial.skills.pop(old_skill.name.lower(), None)
+            trial.skills[draft.name.lower()] = draft
+            fresh = [p for p in check_build(trial).all_problems() if p not in before]
+            if fresh:
+                await interaction.response.send_message(
+                    f"{self.target_fighter.name} cannot take this skill:\n"
+                    + "\n".join(f"- {p}" for p in fresh[:6])
+                    + "\nGrant more Build Points with /character grantbp, set a drawback first with "
+                    "/character drawback, or change the skill.",
+                    ephemeral=True,
+                )
+                return
+
         skill = Skill(
             name=self.skill_name.value,
             base_power=base_power,
@@ -473,6 +528,9 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
         preview_text = self._preview_header(skill) + "\n" + _skill_preview_text(
             skill, getattr(self.target_fighter, "custom_statuses", None)
         )
+        if is_super:
+            drawback = (getattr(self.target_fighter, "supermove_drawbacks", None) or {}).get(skill.name.lower(), {})
+            preview_text += f"\nBuild Points: {describe_bp(skill, drawback.get('tiers', []))}"
         view = self._build_confirm_view(skill, preview_text)
         await interaction.response.send_message(preview_text, view=view, ephemeral=True)
 
