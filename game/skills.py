@@ -206,7 +206,7 @@ def resolve_skill(
                 t for t in skill.triggers
                 if t.coin_index == coin_index
                 and t.timing == "coin_start"
-                and evaluate_condition(t.condition, context)
+                and evaluate_condition(t.condition, context, skill)
                 and pay_cost(t, context)
             ]
             power += sum(effective_value(t, context) for t in coin_start_fired if t.effect_type == "bonus_power")
@@ -261,7 +261,7 @@ def resolve_skill(
                     continue
                 if t.effect_type not in POST_HIT_EFFECTS:
                     continue
-                if evaluate_condition(t.condition, context) and pay_cost(t, context):
+                if evaluate_condition(t.condition, context, skill) and pay_cost(t, context):
                     fired_triggers.append(t)
 
         results.append(CoinResult(
@@ -286,7 +286,7 @@ def resolve_triggers(
         sources += [p.triggers for p in getattr(context.caster, "passive_skills", None) or []]
     fired = [
         t for triggers in sources for t in triggers
-        if t.timing == timing and evaluate_condition(t.condition, context) and pay_cost(t, context)
+        if t.timing == timing and evaluate_condition(t.condition, context, skill) and pay_cost(t, context)
     ]
 
     bonus_power = sum(effective_value(t, context) for t in fired if t.effect_type == "bonus_power")

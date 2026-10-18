@@ -56,6 +56,13 @@ CONDITION_EXAMPLES = [
     "If the target has 3+ Burn,",
     "If the target is an ally,",
     "If this unit's Sanity is 20+,",
+    "If this unit's HP is 50% or less,",
+    "If the target's HP is 30% or more,",
+    "If the target's Sanity is -10 or less,",
+    "If this unit's Speed is 3+ higher than the target's,",
+    "If the target is Weak to this skill's damage type,",
+    "If the target has 3+ negative effects,",
+    "If the target is using a Defense Skill,",
     "At 10+ Speed,",
     "At 5+ Poise,",
     "If this unit is Low Morale,",
@@ -84,7 +91,21 @@ def _describe_condition(t: Trigger, names) -> str:
             return f"you have {c.min_potency}+ {s} Potency"
         return f"you have {s}"
     if c.type == "caster_sanity":
-        return f"your Sanity is {c.value}+"
+        return f"your Sanity is {c.value}{'+' if c.comparison == 'gte' else ' or less'}"
+    if c.type == "target_sanity":
+        return f"the target's Sanity is {c.value}{'+' if c.comparison == 'gte' else ' or less'}"
+    if c.type == "caster_hp_pct":
+        return f"your HP is {c.value}% or {'more' if c.comparison == 'gte' else 'less'}"
+    if c.type == "speed_diff":
+        if c.comparison == "gte":
+            return f"your slot is {c.value}+ Speed higher than the target's"
+        return f"your slot is {-c.value}+ Speed lower than the target's"
+    if c.type == "target_affinity":
+        return f"the target is {c.status_name.title()} to this skill's damage type"
+    if c.type == "target_negative_count":
+        return f"the target has {c.value}+ different negative effects"
+    if c.type == "target_defending":
+        return "the target is using a Defense Skill"
     if c.type == "caster_speed_at_least":
         return f"your slot Speed is {c.value}+"
     if c.type == "speed_faster":

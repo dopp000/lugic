@@ -2211,3 +2211,22 @@ a new status gets an icon.
   `/battle combat`. Not allowed with Consume or on power effects.
 - `(N% chance)` (`Trigger.chance`) is rolled inside `pay_cost` after the per-turn check and before the Consume
   cost, so a miss neither spends nor counts toward the per-turn limit. Range 1 to 99.
+
+<a id="conditions-patch-3"></a>
+## New conditions and slot Speed
+
+- New `Condition` types: `caster_hp_pct` (the target one, `target_hp_pct`, now has a phrase), `target_sanity`,
+  `speed_diff`, `target_affinity` (`status_name` "weak" or "fatal"), `target_negative_count`,
+  `target_defending`. `caster_sanity` now also takes `N or less` / `N or more`, negatives included.
+- Bug fixed: the clash, unopposed and Support contexts never filled `caster_slot_speed` /
+  `target_slot_speed`, so `At N+ Speed` and `faster than the target's` could not fire there. They are filled now.
+- `evaluate_condition(condition, context, skill=None)`: only Weak/Fatal reads `skill` (its `damage_type`). The
+  three callers in `game/skills.py` pass the skill being used; the passive sweep and Hint check pass nothing,
+  so Weak/Fatal is false there.
+- Weak = target resistance for the skill's damage type above 1.0, Fatal = `FATAL_AT` (1.5) or more. It uses the
+  fighter's own resistances, not a Part's, because the context has no target slot.
+- Negative effects: counts how many of `TARGET_STATUSES` the target has active (count or potency above 0).
+  Custom statuses are not counted.
+- Defense Skill: true if any of the target's declared actions carries a tag in `DEFENSE_SKILL_TAGS`.
+- Not done: coin position and coin face conditions. A coin line already names its coin with `:CoinN:` and the
+  heads/tails timings cover face, so they would only repeat what the line can already say.

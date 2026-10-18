@@ -19,7 +19,16 @@ CONDITION_TYPES = [
     "always", "target_status", "target_hp_pct", "caster_sanity",
     "caster_status", "first_hit_of_round", "speed_faster", "caster_speed_at_least",
     "caster_morale", "target_morale", "target_is_ally", "target_is_enemy",
+    "caster_hp_pct", "target_sanity", "speed_diff", "target_affinity",
+    "target_negative_count", "target_defending",
 ]
+
+# Skill tags that count as a Defense Skill for "If the target is using a Defense Skill".
+DEFENSE_SKILL_TAGS = {"guard", "evade", "counter", "clashable_guard", "clashable_counter"}
+
+# A resistance multiplier above 1.0 is Weak, this much or more is Fatal.
+WEAK_ABOVE = 1.0
+FATAL_AT = 1.5
 
 EFFECT_TYPES = [
     "bonus_power", "bonus_coin_power", "bonus_damage_pct", "bonus_clash_power", "bonus_final_power",
@@ -276,10 +285,11 @@ class TriggerContext:
     target_slot_speed: int = 0
 
 
-def evaluate_condition(condition: Condition, context: TriggerContext) -> bool:
+def evaluate_condition(condition: Condition, context: TriggerContext, skill=None) -> bool:
     """Pure evaluation, no side effects. Safe to call speculatively (e.g.
     for Hint display) against a target the caster hasn't actually
-    declared on yet.
+    declared on yet. `skill` is the skill being used, only the Weak/Fatal
+    check needs it (to know the damage type); without it that check is False.
     """
     if condition.type == "always":
         return True
@@ -332,6 +342,50 @@ def evaluate_condition(condition: Condition, context: TriggerContext) -> bool:
 
     if condition.type == "caster_speed_at_least":
         return context.caster_slot_speed >= condition.value
+
+    if condition.type == "caster_hp_pct":
+        if context.caster.max_hp <= 0:
+            return False
+        pct = (context.caster.hp / context.caster.max_hp) * 100
+        return COMPARISONS[condition.comparison](pct, condition.value)
+
+    if condition.type == "target_sanity":
+        if context.target is None:
+            return False
+        return COMPARISONS[condition.comparison](context.target.sanity, condition.value)
+
+    if condition.type == "speed_diff":
+        if context.target is None:
+            return False
+        return COMPARISONS[condition.comparison](
+            context.caster_slot_speed - context.target_slot_speed, condition.value
+        )
+
+    if condition.type == "target_affinity":
+        if context.target is None or skill is None:
+            return False
+        mult = context.target.resistances.get(skill.damage_type, 1.0)
+        if condition.status_name == "fatal":
+            return mult >= FATAL_AT
+        return mult > WEAK_ABOVE
+
+    if condition.type == "target_negative_count":
+        if context.target is None:
+            return False
+        active = 0
+        for name in TARGET_STATUSES:
+            st = context.target.get_status(name)
+            if st is not None and (st.count > 0 or st.potency > 0):
+                active += 1
+        return active >= condition.value
+
+    if condition.type == "target_defending":
+        if context.target is None:
+            return False
+        return any(
+            DEFENSE_SKILL_TAGS & set(a.skill.tags)
+            for a in context.target.declared_actions.values()
+        )
 
     return False
 
@@ -525,6 +579,24 @@ _COND_CASTER_SANITY = re.compile(r"if this unit'?s sanity is (\d+)\+,?\s*(.*)", 
 _COND_MORALE = re.compile(
     r"if (this unit|the target) is (low morale|panic(?:ked)?),?\s*(.*)", re.IGNORECASE
 )
+_COND_HP = re.compile(
+    r"if (this unit|the target)'?s? hp is (\d+)% or (more|less),?\s*(.*)", re.IGNORECASE
+)
+_COND_SANITY_ANY = re.compile(
+    r"if (this unit|the target)'?s? sanity is (-?\d+)(\+| or more| or less),?\s*(.*)", re.IGNORECASE
+)
+_COND_SPEED_DIFF = re.compile(
+    r"if this unit'?s speed is (\d+)\+ (higher|lower) than the target'?s,?\s*(.*)", re.IGNORECASE
+)
+_COND_AFFINITY = re.compile(
+    r"if the target is (weak|fatal) to (?:this|the) skill'?s damage type,?\s*(.*)", re.IGNORECASE
+)
+_COND_NEGATIVE = re.compile(
+    r"if the target has (\d+)\+ (?:different )?negative effects?,?\s*(.*)", re.IGNORECASE
+)
+_COND_DEFENDING = re.compile(
+    r"if the target is using an? defen[cs]e skill,?\s*(.*)", re.IGNORECASE
+)
 _COND_AT_N_THING = re.compile(r"at (\d+)\+ ([a-z]+)(?: (potency|count))?,?\s*(.*)", re.IGNORECASE)
 # Multi-word (custom) status names need the comma to know where the name stops.
 _COND_AT_N_THING_COMMA = re.compile(r"at (\d+)\+? ([a-z]+(?: [a-z]+)*?),\s*(.*)", re.IGNORECASE)
@@ -657,6 +729,49 @@ def _parse_condition_and_effect_text(text: str) -> tuple[Condition, str]:
     m = _COND_SPEED_FASTER.match(text)
     if m:
         return Condition(type="speed_faster"), m.group(1)
+
+    m = _COND_SPEED_DIFF.match(text)
+    if m:
+        n = int(m.group(1))
+        if not 1 <= n <= 99:
+            raise TriggerParseError(text, "The Speed difference must be between 1 and 99.")
+        if m.group(2).lower() == "higher":
+            return Condition(type="speed_diff", comparison="gte", value=n), m.group(3)
+        return Condition(type="speed_diff", comparison="lte", value=-n), m.group(3)
+
+    m = _COND_HP.match(text)
+    if m:
+        who, pct, direction, rest = m.groups()
+        pct = int(pct)
+        if not 0 <= pct <= 100:
+            raise TriggerParseError(text, "An HP percentage must be between 0 and 100.")
+        ctype = "caster_hp_pct" if who.lower() == "this unit" else "target_hp_pct"
+        return Condition(type=ctype, comparison="gte" if direction.lower() == "more" else "lte", value=pct), rest
+
+    m = _COND_SANITY_ANY.match(text)
+    if m:
+        who, n, direction, rest = m.groups()
+        n = int(n)
+        if not -45 <= n <= 45:
+            raise TriggerParseError(text, "Sanity only goes from -45 to 45, so the number must be in that range.")
+        ctype = "caster_sanity" if who.lower() == "this unit" else "target_sanity"
+        cmp_ = "lte" if direction.lower().endswith("less") else "gte"
+        return Condition(type=ctype, comparison=cmp_, value=n), rest
+
+    m = _COND_AFFINITY.match(text)
+    if m:
+        return Condition(type="target_affinity", status_name=m.group(1).lower()), m.group(2)
+
+    m = _COND_NEGATIVE.match(text)
+    if m:
+        n = int(m.group(1))
+        if not 1 <= n <= len(TARGET_STATUSES):
+            raise TriggerParseError(text, f"The number of negative effects must be between 1 and {len(TARGET_STATUSES)}.")
+        return Condition(type="target_negative_count", value=n), m.group(2)
+
+    m = _COND_DEFENDING.match(text)
+    if m:
+        return Condition(type="target_defending"), m.group(1)
 
     m = _COND_TARGET_STATUS_ANY.match(text)
     if m:

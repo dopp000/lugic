@@ -2985,6 +2985,7 @@ class BattleCog(commands.GroupCog, name="battle"):
             sup_context = TriggerContext(
                 caster=sup_caster, target=sup_ally, battle=battle, ally=sup_ally,
                 caster_slot_speed=sup_caster.slot_speed(e["slot"]),
+                target_slot_speed=sup_ally.slot_speed(e.get("target_slot") or 0),
             )
             sup_skill, sup_pre = _resolve_pre_roll_chain(e["skill"], sup_context, PRE_ROLL_SOLO_TIMINGS)
             sup_result = resolve_skill(sup_skill, sup_caster.heads_chance(), sup_context)
@@ -3268,13 +3269,17 @@ class BattleCog(commands.GroupCog, name="battle"):
             await render(live_header)
             await asyncio.sleep(0.3)
 
+            speed_a = fighter_a.slot_speed(entry_a["slot"])
+            speed_b = fighter_b.slot_speed(entry_b["slot"])
             context_a = TriggerContext(
                 caster=fighter_a, target=fighter_b, battle=battle,
                 is_first_hit_of_round=not first_action_done,
+                caster_slot_speed=speed_a, target_slot_speed=speed_b,
             )
             context_b = TriggerContext(
                 caster=fighter_b, target=fighter_a, battle=battle,
                 is_first_hit_of_round=not first_action_done,
+                caster_slot_speed=speed_b, target_slot_speed=speed_a,
             )
             # Full pre-roll chain for both sides -- see PRE_ROLL_CLASH_TIMINGS / _resolve_pre_roll_chain above for firing order and the documented... See docs/ENGINEERING_NOTES.md#battle-comment-1802.
             skill_a, pre_roll_post_hit_a = _resolve_pre_roll_chain(
@@ -3583,6 +3588,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                 context = TriggerContext(
                     caster=fighter, target=target, battle=battle,
                     is_first_hit_of_round=not first_action_done,
+                    caster_slot_speed=fighter.slot_speed(entry["slot"]),
+                    target_slot_speed=target.slot_speed(entry.get("target_slot") or 0),
                 )
 
                 # Full pre-roll chain -- see PRE_ROLL_SOLO_TIMINGS / _resolve_pre_roll_chain above. See docs/ENGINEERING_NOTES.md#battle-comment-2015.
