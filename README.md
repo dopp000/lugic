@@ -296,6 +296,13 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   Panicked. Example:
   `:Coin1: [On Hit] If this unit is Panicked, Inflict +3 Sinking Count`.
   See `docs/ENGINEERING_NOTES.md#panic-and-low-morale`.
+- **Healing (self only for now)**: `Heal 8 HP` and `Heal 10% max HP` work in
+  any trigger line and any timing, e.g. `[Turn Start] Heal 5% max HP` or
+  `:Coin1: [On Hit] Consume 2 Pulsation: Heal 6 HP`. Healing stops at max HP
+  and does not work on a downed or eliminated fighter. Healing an ally or a
+  target waits for the `[Ally ...]` trigger prefix, because `/battle declare`
+  only allows targeting enemies. Heal boosts and HP Healing Down are not
+  built. See `docs/ENGINEERING_NOTES.md#healing`.
 - Still missing: Offense/Defense Level (and Level Up/Down), Clash Power
   Down, Plus/Minus Coin Drop/Boost, HP Healing Down, Curse, and the matching
   buffs (Power Up, Haste, Protection, Damage Up).

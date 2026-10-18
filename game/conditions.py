@@ -20,7 +20,7 @@ CONDITION_TYPES = [
     "caster_morale", "target_morale",
 ]
 
-EFFECT_TYPES = ["bonus_power", "bonus_coin_power", "inflict_status", "gain_status", "sanity_gain"]
+EFFECT_TYPES = ["bonus_power", "bonus_coin_power", "inflict_status", "gain_status", "sanity_gain", "heal"]
 
 COMPARISONS = {
     "gte": lambda a, b: a >= b,
@@ -325,6 +325,9 @@ class Trigger:
     scale_status: str | None = None
     scale_per: int = 0
     scale_basis: str = "potency"
+    # heal effect: effect_value is the amount, heal_percent says it is a
+    # percentage of the caster's max HP instead of flat HP.
+    heal_percent: bool = False
 
     def to_dict(self) -> dict:
         """Used so a Skill carrying this Trigger can be saved to a
@@ -350,6 +353,7 @@ class Trigger:
             "scale_status": self.scale_status,
             "scale_per": self.scale_per,
             "scale_basis": self.scale_basis,
+            "heal_percent": self.heal_percent,
         }
 
     @classmethod
@@ -438,6 +442,7 @@ _EFFECT_INFLICT_EXPLICIT = re.compile(
 _EFFECT_INFLICT_COUNT = re.compile(r"inflict \+(\d+) ([a-z ]+?) count", re.IGNORECASE)
 _EFFECT_INFLICT_BARE = re.compile(r"inflict (\d+) ([a-z ]+)", re.IGNORECASE)
 _EFFECT_GAIN_STATUS = re.compile(r"gain (\d+) ([a-z ]+)", re.IGNORECASE)
+_EFFECT_HEAL = re.compile(r"heal (\d+)\s*(%)?(?: max)?\s*(?:hp)?", re.IGNORECASE)
 _EFFECT_SCALED = re.compile(
     r"(deal|coin power) \+(\d+)(?: damage)? per (\d+) ([a-z ]+?) (potency|count)", re.IGNORECASE
 )
@@ -720,8 +725,17 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
         scale_status = None
         scale_per = 0
         scale_basis = "potency"
+        heal_percent = False
+        heal_match = _EFFECT_HEAL.fullmatch(_TRAILING_PAREN_RE.sub("", effect_text).strip())
         scaled_match = _EFFECT_SCALED.fullmatch(_TRAILING_PAREN_RE.sub("", effect_text).strip())
-        if scaled_match:
+        if heal_match:
+            if int(heal_match.group(1)) < 1:
+                raise TriggerParseError(line, "Heal needs an amount of at least 1")
+            heal_percent = heal_match.group(2) is not None
+            if heal_percent and int(heal_match.group(1)) > 100:
+                raise TriggerParseError(line, "Heal can be at most 100% of max HP")
+            effect_type, effect_value, status_name, status_count = "heal", int(heal_match.group(1)), None, 0
+        elif scaled_match:
             kind_word, n, per, scale_name, basis = scaled_match.groups()
             scale_status = _norm_status(scale_name)
             scale_per = int(per)
@@ -766,6 +780,7 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
             scale_status=scale_status,
             scale_per=scale_per,
             scale_basis=scale_basis,
+            heal_percent=heal_percent,
         ))
 
     return triggers, flags

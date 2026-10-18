@@ -1294,6 +1294,17 @@ def apply_trigger_effects(triggers: list[Trigger], caster: Fighter, target: Figh
                 f"{status_label(t.status_name)}: {new_instance.potency}/{new_instance.count}"
             )
             log.append(_warn_wrap(line, t.hint_tier) if t.hint_tier >= 2 else line)
+        elif t.effect_type == "heal":
+            if not caster.is_alive() or caster.eliminated:
+                continue
+            amount = (
+                max(1, round(caster.max_hp * t.effect_value / 100)) if t.heal_percent else t.effect_value
+            )
+            healed = min(amount, caster.max_hp - caster.hp)
+            caster.hp += healed
+            log.append(
+                f"Trigger: {caster.name} heals {healed} HP ({caster.hp}/{caster.max_hp})"
+            )
         elif t.effect_type == "sanity_gain":
             caster.gain_sanity(t.effect_value)
             line = f"Trigger: {caster.name} Sanity +{t.effect_value} ({caster.sanity})"

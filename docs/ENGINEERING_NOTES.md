@@ -1605,6 +1605,20 @@ Hooks:
 - Statuses are deliberately not shown in the battle embed (only hint tiers
   are), so a custom resource is hidden in the same way.
 
+<a id="healing"></a>
+### Healing
+
+- `heal` effect type, parsed by `_EFFECT_HEAL` in `_parse_trigger_lines`
+  (before the scaled and normal effect parsers, so it also works as a
+  Consume payoff). `effect_value` is the amount and `Trigger.heal_percent`
+  marks a percentage of the caster's max HP (minimum 1 HP, max 100%).
+- Applied in `apply_trigger_effects` to the caster only, capped at max HP,
+  skipped for a downed or eliminated fighter. Added to the coin-level and
+  skill-level fired lists in game/skills.py like `gain_status`.
+- Not built: healing a target or ally (declare only allows enemies, so a
+  target heal would heal the enemy), heal boosts, HP Healing Down, and
+  overheal into Shield.
+
 <a id="panic-and-low-morale"></a>
 ### Panic and Low Morale
 
