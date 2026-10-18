@@ -2,6 +2,7 @@ from dataclasses import replace
 import asyncio
 import copy
 import difflib
+import itertools
 import random
 import re
 
@@ -45,6 +46,8 @@ GUARD_LOSE_DAMAGE_REDUCTION_PCT = 25
 
 # Offset: when a Clash forms between two skills that are BOTH tagged as one of these defense-type tags, the Clash cancels outright -- no... See docs/ENGINEERING_NOTES.md#battle-comment-31.
 DEFENSE_TAGS = {"guard", "clashable_guard", "counter", "clashable_counter"}
+# Keeps follow-up requests from different fighters in the order they were made.
+_FOLLOWUP_ORDER = itertools.count()
 
 # Rupture's fixed per-hit bonus damage is capped at this fraction of
 # the TARGET's own max HP, regardless of Rupture's stored Potency --
@@ -1365,6 +1368,57 @@ def fire_ally_reactions(
     return log
 
 
+def build_followup_units(battle: Battle) -> list:
+    """Turns every waiting "Use X as a follow-up attack" request into an unopposed ("solo") unit for the combat loop, oldest first. A request is dropped if its owner is down or no longer has the skill (or the skill is a defense or Supermove). If the enemy it was aimed at is already down, a skill with Attack Weight above 1 picks another living enemy instead, anything else is cancelled. A skill with Attack Weight also reaches that many extra enemies, like a declared one."""
+    pending = []
+    for f in battle.fighters:
+        queue, f.followup_queue = f.followup_queue, []
+        pending += [(order, f, name, target) for order, name, target in queue]
+    pending.sort(key=lambda p: p[0])
+    units = []
+    for _, owner, name, target in pending:
+        if not owner.is_alive() or owner.eliminated:
+            continue
+        skill = owner.skills.get(name)
+        if skill is None or skill.tags & (DEFENSE_TAGS | {"guard", "evade", "supermove"}):
+            continue
+        primary = target if (target.is_alive() and not target.eliminated and target.side != owner.side) else None
+        others = [
+            e for e in battle.fighters
+            if e.side != owner.side and e.is_alive() and not e.eliminated and e is not primary
+        ]
+        random.shuffle(others)
+        weight = max(1, skill.attack_weight)
+        if primary is None:
+            if weight <= 1 or not others:
+                continue
+            primary = others.pop(0)
+        extras = [(e, 1) for e in others[: weight - 1]] if weight > 1 else []
+        units.append(("solo", {
+            "caster": owner, "skill": skill, "target": primary, "slot": 1, "target_slot": 1,
+            "extra_targets": extras, "is_followup": True,
+        }))
+    return units
+
+
+def find_assist_defender(battle: Battle, attacker: Fighter, target: Fighter) -> tuple[Fighter, list[Trigger]] | None:
+    """For an unopposed attack on `target`: the first ally (fastest first) who can act and has a fired [Ally Before Getting Hit] line with "Take the hit for the ally". Returns that ally and every line that fired for them (the caller applies the non-redirect ones), or None. Only the winner pays its lines' costs."""
+    owners = [
+        f for f in battle.fighters
+        if f is not target and f.side == target.side and f.is_alive() and not f.eliminated and f.can_act()
+    ]
+    owners.sort(key=lambda f: max(f.slot_speeds, default=0), reverse=True)
+    for owner in owners:
+        context = TriggerContext(caster=owner, target=attacker, battle=battle, ally=target)
+        fired: list[Trigger] = []
+        for skill in owner.trigger_skills():
+            _, post_hit = resolve_triggers(skill, context, "ally_before_hit")
+            fired.extend(post_hit)
+        if any(t.effect_type == "assist_defense" for t in fired):
+            return owner, fired
+    return None
+
+
 def fire_self_reactions(battle: Battle, owner: Fighter, event: str, other: Fighter | None = None) -> list[str]:
     """Fires a passive-only timing (Self Is Hit / Self On Stagger / Self On Kill) on `owner`'s passives. `other` is the enemy involved."""
     log: list[str] = []
@@ -1714,6 +1768,11 @@ def apply_trigger_effects(
         elif t.effect_type == "level_mod":
             _bump_level(who, t)
             log.append(f"Trigger: {who.name} {_level_text(t)}")
+        elif t.effect_type == "followup_attack":
+            if target is not None:
+                caster.followup_queue.append((next(_FOLLOWUP_ORDER), t.status_name, target))
+        elif t.effect_type == "assist_defense":
+            continue  # decided before the hit, see find_assist_defender
         elif t.effect_type == "hp_floor":
             if not who.is_alive():
                 continue
@@ -3522,7 +3581,14 @@ class BattleCog(commands.GroupCog, name="battle"):
             locked_lines.append(summary_line)
             await render(None)
 
-        for u in units:
+        unit_index = 0
+        while True:
+            # Follow-up attacks asked for by the last unit run right after it.
+            units[unit_index:unit_index] = build_followup_units(battle)
+            if unit_index >= len(units):
+                break
+            u = units[unit_index]
+            unit_index += 1
             if u[0] == "offset":
                 _, entry_a, entry_b = u
                 fighter_a, fighter_b = entry_a["caster"], entry_b["caster"]
@@ -3553,6 +3619,25 @@ class BattleCog(commands.GroupCog, name="battle"):
                 target = entry["target"]
                 if not fighter.is_alive() or not target.is_alive():
                     continue
+
+                assist_note = ""
+                if (
+                    not (entry["skill"].tags & DEFENSE_TAGS_NO_ATTACK)
+                    and not entry.get("is_counter_retaliation", False)
+                    and target.side != fighter.side
+                ):
+                    assist = find_assist_defender(battle, fighter, target)
+                    if assist is not None:
+                        defender, assist_fired = assist
+                        assist_note = f"🛡️ **{defender.name}** takes the hit meant for **{target.name}**!"
+                        extra_lines = apply_trigger_effects(
+                            [t for t in assist_fired if t.effect_type != "assist_defense"],
+                            defender, fighter, ally=target,
+                        )
+                        if extra_lines:
+                            assist_note += "\n" + "\n".join(extra_lines)
+                        target = defender
+                        entry = dict(entry, target=defender)
 
                 is_counter = entry.get("is_counter_retaliation", False)
                 is_guard = "guard" in entry["skill"].tags and not is_counter
@@ -3608,7 +3693,12 @@ class BattleCog(commands.GroupCog, name="battle"):
                         f"nothing to intercept this round."
                     )
                 else:
-                    live_header = f"**{fighter.name}** -> **{target.name}** (unopposed)"
+                    live_header = (
+                        f"**{fighter.name}** -> **{target.name}** "
+                        f"({'follow-up attack: ' + entry['skill'].name if entry.get('is_followup') else 'unopposed'})"
+                    )
+                if assist_note:
+                    live_header = assist_note + "\n" + live_header
                 await render(live_header)
                 await asyncio.sleep(0.3)
 

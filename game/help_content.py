@@ -574,7 +574,14 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
             "(never you) when the line fires: `[Turn Start] Heal 5 to the ally with the lowest HP`. "
             "Choices: fastest/slowest Speed, highest/lowest HP, HP percent, Max HP, SP, "
             "most/least Charge (any status), earliest/latest deployment. A tie goes to whoever was "
-            "deployed first. As a condition: `If the ally has the fastest Speed,`."
+            "deployed first. As a condition: `If the ally has the fastest Speed,`.\n"
+            "**Follow-up attack:** `[Ally On Hit] Use Slash Combo as a follow-up attack (once per turn)` "
+            "makes you attack the enemy your ally just hit, with your own skill of that name, unopposed, "
+            "right after their attack. It needs a once per turn or once per Encounter limit. If that enemy is "
+            "already down it is cancelled, unless the skill has Attack Weight above 1, then it picks other enemies.\n"
+            "**Assist Defense:** `[Ally Before Getting Hit] Take the hit for the ally (once per turn)` "
+            "puts you in front of an unopposed attack on an ally (you must be able to act). The hit is "
+            "taken as a normal hit by you. Clashes are not redirected."
         ),
     ),
     HelpEntry(

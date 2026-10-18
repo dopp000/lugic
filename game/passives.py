@@ -25,7 +25,7 @@ PASSIVE_ATTACK_TIMINGS = set(POWER_TIMINGS)
 # Everything the engine actually fires for a passive.
 PASSIVE_TIMINGS = PASSIVE_ONLY_TIMINGS | PASSIVE_ATTACK_TIMINGS | {
     "turn_start", "combat_start", "ally_turn_start", "ally_combat_start", "on_evade",
-    "ally_on_hit", "ally_on_crit", "ally_on_kill", "ally_is_hit", "ally_on_stagger",
+    "ally_on_hit", "ally_on_crit", "ally_on_kill", "ally_is_hit", "ally_on_stagger", "ally_before_hit",
 }
 
 
@@ -46,7 +46,7 @@ def parse_passive(lines: list[str], custom_kinds: dict[str, str] | None = None, 
                 f"`{t.raw_text.strip() or t.timing}` uses a timing a passive never reacts to. "
                 "Use Turn Start, Combat Start, Ally Turn Start, Ally Combat Start, On Evade, "
                 "Before Use, On Use, Clash Start, Before Attack, "
-                "Ally On Hit / Crit / Kill / Is Hit / On Stagger, or Self Is Hit / Self On Stagger / Self On Kill / Self On Death."
+                "Ally On Hit / Crit / Kill / Is Hit / On Stagger / Before Getting Hit, or Self Is Hit / Self On Stagger / Self On Kill / Self On Death."
             )
     return triggers, None
 

@@ -2278,3 +2278,28 @@ a new status gets an icon.
   (`If N+ allies are defeated,`, other units on the caster's side that are down or eliminated).
 - The parser cannot check a tag exists (it can name an ally's tag the owner does not have), so a typo simply never
   matches. The help page says tags must be spelled the same; matching ignores case and extra spaces.
+
+<a id="followups-patch-7"></a>
+## Follow-up attacks and Assist Defense
+
+- `Use <skill> as a follow-up attack` (`followup_attack`, `status_name` = lowercased skill name). Parser rules: only at
+  `FOLLOWUP_TIMINGS` (reactions that have an enemy), must carry `(once per turn)` or `(once per Encounter)` so two
+  passives cannot chain forever, no `next turn` or Consume. `/character passive` also checks the character owns that
+  skill and it is a normal attack (no defense tag, no Supermove). Skills on `/battle addskill` are not checked
+  (a missing skill is simply skipped at runtime).
+- At runtime `apply_trigger_effects` only appends `(order, name, target)` to `Fighter.followup_queue`. The combat loop
+  in `combat()` is now `while True` over `units` instead of `for u in units`: at the top of every pass it calls
+  `build_followup_units(battle)` and inserts the resulting `("solo", entry)` units right after the unit that was
+  just resolved, so a follow-up runs immediately after the attack that caused it and goes through the normal unopposed
+  path (pre-roll chain, evade, ally reactions, kill triggers). Entries carry `is_followup`.
+- Target rules: if the enemy is down, a skill with `attack_weight` above 1 promotes another living enemy to primary,
+  anything else is cancelled. A skill with weight above 1 also gets `weight - 1` extra targets (random living enemies,
+  slot 1). The "Unfocused Valley" case in the request was not found in the code or on the web, so only Attack Weight is
+  handled; [Indiscriminate] skills are not treated specially.
+- `[Ally Before Getting Hit]` (`ally_before_hit`) + `Take the hit for the ally` (`assist_defense`). Only unopposed attacks
+  that are not defense skills or counter retaliations are checked, right after the "attacker and target alive" test in the
+  unopposed branch. `find_assist_defender` sweeps the target's living allies that `can_act()`, fastest first, and the first
+  one with a fired `assist_defense` line wins (only that owner pays its line costs). The entry's target becomes the
+  defender and the rest of the pipeline is unchanged, so the defender's resistances, Shield and Evade apply. Other lines
+  that fired at that timing (Shield, Gain ...) are applied to the defender. Clashes are never redirected. It adds
+  `ally_before_hit` to `PASSIVE_TIMINGS` and to the clash-priced timings in `game/supermoves.py`.

@@ -1249,10 +1249,27 @@ class CharacterCog(commands.GroupCog, name="character"):
             return
         lines = [l.strip() for l in (line_1, line_2, line_3) if l and l.strip()]
         kinds = {k: cs.kind for k, cs in character.custom_statuses.items()}
-        _, error = parse_passive(lines, kinds)
+        parsed, error = parse_passive(lines, kinds)
         if error:
             await interaction.response.send_message(error[:1900], ephemeral=True)
             return
+        for t in parsed:
+            if t.effect_type != "followup_attack":
+                continue
+            owned = character.skills.get(t.status_name)
+            if owned is None:
+                await interaction.response.send_message(
+                    f"{character.name} has no skill called `{t.status_name}` to use as a follow-up attack. "
+                    "Add it first (the name has to match).",
+                    ephemeral=True,
+                )
+                return
+            if owned.tags & {"guard", "evade", "counter", "clashable_guard", "clashable_counter", "supermove"}:
+                await interaction.response.send_message(
+                    f"`{owned.name}` is a defense skill or a Supermove, a follow-up attack has to be a normal attack.",
+                    ephemeral=True,
+                )
+                return
         entry = {"name": title, "kind": kind.value, "lines": lines, "cost": cost, "note": (note or "").strip()}
         trial = copy.deepcopy(character)
         trial.passives.append(entry)

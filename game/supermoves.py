@@ -126,7 +126,7 @@ _PER_SKILL = {
 _CLASH = {
     "clash_start", "clash_win", "clash_lose", "hit_after_clash_win",
     "hit_after_clash_lose", "on_unopposed_attack",
-    "ally_on_hit", "ally_on_crit", "ally_on_kill", "ally_is_hit", "ally_on_stagger",
+    "ally_on_hit", "ally_on_crit", "ally_on_kill", "ally_is_hit", "ally_on_stagger", "ally_before_hit",
 }
 _TURN = {"turn_start", "turn_end", "combat_start", "ally_turn_start", "ally_combat_start"}
 _SURCHARGE_FLAG_TAGS = {"target_fixed", "indiscriminate", "unclashable"}

@@ -37,6 +37,8 @@ EFFECT_TEMPLATES = [
     "Gain 2 Haste next turn",
     "Gain N Sanity",
     "Lose N Sanity",
+    "Use Skill Name as a follow-up attack",
+    "Take the hit for the ally",
     "HP cannot drop below N this turn",
     "Nullify the next lethal damage",
     "Cannot be Staggered this turn",
@@ -177,6 +179,10 @@ def _describe_effect(t: Trigger, names) -> str:
         text = f"{'Inflict' if t.on_target else 'Gain'} {t.status_name.title()} Level {sign}{abs(t.effect_value)} (this turn)"
     elif t.effect_type == "sanity_loss":
         text = f"Lose {t.effect_value} Sanity"
+    elif t.effect_type == "followup_attack":
+        text = f"Use {t.status_name.title()} as a follow-up attack"
+    elif t.effect_type == "assist_defense":
+        text = "Take the hit for the ally"
     elif t.effect_type == "hp_floor":
         text = f"HP cannot drop below {t.effect_value} this turn"
     elif t.effect_type == "nullify_lethal":

@@ -185,6 +185,8 @@ class Fighter:
     nullify_lethal: int = 0
     encounter_uses: dict = field(default_factory=dict)
     survival_notes: list = field(default_factory=list)
+    # "Use X as a follow-up attack" requests waiting for the combat loop: (order, skill name, target).
+    followup_queue: list = field(default_factory=list)
     # "... next turn" effects waiting for the next round: (Trigger, target, ally) tuples.
     pending_effects: list = field(default_factory=list)
 

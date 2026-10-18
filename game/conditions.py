@@ -43,6 +43,7 @@ EFFECT_TYPES = [
     "bonus_power", "bonus_coin_power", "bonus_damage_pct", "bonus_clash_power", "bonus_final_power",
     "inflict_status", "gain_status", "sanity_gain", "sanity_loss", "heal", "remove_status",
     "gain_shield", "level_mod", "hp_floor", "nullify_lethal", "stagger_immune", "remove_stagger",
+    "followup_attack", "assist_defense",
 ]
 
 # Effects that land after the toss, once a hit connects (everything but the three
@@ -50,6 +51,15 @@ EFFECT_TYPES = [
 POST_HIT_EFFECTS = (
     "inflict_status", "sanity_gain", "sanity_loss", "gain_status", "heal", "remove_status",
     "gain_shield", "level_mod", "hp_floor", "nullify_lethal", "stagger_immune", "remove_stagger",
+    "followup_attack", "assist_defense",
+)
+
+# "Use X as a follow-up attack" needs an enemy to hit, so it only works on reactions that
+# have one, and it must carry a per-turn or per-Encounter limit (two passives could
+# otherwise keep triggering each other's follow-ups forever).
+FOLLOWUP_TIMINGS = (
+    "ally_on_hit", "ally_on_crit", "ally_on_kill", "ally_is_hit", "ally_on_stagger",
+    "self_is_hit", "self_on_stagger", "on_evade",
 )
 
 # Effects that reshape the hit itself. They only do something at the timings
@@ -140,6 +150,9 @@ SKILL_LEVEL_TIMINGS = {
     "ally on crit": "ally_on_crit",
     "ally on kill": "ally_on_kill",
     "ally is hit": "ally_is_hit",
+    # Fires BEFORE an unopposed attack on an ally lands, on the owner's skills and passives,
+    # to decide whether the owner takes the hit instead ("Take the hit for the ally").
+    "ally before getting hit": "ally_before_hit",
     "ally on stagger": "ally_on_stagger",
     "ally turn start": "ally_turn_start",
     "ally combat start": "ally_combat_start",
@@ -715,6 +728,8 @@ _COND_TARGET_SIDE = re.compile(r"if (?:the )?target is an? (ally|enemy),?\s*(.*)
 _PER_ENCOUNTER_RE = re.compile(
     r"\(\s*(?:(\d+) times?|once|twice) per (?:encounter|battle)\s*\)", re.IGNORECASE
 )
+_EFFECT_FOLLOWUP = re.compile(r"use (.+?) as an? follow-?up attack", re.IGNORECASE)
+_EFFECT_ASSIST = re.compile(r"take the hit for the ally", re.IGNORECASE)
 _EFFECT_HP_FLOOR = re.compile(r"hp cannot drop below (\d+)(?: this turn)?", re.IGNORECASE)
 _EFFECT_NULLIFY = re.compile(r"nullify (?:the next )?lethal damage", re.IGNORECASE)
 _EFFECT_NO_STAGGER = re.compile(r"cannot be staggered(?: this turn)?", re.IGNORECASE)
@@ -1047,6 +1062,12 @@ def _parse_effect_text(text: str) -> tuple[str, int, str | None, int]:
         if m:
             return effect_type, int(m.group(1)), None, 0
 
+    m = _EFFECT_FOLLOWUP.fullmatch(core)
+    if m:
+        return "followup_attack", 1, " ".join(m.group(1).lower().split()), 0
+    if _EFFECT_ASSIST.fullmatch(core):
+        return "assist_defense", 1, None, 0
+
     m = _EFFECT_HP_FLOOR.fullmatch(core)
     if m:
         n = int(m.group(1))
@@ -1372,6 +1393,23 @@ def _parse_trigger_lines(text: str, strict: bool = True) -> tuple[list[Trigger],
             raise TriggerParseError(
                 line, "'to the ally' only works with Heal, Gain, Remove, Gain Sanity, Shield and Gain Level effects"
             )
+        if effect_type == "followup_attack":
+            if timing not in FOLLOWUP_TIMINGS:
+                raise TriggerParseError(
+                    line, "a follow-up attack needs an enemy to hit, so use it at Ally On Hit / Crit / Kill / "
+                    "Is Hit / On Stagger, Self Is Hit, Self On Stagger or On Evade"
+                )
+            if not (max_per_turn or max_per_encounter):
+                raise TriggerParseError(line, "a follow-up attack needs a limit, add (once per turn) or (once per Encounter)")
+            if delayed or consume_status:
+                raise TriggerParseError(line, "a follow-up attack can't be 'next turn' or use Consume")
+        if effect_type == "assist_defense":
+            if timing != "ally_before_hit":
+                raise TriggerParseError(line, "'Take the hit for the ally' only works at [Ally Before Getting Hit]")
+            if delayed or consume_status:
+                raise TriggerParseError(line, "'Take the hit for the ally' can't be 'next turn' or use Consume")
+        if timing == "ally_before_hit" and effect_type not in POST_HIT_EFFECTS:
+            raise TriggerParseError(line, "at [Ally Before Getting Hit] only effects that land after the hit work, like Take the hit for the ally, Shield or Gain")
         if delayed and effect_type not in POST_HIT_EFFECTS:
             raise TriggerParseError(line, "'next turn' only works on effects that land after the hit (Gain, Inflict, Heal, Shield, Sanity, Level)")
         if delayed and consume_status:
