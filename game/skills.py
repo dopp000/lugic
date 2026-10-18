@@ -1,7 +1,7 @@
 import random
 from dataclasses import dataclass, field, replace
 
-from game.conditions import Trigger, TriggerContext, evaluate_condition
+from game.conditions import Trigger, TriggerContext, evaluate_condition, pay_cost
 
 
 @dataclass
@@ -193,11 +193,12 @@ def resolve_skill(
                 if t.coin_index == coin_index
                 and t.timing == "coin_start"
                 and evaluate_condition(t.condition, context)
+                and pay_cost(t, context)
             ]
             power += sum(t.effect_value for t in coin_start_fired if t.effect_type == "bonus_power")
             coin_power += sum(t.effect_value for t in coin_start_fired if t.effect_type == "bonus_coin_power")
             fired_triggers.extend(
-                t for t in coin_start_fired if t.effect_type in ("inflict_status", "sanity_gain")
+                t for t in coin_start_fired if t.effect_type in ("inflict_status", "sanity_gain", "gain_status")
             )
 
         heads = flip_coin(heads_chance)
@@ -244,9 +245,9 @@ def resolve_skill(
                     continue
                 if t.timing == "on_crit_tails_hit" and heads:
                     continue
-                if t.effect_type not in ("inflict_status", "sanity_gain"):
+                if t.effect_type not in ("inflict_status", "sanity_gain", "gain_status"):
                     continue
-                if evaluate_condition(t.condition, context):
+                if evaluate_condition(t.condition, context) and pay_cost(t, context):
                     fired_triggers.append(t)
 
         results.append(CoinResult(
@@ -265,7 +266,7 @@ def resolve_triggers(
     """Evaluates every skill-level trigger matching `timing` against the current context. See docs/ENGINEERING_NOTES.md#skills-resolve-triggers for the full rationale."""
     fired = [
         t for t in skill.triggers
-        if t.timing == timing and evaluate_condition(t.condition, context)
+        if t.timing == timing and evaluate_condition(t.condition, context) and pay_cost(t, context)
     ]
 
     bonus_power = sum(t.effect_value for t in fired if t.effect_type == "bonus_power")

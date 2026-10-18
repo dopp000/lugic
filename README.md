@@ -264,12 +264,21 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   and `/character removestatus` / `/character statuses` manage them. Use
   them in trigger lines: `[Turn Start] Gain +2 Pulsation Count`,
   `Gain Pulsation Potency 2, Count 3`, `Inflict +2 Death Mark Count`,
-  `At 5 Pulsation, ...` as a condition. Buffs are gained by the owner, debuffs
+  `At 5+ Pulsation, ...` as a condition. Buffs are gained by the owner, debuffs
   are inflicted on enemies. A turn-only status is wiped at every turn end.
   Admins can place one with `/battle setstatus custom_status`. They do
-  nothing by themselves. Spending them (a `Consume` trigger) and turning
-  total consumed into permanent Potency are the next patches.
+  nothing by themselves until a skill spends them, see Consume below.
   See `docs/ENGINEERING_NOTES.md#custom-statuses`.
+- **Consume triggers** spend a self buff (Charge, Poise or a custom buff)
+  for a payoff: `[On Use] Consume 3 Pulsation: Coin Power +2`,
+  `:Coin1: [Coin Start] Consume 2 Pulsation: Deal +4 damage`,
+  `:Coin2: [On Hit] Consume 1 Charge: Inflict +2 Burn Count`,
+  `[Turn Start] Consume 2 Pulsation: Gain +1 Charge Count`. The payoff is any
+  normal effect. If the fighter has less Count than the cost, the trigger
+  simply does not fire and nothing is spent. Only Count is spent, Potency
+  stays. Count-to-permanent-Potency is the next patch. Note that the
+  `At N+ X,` condition checks Potency, not Count.
+  See `docs/ENGINEERING_NOTES.md#consume-triggers`.
 - Still missing: Offense/Defense Level (and Level Up/Down), Clash Power
   Down, Plus/Minus Coin Drop/Boost, HP Healing Down, Curse, and the matching
   buffs (Power Up, Haste, Protection, Damage Up).

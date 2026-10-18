@@ -1605,6 +1605,31 @@ Hooks:
 - Statuses are deliberately not shown in the battle embed (only hint tiers
   are), so a custom resource is hidden in the same way.
 
+<a id="consume-triggers"></a>
+### Consume triggers
+
+- Grammar: `Consume N X: <any normal effect>`, parsed in
+  `_parse_trigger_lines` by `_EFFECT_CONSUME`. The payoff goes through
+  `_parse_effect_text` unchanged, so every existing effect works. X must be a
+  gainable self buff (`_check_gainable`). The cost lives on `Trigger` as
+  `consume_status` and `consume_amount`, older saved triggers load fine
+  because both default to empty.
+- `pay_cost(trigger, context)` in game/conditions.py spends Count at the
+  moment a trigger really fires, called right after `evaluate_condition`
+  passes in `resolve_triggers` and in both per-coin loops of `resolve_skill`.
+  It is not called by the pure hint-display check, so previews never spend.
+- A coin-level trigger spends each time its coin is tossed, including each
+  attrition round of a clash, and the cost is not refunded if the clash is
+  lost. Post-toss bonus_power payoffs are not applied by the engine (they
+  never were), and they are skipped before paying, so nothing is wasted.
+- `gain_status` is now collected at coin level too. Before this a per-coin
+  `Gain N Charge` parsed but was never applied.
+- Count reaching 0 removes the whole status through
+  `set_status_instance`, which also drops its Potency. Keeping Potency at 0
+  Count is part of the permanent-Potency patch.
+- Condition parsing also gained a comma form for multi-word names
+  (`At 2+ Death Mark, ...`).
+
 <a id="statuses-magnitude-to-hint-tier"></a>
 
 Maps a potency*count magnitude to a danger Hint tier (1-3, see

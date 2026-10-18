@@ -302,6 +302,10 @@ class Trigger:
     status_count: int = 0
     hint_tier: int = 1
     raw_text: str = ""
+    # "Consume N X: <effect>" lines: the trigger only fires if the
+    # caster can pay N Count of X, which is then spent. See pay_cost.
+    consume_status: str | None = None
+    consume_amount: int = 0
 
     def to_dict(self) -> dict:
         """Used so a Skill carrying this Trigger can be saved to a
@@ -322,6 +326,8 @@ class Trigger:
             "status_count": self.status_count,
             "hint_tier": self.hint_tier,
             "raw_text": self.raw_text,
+            "consume_status": self.consume_status,
+            "consume_amount": self.consume_amount,
         }
 
     @classmethod
@@ -329,6 +335,21 @@ class Trigger:
         data = dict(data)
         data["condition"] = Condition.from_dict(data["condition"])
         return cls(**data)
+
+
+def pay_cost(trigger: Trigger, context: "TriggerContext") -> bool:
+    """For a Consume trigger whose condition already passed: spends its cost from the caster and returns True, or returns False (nothing spent) if the caster can't afford it. Triggers with no cost always return True. Only Count is spent, Potency is left as it is. This DOES change state, call it only at the moment a trigger really fires. See docs/ENGINEERING_NOTES.md#consume-triggers."""
+    if trigger.consume_status is None:
+        return True
+    from game.statuses import StatusInstance
+    caster = context.caster
+    current = caster.get_status(trigger.consume_status)
+    if current is None or current.count < trigger.consume_amount:
+        return False
+    caster.set_status_instance(StatusInstance(
+        name=current.name, potency=current.potency, count=current.count - trigger.consume_amount,
+    ))
+    return True
 
 
 class TriggerParseError(ValueError):
@@ -361,6 +382,8 @@ _COND_TARGET_STATUS_ANY = re.compile(r"if (?:the )?target has any ([a-z]+),?\s*(
 _COND_TARGET_STATUS_N = re.compile(r"if (?:the )?target has (\d+)\+ ([a-z]+),?\s*(.*)", re.IGNORECASE)
 _COND_CASTER_SANITY = re.compile(r"if this unit'?s sanity is (\d+)\+,?\s*(.*)", re.IGNORECASE)
 _COND_AT_N_THING = re.compile(r"at (\d+)\+ ([a-z]+),?\s*(.*)", re.IGNORECASE)
+# Multi-word (custom) status names need the comma to know where the name stops.
+_COND_AT_N_THING_COMMA = re.compile(r"at (\d+)\+? ([a-z]+(?: [a-z]+)*?),\s*(.*)", re.IGNORECASE)
 
 _EFFECT_BONUS_POWER_PCT = re.compile(r"deal \+(\d+)%\s*damage", re.IGNORECASE)
 _EFFECT_BONUS_POWER = re.compile(r"deal \+(\d+)\s*damage", re.IGNORECASE)
@@ -372,6 +395,7 @@ _EFFECT_INFLICT_EXPLICIT = re.compile(
 _EFFECT_INFLICT_COUNT = re.compile(r"inflict \+(\d+) ([a-z ]+?) count", re.IGNORECASE)
 _EFFECT_INFLICT_BARE = re.compile(r"inflict (\d+) ([a-z ]+)", re.IGNORECASE)
 _EFFECT_GAIN_STATUS = re.compile(r"gain (\d+) ([a-z ]+)", re.IGNORECASE)
+_EFFECT_CONSUME = re.compile(r"consume (\d+) ([a-z ]+?):\s*(.+)", re.IGNORECASE)
 _EFFECT_GAIN_COUNT = re.compile(r"gain \+(\d+) ([a-z ]+?) count", re.IGNORECASE)
 _EFFECT_GAIN_EXPLICIT = re.compile(
     r"gain ([a-z ]+?) potency:?\s*(\d+),?\s*count:?\s*(\d+)", re.IGNORECASE
@@ -430,7 +454,7 @@ def _parse_condition_and_effect_text(text: str) -> tuple[Condition, str]:
     if m:
         return Condition(type="caster_sanity", comparison="gte", value=int(m.group(1))), m.group(2)
 
-    m = _COND_AT_N_THING.match(text)
+    m = _COND_AT_N_THING_COMMA.match(text) or _COND_AT_N_THING.match(text)
     if m:
         n, thing = int(m.group(1)), m.group(2).strip().lower()
         if thing == "speed":
@@ -626,6 +650,20 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
             raise TriggerParseError(line, "no effect text after the timing tag")
 
         condition, effect_text = _parse_condition_and_effect_text(rest)
+        consume_status = None
+        consume_amount = 0
+        consume_match = _EFFECT_CONSUME.fullmatch(effect_text.strip())
+        if consume_match:
+            consume_amount = int(consume_match.group(1))
+            consume_status = _norm_status(consume_match.group(2))
+            if consume_amount < 1:
+                raise TriggerParseError(line, "Consume needs an amount of at least 1")
+            _check_gainable(consume_status, line)
+            effect_text = consume_match.group(3)
+        elif effect_text.strip().lower().startswith("consume"):
+            raise TriggerParseError(
+                line, "Consume lines look like 'Consume 3 Pulsation: Coin Power +2' (amount, resource, colon, payoff)"
+            )
         effect_type, effect_value, status_name, status_count = _parse_effect_text(effect_text)
 
         # A hand-typed "(Hint N)" always wins. Otherwise, a trigger that
@@ -655,6 +693,8 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
             status_count=status_count,
             hint_tier=hint_tier,
             raw_text=line,
+            consume_status=consume_status,
+            consume_amount=consume_amount,
         ))
 
     return triggers, flags

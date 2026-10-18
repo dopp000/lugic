@@ -146,7 +146,8 @@ def _skill_preview_text(skill: Skill) -> str:
         text += f"\n  Attack Weight: {attack_weight_icons(skill.attack_weight)} ({skill.attack_weight})"
     if skill.triggers:
         trigger_lines = "\n".join(
-            f"  Trigger: {t.condition.type} -> {t.effect_type}"
+            f"  Trigger: {t.condition.type} -> "
+            f"{f'consume {t.consume_amount} {status_label(t.consume_status)} then ' if t.consume_status else ''}{t.effect_type}"
             f"{f' {t.effect_value}' if t.effect_type != 'inflict_status' else f' {t.status_name} {t.effect_value}/{t.status_count}'}"
             f" ({hint_emoji(t.hint_tier)})"
             for t in skill.triggers
