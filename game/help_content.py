@@ -8,8 +8,8 @@ is developing this bot (code references, "see Combat Features", commit
 hashes), this is written for whoever is PLAYING on it. Keep it short,
 plain, and free of internal names a player never sees.
 
-Three categories exist so far (Skill Tags, Damage Math, Status Effects).
-More categories (Trigger Syntax, Commands) can slot in later the same way: a new list of
+Four categories exist so far (Skill Tags, Damage Math, Status Effects, Trigger Syntax).
+More categories (Commands) can slot in later the same way: a new list of
 HelpEntry plus one new line in HELP_CATEGORIES.
 """
 
@@ -377,6 +377,155 @@ STATUS_EFFECTS: list[HelpEntry] = [
     ),
 ]
 
+TRIGGER_SYNTAX: list[HelpEntry] = [
+    HelpEntry(
+        key="line_shape",
+        title="How a line is written",
+        summary="Tag, optional condition, one effect.",
+        body=(
+            "Each line of a skill's trigger box looks like this:\n"
+            "`[Timing Tag] condition, effect`\n"
+            "The **tag** says when it fires. The **condition** is optional and says "
+            "when it is allowed to. The **effect** is what happens. A line holds ONE "
+            "effect, so if you want two, write two lines and repeat the tag. "
+            "Blank lines are ignored. A tag on its own line (like `[Support]`) just "
+            "switches a skill flag on.\n"
+            "Per-coin tags need a coin number first: `:Coin1: [On Hit] ...`."
+        ),
+    ),
+    HelpEntry(
+        key="skill_timings",
+        title="Skill timings",
+        summary="Tags that fire once per skill, no coin number.",
+        body=(
+            "**Turn Start**, **Combat Start**: every skill a fighter knows fires these, "
+            "even if it was not declared (good for passives).\n"
+            "**Before Use**, **On Use**: right after the skill is declared and combat begins.\n"
+            "**Clash Start**, **Clash Win**, **Clash Lose**: around a Clash.\n"
+            "**Before Attack**, **On Unopposed Attack**, **Attack End**, **Turn End**: "
+            "before and after the attack itself.\n"
+            "**On Evade**, **Before Getting Hit**: when you dodge or get hit.\n"
+            "**On Stagger**, **On Kill**, **On Crit Kill**: after a hit that Staggers, "
+            "kills, or crit-kills. **Hit After Clash Lose**: for the side that lost a Clash.\n"
+            "**Tremor Burst**: cashes in Tremor on the target."
+        ),
+    ),
+    HelpEntry(
+        key="coin_timings",
+        title="Coin timings",
+        summary="Tags that fire for one specific coin.",
+        body=(
+            "These need a coin number: `:Coin2: [On Hit] Inflict +2 Burn Count`.\n"
+            "**Coin Start**: just before that coin is flipped.\n"
+            "**On Hit**: when that coin lands. **Heads Hit** / **Tails Hit**: only on that face.\n"
+            "**Hit After Clash Win**: only if you won the Clash first.\n"
+            "**On Crit**: the coin crits (you hold Poise). **On Crit - Heads Hit** / "
+            "**On Crit - Tails Hit**: crit and that face.\n"
+            "**Current Coin Attack End**, **Heads Attack End**, **Tails Attack End**: "
+            "after that coin's damage is done."
+        ),
+    ),
+    HelpEntry(
+        key="conditions",
+        title="Conditions",
+        summary="Put a rule in front of the effect.",
+        body=(
+            "Start the effect with a condition and a comma:\n"
+            "`If this unit's Speed is faster than the target's,`\n"
+            "`If the target has any Burn,` or `If the target has 3+ Burn,`\n"
+            "`If this unit's Sanity is 20+,`\n"
+            "`At 10+ Speed,` (your slot speed) or `At 5+ Poise,` (a status you hold)\n"
+            "`If this unit is Low Morale,` / `If the target is Panic,`\n"
+            "`N+` checks **Count** by default. Write `Potency` after the name to check "
+            "Potency instead: `At 3+ Poise Potency,`. A custom status with two words "
+            "needs the comma: `At 2+ Death Mark, ...`."
+        ),
+    ),
+    HelpEntry(
+        key="damage_effects",
+        title="Damage, Coin Power, Sanity, Heal",
+        summary="The simple number effects.",
+        body=(
+            "`Deal +4 damage`: flat extra damage on top of the hit.\n"
+            "`Coin Power +2`: raises that coin's power.\n"
+            "`Gain 5 Sanity`: your Sanity goes up.\n"
+            "`Heal 8 HP` or `Heal 10% max HP`: restores HP (up to 100%).\n"
+            "Percent damage and chaining effects with `;` are not supported."
+        ),
+    ),
+    HelpEntry(
+        key="status_lines",
+        title="Inflict, Gain, Remove",
+        summary="Put statuses on enemies, yourself, or clear them.",
+        body=(
+            "**Inflict** puts a status on the target:\n"
+            "`Inflict +2 Burn Count` (Potency 1, Count 2)\n"
+            "`Inflict 3 Burn` (Potency 3, Count 1)\n"
+            "`Inflict Burn Potency 3, Count 2` (both spelled out)\n"
+            "**Gain** does the same for yourself, for Poise, Charge, the buffs and your custom buffs: "
+            "`Gain +2 Charge Count`, `Gain 2 Poise`, `Gain Pulsation Potency 2, Count 3`.\n"
+            "**Remove** clears a status entirely: `Remove Bleed`."
+        ),
+    ),
+    HelpEntry(
+        key="consume",
+        title="Consume and scaling",
+        summary="Spend a resource for a payoff.",
+        body=(
+            "**Consume** spends Count for an effect: `Consume 3 Pulsation: Coin Power +2`. "
+            "If you have less Count than the cost, nothing happens and nothing is spent. "
+            "Potency stays.\n"
+            "**Scaling** gives a bonus for every few points you hold: "
+            "`Coin Power +1 per 3 Pulsation Potency` or `Deal +2 damage per 5 Pulsation Count`. "
+            "It works on Coin Power and Deal damage."
+        ),
+    ),
+    HelpEntry(
+        key="ally_lines",
+        title="Allies",
+        summary="Aim an effect at an ally, or react to one.",
+        body=(
+            "End a line with **to the ally** to put its effect on the ally a `[Support]` "
+            "skill is aimed at: `[On Use] Heal 8 HP to the ally`. Heal, Gain, Gain Sanity "
+            "and Remove can do this.\n"
+            "**[Ally ...]** tags sit on your own skill and fire when an ally does something: "
+            "`[Ally On Hit]`, `[Ally On Crit]`, `[Ally On Kill]`, `[Ally Is Hit]`, "
+            "`[Ally On Stagger]`, `[Ally Turn Start]`, `[Ally Combat Start]`. "
+            "The effect lands on you unless the line ends with `to the ally`."
+        ),
+    ),
+    HelpEntry(
+        key="hints",
+        title="Hint tiers",
+        summary="How loudly a status shows in the battle display.",
+        body=(
+            "Add `(Hint 1)`, `(Hint 2)` or `(Hint 3)` anywhere on a line to set how big "
+            "the effect looks in the public battle display. Leave it off and the bot works "
+            "it out from the size of the status being inflicted. Exact numbers stay private, "
+            "use `/battle mystatus` to see your own."
+        ),
+    ),
+    HelpEntry(
+        key="examples",
+        title="Worked examples",
+        summary="Full skills you can copy and change.",
+        body=(
+            "**A burner:**\n"
+            "`:Coin1: [On Hit] Inflict +2 Burn Count`\n"
+            "`:Coin2: [On Hit] If the target has 3+ Burn, Deal +3 damage`\n"
+            "**A charge fighter:**\n"
+            "`[Turn Start] Gain +1 Charge Count`\n"
+            "`[On Use] Consume 3 Charge: Coin Power +2`\n"
+            "**A medic:**\n"
+            "`[Support]`\n"
+            "`[On Use] Heal 10% max HP to the ally`\n"
+            "**A reaction:**\n"
+            "`[Ally Is Hit] Gain 2 Protection`"
+        ),
+    ),
+]
+
+
 HELP_CATEGORIES: list[tuple[str, str, str, list[HelpEntry]]] = [
     (
         "skill_tags",
@@ -395,5 +544,11 @@ HELP_CATEGORIES: list[tuple[str, str, str, list[HelpEntry]]] = [
         "Status Effects",
         "What each status does and how long it lasts.",
         STATUS_EFFECTS,
+    ),
+    (
+        "trigger_syntax",
+        "Trigger Syntax",
+        "How to write the trigger lines on a skill.",
+        TRIGGER_SYNTAX,
     ),
 ]

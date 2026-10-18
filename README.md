@@ -311,7 +311,7 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   every slot), **Damage Up** (+10% damage dealt per Count, max 10) and
   **Protection** (-10% damage taken per Count, max 10). Damage Up,
   Protection, Fragile and Damage Down all add into one multiplier applied
-  once to the whole hit, floored at 0. Protection has no emoji yet.
+  once to the whole hit, floored at 0.
 - **Support skills and ally effects** (first half of the `[Ally ...]` work):
   give a skill the `[Support]` flag (on its own line, 1 coin) and it is
   declared on an ally or yourself with `/battle declare`. It never attacks or
@@ -445,17 +445,21 @@ Drill-down menu: pick a category button, then a topic from a dropdown,
 then read the full explanation; Back/Home navigate without re-running the
 command. Ephemeral, ~5 minute timeout on the buttons. Content lives in
 `game/help_content.py`, written in plain language on purpose, kept
-separate from this file. **Three categories exist so far**: **Skill Tags**
+separate from this file. **Four categories exist so far**: **Skill Tags**
 (one dropdown entry per flag, including Support), **Damage Math** (the basic
 hit formula, resistance, Stagger's multiplier, Rupture vs. Crit, Attack
 Weight splash) and **Status Effects** (21 topics: Potency and Count, the
 five Sin statuses, Poise, Charge, every debuff and buff, Low Morale and
 Panic, custom statuses; each entry key is the status key so its icon comes
-from `STATUS_EMOJI_IDS` automatically). Trigger Syntax and a Commands
-category are the natural next additions, same pattern, a new entry list in `game/help_content.py` plus one new
+from `STATUS_EMOJI_IDS` automatically) and **Trigger Syntax** (10 topics: line
+shape, skill and coin timings, conditions, number effects, Inflict/Gain/Remove,
+Consume and scaling, allies, hint tiers, worked examples). A Commands
+category is the natural next addition, same pattern, a new entry list in `game/help_content.py` plus one new
 line in `HELP_CATEGORIES`, no changes needed to `cogs/help.py` itself.
+The Trigger Syntax text is hand-written, so when a timing, condition or
+effect phrase is added to `game/conditions.py` it has to be added there too.
 
-Category buttons (`Skill Tags`, `Damage Math`, `Status Effects`) and four of
+Category buttons (`Skill Tags`, `Damage Math`, `Status Effects`, `Trigger Syntax`) and four of
 the nine skill tags (`Target Fixed`, `Unclashable`, `Indiscriminate`, `Support`) have no
 custom emoji yet (`HELP_CATEGORY_EMOJI_IDS` / `SKILL_TAG_EMOJI_IDS` in
 `game/emojis.py`, both `None` placeholders) — same gradual-fill

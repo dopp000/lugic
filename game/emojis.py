@@ -46,7 +46,7 @@ STATUS_EMOJI_IDS: dict[str, int | None] = {
     "immobilized": 1561189600481771572,
     # Buff icons uploaded ahead of time, no status behind them yet.
     "power_up": 1538063077856256000,
-    "protection": None,
+    "protection": 1561204088513896528,
     "haste": 1561190558767124512,
     "damage_up": 1561189128106803260,
 }
@@ -131,6 +131,7 @@ HELP_CATEGORY_EMOJI_IDS: dict[str, int | None] = {
     "skill_tags": None,
     "damage_math": None,
     "status_effects": None,
+    "trigger_syntax": None,
 }
 
 # Skill-flag tags whose icon is one already uploaded for a different
@@ -268,7 +269,7 @@ def help_category_emoji(category_key: str) -> str:
     drop into embed/message TEXT only -- see the "never passed as a
     Button/SelectOption emoji=" note on HELP_CATEGORY_EMOJI_IDS above.
     """
-    display_names = {"skill_tags": "Skill_Tags", "damage_math": "Damage_Math", "status_effects": "Status_Effects"}
+    display_names = {"skill_tags": "Skill_Tags", "damage_math": "Damage_Math", "status_effects": "Status_Effects", "trigger_syntax": "Trigger_Syntax"}
     key = category_key.lower()
     display_name = display_names.get(key, key.capitalize())
     return emoji_tag(display_name, HELP_CATEGORY_EMOJI_IDS.get(key))

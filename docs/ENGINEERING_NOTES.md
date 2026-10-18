@@ -1887,3 +1887,14 @@ lists every fighter the caller owns; with a name it needs `_can_manage_fighter`
 (owner or admin). `_mystatus_text` prints HP, Sanity, morale, Shield, Stagger
 tier, every status with Potency and Count (custom ones with their description)
 and `consumed_totals`.
+
+<a id="help-trigger-syntax"></a>
+## /help Trigger Syntax page
+
+`TRIGGER_SYNTAX` in `game/help_content.py` is a fourth help category (10
+entries). It is plain text written by hand, not generated from
+`SKILL_LEVEL_TIMINGS` or the effect regexes, so a new timing or phrase in
+`game/conditions.py` needs a matching line there. Every example line on the page
+was run through `parse_trigger_text` when it was written. Protection's emoji ID
+(`STATUS_EMOJI_IDS["protection"]`) was filled in the same patch. Skill tag
+emojis are deliberately left empty.
