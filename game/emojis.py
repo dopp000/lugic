@@ -33,6 +33,12 @@ STATUS_EMOJI_IDS: dict[str, int | None] = {
     # they share design (see README) -- rather than needing two uploads.
     "panic": 1544676724862623834,
     "low_morale": 1544676724862623834,
+    # One-turn debuffs: no icons uploaded yet, plain ":Name:" text until filled in.
+    "bind": None,
+    "fragile": None,
+    "slash_fragility": None,
+    "pierce_fragility": None,
+    "blunt_fragility": None,
 }
 
 # Stagger has its own tiered icon set, since real Limbus visually
@@ -155,6 +161,9 @@ def status_emoji(status_name: str) -> str:
         "evasion": "Evade",
         "clashable_guard": "Clashable_Guard",
         "clashable_counter": "Clashable_Counter",
+        "slash_fragility": "Slash_Fragility",
+        "pierce_fragility": "Pierce_Fragility",
+        "blunt_fragility": "Blunt_Fragility",
     }
     display_name = display_names.get(key, status_name.capitalize())
     return emoji_tag(display_name, STATUS_EMOJI_IDS.get(key))

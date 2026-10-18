@@ -240,9 +240,15 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   `fire_kill_triggers`, called after `take_damage`); `[On Crit Kill]` also
   fires if any coin in that same hit was a Crit. Both were listed as "not in
   `conditions.py` at all" in the last README pass — that's now wrong, fixed.
-- No non-Sin-damage debuffs exist at all (Power Down, Bind, Fragile,
-  Paralyze, Curse, etc.) — this is now the actual biggest remaining status
-  gap, not the five Sin statuses.
+- **One-turn debuffs are built**: Bind (Speed -X), Fragile (+X*10% damage
+  taken, max +100%) and Slash/Pierce/Blunt Fragility (same, only for that
+  damage type). Inflict them like any status, e.g.
+  `:Coin1: [On Hit] Inflict Slash Fragility Potency 3, Count 1` (Count is
+  ignored, they are always 1). They land immediately, last the rest of the
+  round, and are wiped at turn end. No resistances, and `/battle setstatus`
+  can set them. See `docs/ENGINEERING_NOTES.md#statuses-one-turn-debuffs`.
+- Still missing: Power Down, Damage Down, Defense Level Down, Paralyze,
+  Curse (the wiki page has no text for most of these yet).
 - Charge has no consumption payoff (see above) — smaller, but still open.
 - No turn-based expiry independent of triggering (a status that should wear
   off after N turns even if its trigger never fires isn't modeled — every
@@ -489,9 +495,8 @@ Durante, and Backups, none of those fit what this bot is for.
 2. **`[Ally ...]` trigger prefix**: scopes an existing timing to allies
    only, for support effects. `Indiscriminate` is targeting-only; this would
    be trigger-scoping instead. Not present.
-3. **Non-Sin debuffs** (Power Down, Bind, Fragile, Paralyze, Curse, etc.) —
-   now the actual biggest status-system gap, since all 5 Sin-damage statuses
-   have real payoffs (see Status Effects above).
+3. **More non-Sin debuffs** (Power Down, Damage Down, Defense Level Down,
+   Paralyze, Curse, etc.). Bind, Fragile and the type Fragilities are done.
 4. **Charge's consumption payoff.** Its own Count decay is wired; nothing
    converts it into Coin Power/Haste/whatever its actual effect should be
    yet.

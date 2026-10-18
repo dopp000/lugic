@@ -154,7 +154,10 @@ SELF_BUFF_STATUSES = ["poise", "charge"]
 # Target-facing statuses, mirrors statuses.py's INFLICTABLE_STATUSES.
 # Duplicated here rather than imported so this module doesn't need to
 # import statuses.py just for one list.
-TARGET_STATUSES = ["burn", "bleed", "tremor", "rupture", "sinking"]
+TARGET_STATUSES = [
+    "burn", "bleed", "tremor", "rupture", "sinking",
+    "bind", "fragile", "slash_fragility", "pierce_fragility", "blunt_fragility",
+]
 
 
 @dataclass
@@ -411,6 +414,11 @@ def _parse_condition_and_effect_text(text: str) -> tuple[Condition, str]:
     return Condition(type="always"), text
 
 
+def _norm_status(raw: str) -> str:
+    """'Slash Fragility' -> 'slash_fragility'."""
+    return "_".join(raw.strip().lower().split())
+
+
 def _parse_effect_text(text: str) -> tuple[str, int, str | None, int]:
     """Parses the effect half of a line. Returns
     (effect_type, effect_value, status_name, status_count).
@@ -448,17 +456,17 @@ def _parse_effect_text(text: str) -> tuple[str, int, str | None, int]:
 
     m = _EFFECT_INFLICT_EXPLICIT.fullmatch(core)
     if m:
-        status, potency, count = m.group(1).strip().lower(), int(m.group(2)), int(m.group(3))
+        status, potency, count = _norm_status(m.group(1)), int(m.group(2)), int(m.group(3))
         return "inflict_status", potency, status, count
 
     m = _EFFECT_INFLICT_COUNT.fullmatch(core)
     if m:
-        n, status = int(m.group(1)), m.group(2).strip().lower()
+        n, status = int(m.group(1)), _norm_status(m.group(2))
         return "inflict_status", 1, status, n
 
     m = _EFFECT_INFLICT_BARE.fullmatch(core)
     if m:
-        n, status = int(m.group(1)), m.group(2).strip().lower()
+        n, status = int(m.group(1)), _norm_status(m.group(2))
         return "inflict_status", n, status, 1
 
     m = _EFFECT_GAIN_STATUS.fullmatch(core)

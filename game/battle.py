@@ -172,6 +172,10 @@ class Fighter:
             for _ in range(self.skill_slots)
         ]
 
+    def shift_slot_speeds(self, amount: int):
+        """Adds `amount` (negative for Bind) to every slot's rolled Speed, floored at 0. Rerolled next round anyway, so a Bind wears off by itself."""
+        self.slot_speeds = [max(0, sp + amount) for sp in self.slot_speeds]
+
     def slot_speed(self, slot: int) -> int:
         """1-based slot lookup. See docs/ENGINEERING_NOTES.md#battle-fighter-slot-speed for the full rationale."""
         if 1 <= slot <= len(self.slot_speeds):

@@ -14,7 +14,10 @@ from game.battle import (
 from game.skills import Skill, SkillResult, ClashOutcome, resolve_skill, resolve_round_clash, resolve_triggers
 from game.conditions import Trigger, TriggerContext, parse_trigger_text, TriggerParseError
 from game.character import load_character
-from game.statuses import StatusInstance, decay_after_trigger, apply_status, INFLICTABLE_STATUSES, magnitude_to_hint_tier
+from game.statuses import (
+    StatusInstance, decay_after_trigger, apply_status, INFLICTABLE_STATUSES,
+    SETTABLE_STATUSES, ONE_TURN_STATUSES, fragility_bonus, magnitude_to_hint_tier,
+)
 from game.resistances import DAMAGE_TYPES, ALL_RESISTANCE_TYPES, apply_resistance, parse_resistance_multiplier
 from game.emojis import status_emoji, coin_emoji, coin_roll_emoji, damage_type_emoji, stat_emoji, skill_slot_emoji, hint_emoji, attack_weight_icons, stagger_tier_emoji, stagger_action_emoji
 
@@ -874,6 +877,15 @@ def apply_incoming_hit(
         )
         total_damage = boosted
 
+    frag = fragility_bonus(target.statuses, attacker_skill.damage_type)
+    if frag > 0 and total_damage > 0:
+        boosted = round(total_damage * (1 + frag))
+        log.append(
+            f"{status_emoji('fragile')} {target.name} is Fragile: {total_damage} -> {boosted} damage "
+            f"(+{round(frag * 100)}%)"
+        )
+        total_damage = boosted
+
     return total_damage, log, per_coin_triggers
 
 
@@ -1051,6 +1063,8 @@ def apply_turn_end_status_ticks(battle: Battle) -> list[str]:
     """
     log: list[str] = []
     for f in battle.fighters:
+        for name in ONE_TURN_STATUSES:
+            f.statuses.pop(name, None)
         if not f.is_alive():
             continue
 
@@ -1226,9 +1240,11 @@ def apply_trigger_effects(triggers: list[Trigger], caster: Fighter, target: Figh
             current = target.get_status(t.status_name)
             new_instance = apply_status(current, t.status_name, added_potency, t.status_count)
             target.set_status_instance(new_instance)
+            if t.status_name == "bind":
+                target.shift_slot_speeds(-added_potency)
             line = (
                 f"Trigger: {target.name} gains {status_emoji(t.status_name)} "
-                f"{t.status_name.capitalize()}: {new_instance.potency}/{new_instance.count}"
+                f"{t.status_name.replace('_', ' ').title()}: {new_instance.potency}/{new_instance.count}"
             )
             log.append(_warn_wrap(line, t.hint_tier) if t.hint_tier >= 2 else line)
         elif t.effect_type == "sanity_gain":
@@ -1436,7 +1452,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         stagger_disabled_tiers="Which Stagger tiers to strip (2 and/or 3, comma-separated; Tier 1 can't be removed), or 'none'",
     )
     @app_commands.choices(
-        status_name=[app_commands.Choice(name=s.capitalize(), value=s) for s in INFLICTABLE_STATUSES]
+        status_name=[app_commands.Choice(name=s.capitalize(), value=s) for s in SETTABLE_STATUSES]
         + [app_commands.Choice(name="None (clear all statuses)", value="none")]
     )
     async def setstatus(
@@ -1585,9 +1601,13 @@ class BattleCog(commands.GroupCog, name="battle"):
                 target_fighter.statuses.clear()
                 changes.append("all statuses cleared")
             else:
-                target_fighter.set_status_instance(
-                    StatusInstance(name=status_name.value, potency=potency, count=count)
-                )
+                old = target_fighter.get_status(status_name.value)
+                new_inst = StatusInstance(name=status_name.value, potency=potency, count=count)
+                if status_name.value in ONE_TURN_STATUSES:
+                    new_inst = apply_status(None, status_name.value, potency, 1 if potency > 0 else 0)
+                    if status_name.value == "bind":
+                        target_fighter.shift_slot_speeds(-(new_inst.potency - (old.potency if old else 0)))
+                target_fighter.set_status_instance(new_inst)
                 changes.append(
                     f"{status_emoji(status_name.value)} {status_name.name} -> {potency}/{count}"
                 )
@@ -2919,6 +2939,15 @@ class BattleCog(commands.GroupCog, name="battle"):
                                 f"{boosted_splash_total} damage (x{splash_stagger_multiplier})"
                             )
                             splash_total = boosted_splash_total
+
+                        splash_frag = fragility_bonus(splash_fighter.statuses, adjusted_skill.damage_type)
+                        if splash_frag > 0 and splash_total > 0:
+                            frag_splash_total = round(splash_total * (1 + splash_frag))
+                            splash_log.append(
+                                f"{status_emoji('fragile')} {splash_fighter.name} is Fragile: "
+                                f"{splash_total} -> {frag_splash_total} damage (+{round(splash_frag * 100)}%)"
+                            )
+                            splash_total = frag_splash_total
 
                         splash_shield_absorbed, splash_hp_lost = splash_fighter.take_damage(splash_total)
                         splash_fighter.check_stagger(battle.round_number)

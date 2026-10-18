@@ -3,6 +3,31 @@ from dataclasses import dataclass
 # The 5 target-facing statuses that can be inflicted on an opponent and resisted. See docs/ENGINEERING_NOTES.md#statuses-comment-3.
 INFLICTABLE_STATUSES = ["burn", "bleed", "tremor", "rupture", "sinking"]
 
+# One-turn debuffs: Potency is the strength, they last the rest of the
+# round they land in and are wiped at turn end (Count is just a
+# presence marker, always 1). No resistances apply to them. See
+# docs/ENGINEERING_NOTES.md#statuses-one-turn-debuffs.
+ONE_TURN_STATUSES = ["bind", "fragile", "slash_fragility", "pierce_fragility", "blunt_fragility"]
+
+# Everything /battle setstatus can place on a fighter.
+SETTABLE_STATUSES = INFLICTABLE_STATUSES + ONE_TURN_STATUSES
+
+# Fragile and the type Fragilities add +10% damage taken per Potency,
+# each capped at +100%.
+FRAGILITY_PCT_PER_POTENCY = 0.10
+FRAGILITY_CAP = 1.0
+
+
+def fragility_bonus(statuses: dict, damage_type: str) -> float:
+    """Extra damage fraction a target takes from Fragile plus the matching type Fragility (0.0 if neither is active)."""
+    total = 0.0
+    for key in ("fragile", f"{damage_type}_fragility"):
+        inst = statuses.get(key)
+        if inst is not None and inst.count > 0:
+            total += min(FRAGILITY_CAP, inst.potency * FRAGILITY_PCT_PER_POTENCY)
+    return total
+
+
 # Maps a status's magnitude (potency * count) to a Hint tier (1-3, see
 # Trigger.hint_tier in game/conditions.py). Shared by two callers that
 # both need the exact same scale: cogs/battle.py's _status_hint_tier
@@ -60,5 +85,7 @@ def apply_status(current: StatusInstance | None, name: str, added_potency: int, 
     new_potency = min(new_potency, 99)
     if name == "charge":
         new_count = min(new_count, 20)
+    if name in ONE_TURN_STATUSES:
+        new_count = 1 if new_count > 0 else 0
 
     return StatusInstance(name=name, potency=new_potency, count=new_count)

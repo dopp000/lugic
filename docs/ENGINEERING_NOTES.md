@@ -1544,6 +1544,24 @@ Called when a status's trigger condition fires (e.g. Rupture
     with stale Potency.
 
 ## game/statuses.py :: magnitude_to_hint_tier
+<a id="statuses-one-turn-debuffs"></a>
+### One-turn debuffs (Bind, Fragile, type Fragility)
+
+`ONE_TURN_STATUSES` in game/statuses.py. Potency is the strength, Count is
+forced to 1 by `apply_status` (it is only a presence marker so
+`set_status_instance` keeps the status). They take effect the moment they
+land, so later hits in the same round feel them, and
+`apply_turn_end_status_ticks` pops them from every fighter at turn end.
+
+- Bind: `Fighter.shift_slot_speeds(-potency)` lowers every rolled slot
+  Speed (floor 0) when applied. Speeds are rerolled next round, so no
+  explicit undo is needed.
+- Fragile and `<type>_fragility`: `fragility_bonus` gives +10% per Potency,
+  each capped at +100%, summed. Applied once to the whole hit total after
+  the Stagger multiplier (primary and Attack Weight splash).
+- No resistances, since the wiki gives none for them. Triggers still get an
+  auto hint tier from potency.
+
 <a id="statuses-magnitude-to-hint-tier"></a>
 
 Maps a potency*count magnitude to a danger Hint tier (1-3, see
