@@ -1862,6 +1862,13 @@ class BattleCog(commands.GroupCog, name="battle"):
             await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
             return
 
+        if not _can_manage_fighter(interaction, target_fighter):
+            await interaction.response.send_message(
+                "Only this fighter's own owner or an admin can add a skill to them.",
+                ephemeral=True,
+            )
+            return
+
         # The ONLY response for this interaction -- everything about the skill (name, stats, damage type, statuses, triggers) is now collected in... See docs/ENGINEERING_NOTES.md#battle-comment-1345.
         await interaction.response.send_modal(AddSkillModal(target_fighter))
 
@@ -2010,6 +2017,12 @@ class BattleCog(commands.GroupCog, name="battle"):
         caster = battle.get_fighter(fighter)
         if caster is None:
             await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            return
+
+        if not _can_manage_fighter(interaction, caster):
+            await interaction.response.send_message(
+                "Only this fighter's own owner or an admin can declare for them.", ephemeral=True
+            )
             return
 
         if not caster.is_alive():
@@ -2283,6 +2296,12 @@ class BattleCog(commands.GroupCog, name="battle"):
         caster = battle.get_fighter(fighter)
         if caster is None:
             await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            return
+
+        if not _can_manage_fighter(interaction, caster):
+            await interaction.response.send_message(
+                "Only this fighter's own owner or an admin can undeclare for them.", ephemeral=True
+            )
             return
 
         if caster.undeclare(slot):
