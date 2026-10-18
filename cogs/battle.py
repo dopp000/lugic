@@ -1048,8 +1048,10 @@ def resolve_evade(
     return won, log
 
 
-def _damage_mods(target: Fighter, attacker: Fighter, damage_type: str) -> tuple[float, list[str]]:
-    """Fragile / type Fragility / Damage Up / Damage Down / Protection folded into one multiplier, plus a log description of each part that applies. They add together, floored at 0. See docs/ENGINEERING_NOTES.md#statuses-one-turn-debuffs."""
+def _damage_mods(
+    target: Fighter, attacker: Fighter, damage_type: str, skill_pct: int = 0,
+) -> tuple[float, list[str]]:
+    """Fragile / type Fragility / Damage Up / Damage Down / Protection folded into one multiplier, plus a log description of each part that applies. They add together, floored at 0. `skill_pct` is the "Deal +N% damage" total the skill picked up this use, it sits in the same additive pile as Damage Up. See docs/ENGINEERING_NOTES.md#statuses-one-turn-debuffs."""
     frag = fragility_bonus(target.statuses, damage_type)
     up = damage_up_bonus(attacker.statuses)
     down = damage_down_penalty(attacker.statuses)
@@ -1069,7 +1071,10 @@ def _damage_mods(target: Fighter, attacker: Fighter, damage_type: str) -> tuple[
         parts.append(f"{attacker.name} Offense Level +{round(off * 100)}%")
     if dfn > 0:
         parts.append(f"{target.name} Defense Level -{round(dfn * 100)}%")
-    return max(0.0, 1 + frag + up - down - prot + off - dfn), parts
+    extra = skill_pct / 100
+    if extra > 0:
+        parts.append(f"{attacker.name} skill/passive +{skill_pct}% damage")
+    return max(0.0, 1 + frag + up + extra - down - prot + off - dfn), parts
 
 
 def apply_incoming_hit(
@@ -1156,7 +1161,7 @@ def apply_incoming_hit(
         )
         total_damage = boosted
 
-    mod, parts = _damage_mods(target, caster, attacker_skill.damage_type)
+    mod, parts = _damage_mods(target, caster, attacker_skill.damage_type, result.skill.damage_pct)
     if parts and total_damage > 0:
         boosted = round(total_damage * mod)
         log.append(
@@ -1661,6 +1666,10 @@ def apply_trigger_effects(
         elif t.effect_type == "sanity_gain":
             who.gain_sanity(t.effect_value)
             line = f"Trigger: {who.name} Sanity +{t.effect_value} ({who.sanity})"
+            log.append(_warn_wrap(line, t.hint_tier) if t.hint_tier >= 2 else line)
+        elif t.effect_type == "sanity_loss":
+            who.lose_sanity(t.effect_value)
+            line = f"Trigger: {who.name} Sanity -{t.effect_value} ({who.sanity})"
             log.append(_warn_wrap(line, t.hint_tier) if t.hint_tier >= 2 else line)
         elif t.effect_type == "gain_status":
             current = who.get_status(t.status_name)
@@ -3764,7 +3773,9 @@ class BattleCog(commands.GroupCog, name="battle"):
                             )
                             splash_total = boosted_splash_total
 
-                        splash_mod, splash_parts = _damage_mods(splash_fighter, fighter, adjusted_skill.damage_type)
+                        splash_mod, splash_parts = _damage_mods(
+                            splash_fighter, fighter, adjusted_skill.damage_type, adjusted_skill.damage_pct
+                        )
                         if splash_parts and splash_total > 0:
                             frag_splash_total = round(splash_total * splash_mod)
                             splash_log.append(

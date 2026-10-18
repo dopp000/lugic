@@ -1,7 +1,9 @@
 import random
 from dataclasses import dataclass, field, replace
 
-from game.conditions import Trigger, TriggerContext, evaluate_condition, pay_cost, effective_value
+from game.conditions import (
+    POST_HIT_EFFECTS, POWER_TIMINGS, Trigger, TriggerContext, evaluate_condition, pay_cost, effective_value,
+)
 
 
 @dataclass
@@ -32,6 +34,10 @@ class Skill:
     # target-selection and the splash-damage handling in combat()'s
     # solo branch, both in cogs/battle.py.
     attack_weight: int = 1
+
+    # Percent damage picked up from "Deal +N% damage" lines while this skill is being
+    # used (see resolve_triggers). Battle-only: it is never saved with the skill.
+    damage_pct: int = 0
 
     def __post_init__(self):
         # Pads status lists up to `coins` entries if a Skill gets built
@@ -201,9 +207,7 @@ def resolve_skill(
             ]
             power += sum(effective_value(t, context) for t in coin_start_fired if t.effect_type == "bonus_power")
             coin_power += sum(effective_value(t, context) for t in coin_start_fired if t.effect_type == "bonus_coin_power")
-            fired_triggers.extend(
-                t for t in coin_start_fired if t.effect_type in ("inflict_status", "sanity_gain", "gain_status", "heal", "remove_status")
-            )
+            fired_triggers.extend(t for t in coin_start_fired if t.effect_type in POST_HIT_EFFECTS)
 
         heads = flip_coin(heads_chance)
         if heads:
@@ -249,7 +253,7 @@ def resolve_skill(
                     continue
                 if t.timing == "on_crit_tails_hit" and heads:
                     continue
-                if t.effect_type not in ("inflict_status", "sanity_gain", "gain_status", "heal", "remove_status"):
+                if t.effect_type not in POST_HIT_EFFECTS:
                     continue
                 if evaluate_condition(t.condition, context) and pay_cost(t, context):
                     fired_triggers.append(t)
@@ -268,22 +272,30 @@ def resolve_triggers(
     skill: Skill, context: TriggerContext, timing: str
 ) -> tuple[Skill, list[Trigger]]:
     """Evaluates every skill-level trigger matching `timing` against the current context. See docs/ENGINEERING_NOTES.md#skills-resolve-triggers for the full rationale."""
+    sources = [skill.triggers]
+    if timing in POWER_TIMINGS and context.caster is not None:
+        # The caster's identity passives also get to shape every skill they use at the
+        # pre-toss timings. (Their other timings are swept separately by the battle loop,
+        # so this never double-fires.)
+        sources += [p.triggers for p in getattr(context.caster, "passive_skills", None) or []]
     fired = [
-        t for t in skill.triggers
+        t for triggers in sources for t in triggers
         if t.timing == timing and evaluate_condition(t.condition, context) and pay_cost(t, context)
     ]
 
     bonus_power = sum(effective_value(t, context) for t in fired if t.effect_type == "bonus_power")
     bonus_coin_power = sum(effective_value(t, context) for t in fired if t.effect_type == "bonus_coin_power")
+    bonus_pct = sum(effective_value(t, context) for t in fired if t.effect_type == "bonus_damage_pct")
 
-    if bonus_power or bonus_coin_power:
+    if bonus_power or bonus_coin_power or bonus_pct:
         skill = replace(
             skill,
             base_power=skill.base_power + bonus_power,
             coin_power=skill.coin_power + bonus_coin_power,
+            damage_pct=skill.damage_pct + bonus_pct,
         )
 
-    post_hit = [t for t in fired if t.effect_type in ("inflict_status", "sanity_gain", "gain_status", "heal", "remove_status")]
+    post_hit = [t for t in fired if t.effect_type in POST_HIT_EFFECTS]
     return skill, post_hit
 
 

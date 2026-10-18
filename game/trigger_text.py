@@ -24,8 +24,11 @@ _TIMING_TITLES = {internal: key.title() for key, internal in ALL_TIMING_LOOKUP.i
 # to find the closest one.
 EFFECT_TEMPLATES = [
     "Deal +N damage",
+    "Deal +N% damage",
+    "Deal +N% damage per N Burn Count on the target (max N%)",
     "Coin Power +N",
     "Gain N Sanity",
+    "Lose N Sanity",
     "Heal N HP",
     "Heal N% max HP",
     "Inflict +N Burn Count",
@@ -98,8 +101,14 @@ def _describe_effect(t: Trigger, names) -> str:
     scale = ""
     if t.scale_status:
         scale = f" per {t.scale_per} {_name(t.scale_status, names)} {t.scale_basis.capitalize()}"
+        if t.scale_target:
+            scale += " on the target"
+        if t.scale_max:
+            scale += f" (max {t.scale_max}{'%' if t.effect_type == 'bonus_damage_pct' else ''})"
     if t.effect_type == "bonus_power":
         text = f"Deal +{t.effect_value} damage{scale}"
+    elif t.effect_type == "bonus_damage_pct":
+        text = f"Deal +{t.effect_value}% damage{scale}"
     elif t.effect_type == "bonus_coin_power":
         text = f"Coin Power +{t.effect_value}{scale}"
     elif t.effect_type == "inflict_status":
@@ -111,6 +120,8 @@ def _describe_effect(t: Trigger, names) -> str:
             text = f"Gain +{t.status_count} {s} Count"
     elif t.effect_type == "sanity_gain":
         text = f"Gain {t.effect_value} Sanity"
+    elif t.effect_type == "sanity_loss":
+        text = f"Lose {t.effect_value} Sanity"
     elif t.effect_type == "heal":
         text = f"Heal {t.effect_value}{'% max HP' if t.heal_percent else ' HP'}"
     elif t.effect_type == "remove_status":
@@ -153,7 +164,17 @@ def damage_range(skill) -> tuple[int, int, int]:
         elif t.effect_type == "bonus_coin_power":
             high += t.effect_value * left * (left + 1) / 2
             avg += t.effect_value * 0.5 * left * (left + 1) / 2
+    pct = percent_bonus(skill)
+    if pct:
+        low, avg, high = low * (1 + pct / 100), avg * (1 + pct / 100), high * (1 + pct / 100)
     return round(low), round(avg), round(high)
+
+
+def percent_bonus(skill) -> int:
+    """Total '+N% damage' a skill's lines can add, counting every line as firing (a scaled line at its cap)."""
+    return sum(
+        (t.scale_max or t.effect_value) for t in skill.triggers if t.effect_type == "bonus_damage_pct"
+    )
 
 
 def _closest(word: str, options, n: int = 2) -> list[str]:
@@ -188,6 +209,8 @@ def friendly_error_text(full_text: str, error: TriggerParseError, custom_keys=No
             close = _closest(m.group(1).replace(" ", "_"), pool)
             if close:
                 out.append("Did you mean " + " or ".join(status_label(c) for c in close) + "?")
+    elif "can't be used:" in reason or "would do nothing" in reason:
+        pass  # the reason already says exactly what to change
     elif "effect phrase not recognized" in reason:
         rest = re.sub(r"^\s*(?::coin\d+:\s*)?\[[^\]]*\]\s*", "", line)
         if re.match(r"(?i)(if|at|when)\b", rest) and "," not in rest:

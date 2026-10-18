@@ -303,7 +303,10 @@ logic. Part names and HP show under the fighter in the battle embed. See
   `[On Use] Coin Power +1 per 3 Pulsation Potency`,
   `[On Use] Deal +2 damage per 5 Pulsation Count`. Scaling works on Coin
   Power and Deal damage only, and it reads the value after any cost on the
-  same line was paid. The spent total resets every battle.
+  same line was paid. `(max N)` caps a scaled bonus, and `on the target`
+  reads the target's status instead of the caster's. A scaled percent must
+  have a cap: `[On Use] Deal +5% damage per 6 Burn Count on the target (max
+  15%)`. The spent total resets every battle.
   See `docs/ENGINEERING_NOTES.md#consume-triggers`.
 - **Panic and Low Morale**: Sanity -30 or lower is Low Morale, which does
   nothing on its own. Sanity -45 is Panic: at turn end the fighter becomes
@@ -386,7 +389,7 @@ logic. Part names and HP show under the fighter in the battle embed. See
   ceiling but cannot hit for more than about 200. Status resistances (Burn,
   Bleed, Tremor, Rupture, Sinking: 0.5x to 2.0x) are priced, with at most 18 BP
   banked from vulnerabilities; Slash/Blunt/Pierce are all 1.0x or one each of
-  0.5 / 1.0 / 1.5. Passive Points (admin-granted, max 2 per event) pay for identity passives (always-on rules kept off the skill list, reacting at Turn/Combat Start, On Evade, Ally reactions and the passive-only Self Is Hit / Self On Stagger / Self On Kill) and for new unique statuses (1 to 3 PP). Non-keyword effects (Haste, Fragile, Bind, Protection, Damage Up/Down, Power Up/Down, Paralyze) on normal skills cost ceil(size / 2) BP each, at most 3 BP per kit, paid from the pool and shown in `/character bp`. Defense archetypes (max 2) gate Guard / Evade / Counter style skills, with a lowest Speed 4 or removed Stagger Tier 2 prerequisite. Status ranks (max 2 statuses, Rank 1 to 5) limit which statuses a normal skill may use and how strong (budget for Bleed/Tremor/Poise/Charge, Potency cap for Burn/Sinking/Rupture), old skills grandfathered. Skill Points (granted by admins, start at 0) pay for extra trigger lines: the first line on a skill is free, each extra costs 1 SP, old skills are grandfathered. Offense/Defense Level (0 to 5, 4% damage per step, 0 / 1 / 2 /
+  0.5 / 1.0 / 1.5. Passive Points (admin-granted, max 2 per event) pay for identity passives (always-on rules kept off the skill list, reacting at Turn/Combat Start, On Evade, Ally reactions and the passive-only Self Is Hit / Self On Stagger / Self On Kill, and shaping every skill they use at Before Use / On Use / Clash Start / Before Attack, which is how a passive adds Deal +10% damage) and for new unique statuses (1 to 3 PP). Non-keyword effects (Haste, Fragile, Bind, Protection, Damage Up/Down, Power Up/Down, Paralyze) on normal skills cost ceil(size / 2) BP each, at most 3 BP per kit, paid from the pool and shown in `/character bp`. Defense archetypes (max 2) gate Guard / Evade / Counter style skills, with a lowest Speed 4 or removed Stagger Tier 2 prerequisite. Status ranks (max 2 statuses, Rank 1 to 5) limit which statuses a normal skill may use and how strong (budget for Bleed/Tremor/Poise/Charge, Potency cap for Burn/Sinking/Rupture), old skills grandfathered. Skill Points (granted by admins, start at 0) pay for extra trigger lines: the first line on a skill is free, each extra costs 1 SP, old skills are grandfathered. Offense/Defense Level (0 to 5, 4% damage per step, 0 / 1 / 2 /
   4 / 4 / 6 BP) change damage dealt and taken. In a clash the higher Level adds the
   Level gap to its Power every round (`/character exempt level:` and `/battle
   setstatus level:` set it for NPCs). Not built yet: status ranks, defense archetypes and Passive
@@ -612,6 +615,21 @@ code ever drift, the code is the source of truth.
 Hit`, `Tails Hit`, `Hit After Clash Win`, `Current Coin Attack End`, `Heads
 Attack End`, `Tails Attack End`, `On Crit`, `On Crit - Heads Hit`, `On Crit -
 Tails Hit`.
+
+**Effects and notes.** `Deal +N damage`, `Deal +N% damage` (1 to 50 per line,
+`MAX_DAMAGE_PCT`), `Coin Power +N`, `Gain N Sanity`, `Lose N Sanity`, Heal,
+Inflict, Gain, Remove, `Consume`. The three power effects (`POWER_EFFECTS` in
+`game/conditions.py`) change the hit itself, so the engine only reads them at
+`Before Use`, `On Use`, `Clash Start` and `Before Attack` (`POWER_TIMINGS`),
+plus `Coin Start` for the two flat ones. At any other timing they never did
+anything, so the parser now refuses the line and says where it does work. A
+percent is not its own multiplier: it joins the same additive pile as Damage
+Up and Offense Level (`_damage_mods`). The only trailing notes understood are
+`(Hint N)`, `(once per turn)` / `(N times per turn)` and `(max N)` on a scaled
+line. Any other bracket note, such as `(50% chance)` or `(once per
+Encounter)`, is refused, because the old parser dropped it silently and the
+player believed it was enforced. Passives saved before this check are read
+back with `strict=False`, so they keep loading.
 
 `UNSUPPORTED_TIMINGS` is currently empty: every recognized timing has real
 dispatch. New timing names without wired dispatch should go here with a

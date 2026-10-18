@@ -2146,5 +2146,45 @@ a new status gets an icon.
 - NPC tiers: `game/npc_tiers.py` holds Fodder / Elite / Boss numbers. `/battle addnpc`
   (admin) builds a plain `Fighter` from one, not a `Character`, so nothing is saved
   and no Build Point check applies.
-- Next: base-skill status ranks, defense archetypes, Passive Points, then the player request/approval flow that replaces
-  admin-only stat and Supermove edits.
+- Next: the rest of the passive survey (Project doc `passive-survey`), Reuse Coin, then the player
+  request/approval flow that replaces admin-only stat, rank, archetype, Supermove and passive edits.
+
+<a id="percent-damage-and-notes"></a>
+## Percent damage, line notes and passive attack timings
+
+- `Deal +N% damage` is effect type `bonus_damage_pct`. It does not multiply anything on its
+  own: `resolve_triggers` sums the fired lines into `Skill.damage_pct` (a battle-only field,
+  not saved by `to_dict`), and `apply_incoming_hit` / the splash loop pass
+  `result.skill.damage_pct` to `_damage_mods`, where it joins the additive pile with Damage
+  Up, Fragile, Protection and the Offense/Defense Level. `result.skill` (not the skill passed
+  in) is read on purpose: in a clash the `[Before Attack]` bonus is added inside
+  `resolve_round_clash` to a copy of the skill, and only the result carries it.
+- Scaling: `_EFFECT_SCALED` takes an optional `%`, an optional `on the target` suffix and the
+  `(max N)` note. New `Trigger.scale_target` and `Trigger.scale_max`; `effective_value`
+  reads the target's status when `scale_target` is set and clamps to `scale_max`. A scaled
+  percent line must carry a cap. One line is limited to `MAX_DAMAGE_PCT` (50, an
+  assumption). Supermove severity and `damage_range` count a percent line as always firing
+  (a scaled line at its cap).
+- Which timings change a hit: the engine reads `bonus_power`, `bonus_coin_power` and
+  `bonus_damage_pct` only from the skill returned by the pre-roll chain
+  (`_resolve_pre_roll_chain`: Before Use, On Use, Clash Start, or Before Attack for a solo
+  attack), from `resolve_round_clash`'s own `[Before Attack]`, and from `[Coin Start]`
+  inside `resolve_skill` (flat ones only). Every other call to `resolve_triggers` throws the
+  returned skill away. So a power effect anywhere else always did nothing. `POWER_TIMINGS` /
+  `POWER_EFFECTS` in `game/conditions.py` name this, and the parser now refuses the line
+  (strict mode). The old help page example `:Coin2: [On Hit] ... Deal +3 damage` was one of
+  these dead lines and was changed to `[On Use]`.
+- Notes: `_take_notes` peels trailing `(...)` notes after the hint and per-turn notes. Only
+  `(max N)` / `(max N%)` is kept; any other note is a parse error in strict mode (it used to
+  be dropped, so `(50% chance)` or `(once per Encounter)` silently did nothing). Skills
+  already saved load from JSON, not from text, so they are untouched, and are only
+  checked when edited. `build_passive_skill` re-parses saved passive text with
+  `strict=False` so a passive saved earlier still loads exactly as before.
+- Passive attack timings: `PASSIVE_ATTACK_TIMINGS` (= `POWER_TIMINGS`) are now valid passive
+  timings. `resolve_triggers` adds the caster's `passive_skills` triggers for those four
+  timings only. Their other timings are still swept through `trigger_skills()`, which never
+  uses these four, so nothing fires twice. This is what lets a passive add damage or Coin
+  Power to every skill its owner uses; before this a passive could not touch an attack.
+- `Lose N Sanity` is `sanity_loss` (self only, not `to the ally`), applied in
+  `apply_trigger_effects` with `Fighter.lose_sanity`. All post-hit effect types now live in
+  `POST_HIT_EFFECTS`, which replaces three copies of the tuple in `game/skills.py`.

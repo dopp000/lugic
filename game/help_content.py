@@ -436,7 +436,10 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
             "Blank lines are ignored. A tag on its own line (like `[Duality]`) just "
             "switches a skill flag on.\n"
             "Per-coin tags need a coin number first: `:Coin1: [On Hit] ...`.\n"
-            "Add `(2 times per turn)` or `(once per turn)` to a line to cap how often it can fire each round."
+            "Add `(2 times per turn)` or `(once per turn)` to a line to cap how often it can fire each round.\n"
+            "Those, `(Hint N)` and `(max N)` on a scaling line are the only notes the bot understands. "
+            "Anything else in brackets, like `(50% chance)` or `(once per Encounter)`, is refused so "
+            "nobody thinks a limit is being enforced when it is not."
         ),
     ),
     HelpEntry(
@@ -450,6 +453,9 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
             "**Clash Start**, **Clash Win**, **Clash Lose**: around a Clash.\n"
             "**Before Attack**, **On Unopposed Attack**, **Attack End**, **Turn End**: "
             "before and after the attack itself.\n"
+            "Effects that change the hit itself (`Deal +N damage`, `Deal +N% damage`, `Coin Power +N`) only "
+            "work at **Before Use**, **On Use**, **Clash Start** and **Before Attack**, plus **Coin Start** "
+            "for the two flat ones. The bot refuses them anywhere else, because they would do nothing.\n"
             "**On Evade**, **Before Getting Hit**: when you dodge or get hit.\n"
             "**On Stagger**, **On Kill**, **On Crit Kill**: after a hit that Staggers, "
             "kills, or crit-kills. **Hit After Clash Lose**: for the side that lost a Clash.\n"
@@ -494,10 +500,12 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
         summary="The simple number effects.",
         body=(
             "`Deal +4 damage`: flat extra damage on top of the hit.\n"
+            "`Deal +10% damage`: the whole skill hits 10% harder. It adds to Damage Up and the Offense "
+            "Level, it does not multiply them. One line gives 1 to 50%.\n"
             "`Coin Power +2`: raises that coin's power.\n"
-            "`Gain 5 Sanity`: your Sanity goes up.\n"
+            "`Gain 5 Sanity` / `Lose 5 Sanity`: your Sanity goes up or down.\n"
             "`Heal 8 HP` or `Heal 10% max HP`: restores HP (up to 100%).\n"
-            "Percent damage and chaining effects with `;` are not supported."
+            "Chaining effects with `;` is not supported, write one line per effect."
         ),
     ),
     HelpEntry(
@@ -524,7 +532,9 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
             "Potency stays.\n"
             "**Scaling** gives a bonus for every few points you hold: "
             "`Coin Power +1 per 3 Pulsation Potency` or `Deal +2 damage per 5 Pulsation Count`. "
-            "It works on Coin Power and Deal damage."
+            "It works on Coin Power and Deal damage. Add `(max 3)` to cap the bonus.\n"
+            "A percent can scale too, but it must have a cap, and `on the target` reads the target's "
+            "status instead of yours: `Deal +5% damage per 6 Burn Count on the target (max 15%)`."
         ),
     ),
     HelpEntry(
@@ -559,7 +569,7 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
         body=(
             "**A burner:**\n"
             "`:Coin1: [On Hit] Inflict +2 Burn Count`\n"
-            "`:Coin2: [On Hit] If the target has 3+ Burn, Deal +3 damage`\n"
+            "`[On Use] If the target has 3+ Burn, Deal +3 damage`\n"
             "**A charge fighter:**\n"
             "`[Turn Start] Gain +1 Charge Count`\n"
             "`[On Use] Consume 3 Charge: Coin Power +2`\n"
@@ -714,6 +724,8 @@ COMMANDS: list[HelpEntry] = [
             "apart from your skills, so they cannot be declared and take no slot. They run on their own at Turn "
             "Start, Combat Start, Ally Turn/Combat Start, On Evade, the Ally On Hit / Crit / Kill / Is Hit / "
             "On Stagger reactions, and the passive-only **Self Is Hit**, **Self On Stagger** and **Self On Kill**. "
+            "They also shape every skill you use at **Before Use**, **On Use**, **Clash Start** and **Before "
+            "Attack**, which is how a passive adds `Deal +10% damage` or `Coin Power +1`. "
             "An admin sets the PP price (1 to 6) with `/character passive`. A Support Passive works the same, it is a label.\n"
             "  - **Unique statuses** (`/character addstatus`, like Pulsation with its own icon): 1 PP, plus 1 if it "
             "keeps Potency, plus 1 if it gains Potency from Count. Statuses made before this rule stay free.\n"

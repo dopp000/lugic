@@ -21,9 +21,25 @@ CONDITION_TYPES = [
 ]
 
 EFFECT_TYPES = [
-    "bonus_power", "bonus_coin_power", "inflict_status", "gain_status", "sanity_gain", "heal",
-    "remove_status",
+    "bonus_power", "bonus_coin_power", "bonus_damage_pct", "inflict_status", "gain_status",
+    "sanity_gain", "sanity_loss", "heal", "remove_status",
 ]
+
+# Effects that land after the toss, once a hit connects (everything but the three
+# power effects below).
+POST_HIT_EFFECTS = (
+    "inflict_status", "sanity_gain", "sanity_loss", "gain_status", "heal", "remove_status",
+)
+
+# Effects that reshape the hit itself. They only do something at the timings
+# below, because the engine reads them before the coins are tossed (Coin Start
+# also works for the two flat ones). Anywhere else they would be ignored, so the
+# parser refuses them there instead of saving a line that does nothing.
+POWER_EFFECTS = ("bonus_power", "bonus_coin_power", "bonus_damage_pct")
+POWER_TIMINGS = ("before_use", "on_use", "clash_start", "before_attack")
+
+# One "Deal +N% damage" line can add at most this much (assumption, tune freely).
+MAX_DAMAGE_PCT = 50
 
 COMPARISONS = {
     "gte": lambda a, b: a >= b,
@@ -356,6 +372,10 @@ class Trigger:
     scale_status: str | None = None
     scale_per: int = 0
     scale_basis: str = "potency"
+    # "... per 3 Burn Count on the target": read the scale from the target, not the caster.
+    scale_target: bool = False
+    # "(max 3)" / "(max 15%)" on a scaled line: the scaled amount never goes above this. 0 = no cap.
+    scale_max: int = 0
     # heal effect: effect_value is the amount, heal_percent says it is a
     # percentage of the caster's max HP instead of flat HP.
     heal_percent: bool = False
@@ -390,6 +410,8 @@ class Trigger:
             "scale_status": self.scale_status,
             "scale_per": self.scale_per,
             "scale_basis": self.scale_basis,
+            "scale_target": self.scale_target,
+            "scale_max": self.scale_max,
             "heal_percent": self.heal_percent,
             "to_ally": self.to_ally,
             "max_per_turn": self.max_per_turn,
@@ -437,14 +459,18 @@ def _pay_consume(trigger: "Trigger", context: "TriggerContext") -> bool:
 
 
 def effective_value(trigger: Trigger, context: "TriggerContext") -> int:
-    """A trigger's bonus amount, scaled by the caster's current Potency or Count if the line says so ('+1 per 3 Pulsation Potency' gives 1 for every full 3). Read right after any cost was paid, so a spend that raised Potency counts."""
+    """A trigger's bonus amount, scaled by the caster's (or, with 'on the target', the target's) current Potency or Count if the line says so ('+1 per 3 Pulsation Potency' gives 1 for every full 3), then held to the line's '(max N)' if it has one. Read right after any cost was paid, so a spend that raised Potency counts."""
     if trigger.scale_status is None or trigger.scale_per < 1:
         return trigger.effect_value
-    inst = context.caster.get_status(trigger.scale_status)
+    who = context.target if trigger.scale_target else context.caster
+    inst = who.get_status(trigger.scale_status) if who is not None else None
     if inst is None:
         return 0
     stat = inst.potency if trigger.scale_basis == "potency" else inst.count
-    return trigger.effect_value * (stat // trigger.scale_per)
+    value = trigger.effect_value * (stat // trigger.scale_per)
+    if trigger.scale_max:
+        value = min(value, trigger.scale_max)
+    return value
 
 
 class TriggerParseError(ValueError):
@@ -508,6 +534,7 @@ _EFFECT_BONUS_POWER_PCT = re.compile(r"deal \+(\d+)%\s*damage", re.IGNORECASE)
 _EFFECT_BONUS_POWER = re.compile(r"deal \+(\d+)\s*damage", re.IGNORECASE)
 _EFFECT_COIN_POWER = re.compile(r"coin power \+(\d+)", re.IGNORECASE)
 _EFFECT_SANITY = re.compile(r"gain (\d+) sanity", re.IGNORECASE)
+_EFFECT_SANITY_LOSS = re.compile(r"lose (\d+) sanity", re.IGNORECASE)
 _EFFECT_INFLICT_EXPLICIT = re.compile(
     r"inflict ([a-z ]+?) potency:?\s*(\d+),?\s*count:?\s*(\d+)", re.IGNORECASE
 )
@@ -518,8 +545,44 @@ _TO_ALLY_RE = re.compile(r"\s+to (?:the |an |that )?ally\s*$", re.IGNORECASE)
 _EFFECT_REMOVE = re.compile(r"remove ([a-z ]+)", re.IGNORECASE)
 _EFFECT_HEAL = re.compile(r"heal (\d+)\s*(%)?(?: max)?\s*(?:hp)?", re.IGNORECASE)
 _EFFECT_SCALED = re.compile(
-    r"(deal|coin power) \+(\d+)(?: damage)? per (\d+) ([a-z ]+?) (potency|count)", re.IGNORECASE
+    r"(deal|coin power) \+(\d+)(%)?(?: damage)? per (\d+) ([a-z ]+?) (potency|count)( on the target)?",
+    re.IGNORECASE,
 )
+
+# Notes the bot understands at the end of a line, besides (Hint N) and (once per
+# turn) which are peeled off earlier: "(max 3)" or "(max 15%)" on a scaled line.
+_NOTE_RE = re.compile(r"\s*\(([^()]*)\)\s*$")
+_MAX_NOTE_RE = re.compile(r"max\s+(\d+)\s*(%)?", re.IGNORECASE)
+
+NOTE_HELP = (
+    "Notes the bot enforces: (Hint 1-3), (once per turn), (N times per turn), and (max N) "
+    "on a line that scales with 'per N <status> Count'."
+)
+
+
+def _take_notes(rest: str, line: str, strict: bool) -> tuple[str, int, bool]:
+    """Peels trailing '(...)' notes off a line. Returns (the line without them, the '(max N)' value or 0, whether it was written 'N%'). A note the bot cannot enforce used to be dropped silently, so a player wrote '(50% chance)' and believed it worked. In strict mode (anything new or edited) that is now an error; saved passives are re-read with strict off so old ones keep loading."""
+    max_value, max_percent = 0, False
+    while True:
+        m = _NOTE_RE.search(rest)
+        if not m:
+            return rest, max_value, max_percent
+        note = m.group(1).strip()
+        rest = rest[: m.start()]
+        mm = _MAX_NOTE_RE.fullmatch(note)
+        if mm:
+            max_value, max_percent = int(mm.group(1)), mm.group(2) is not None
+            continue
+        if not strict:
+            continue
+        low = note.lower()
+        if "chance" in low:
+            why = "chance-based lines aren't supported yet, so it would always happen"
+        elif "encounter" in low or "battle" in low or "scene" in low:
+            why = "per-Encounter limits aren't supported yet, so it would fire every time"
+        else:
+            why = "the bot can't enforce it, so it would be ignored"
+        raise TriggerParseError(line, f"the note ({note}) can't be used: {why}. {NOTE_HELP}")
 _EFFECT_CONSUME = re.compile(r"consume (\d+) ([a-z ]+?):\s*(.+)", re.IGNORECASE)
 _EFFECT_GAIN_COUNT = re.compile(r"gain \+(\d+) ([a-z ]+?) count", re.IGNORECASE)
 _EFFECT_GAIN_EXPLICIT = re.compile(
@@ -637,19 +700,14 @@ def _parse_effect_text(text: str) -> tuple[str, int, str | None, int]:
     """
     text = text.strip().rstrip(".")
 
-    if _EFFECT_BONUS_POWER_PCT.search(text):
-        raise TriggerParseError(
-            text,
-            "percent-based or formula-based damage scaling isn't supported yet, only flat "
-            "'deal +N damage' (queued separately, see the handoff doc's bigger-additions list)",
-        )
-
     core = _TRAILING_PAREN_RE.sub("", text).strip()
 
     for pattern, effect_type in (
+        (_EFFECT_BONUS_POWER_PCT, "bonus_damage_pct"),
         (_EFFECT_BONUS_POWER, "bonus_power"),
         (_EFFECT_COIN_POWER, "bonus_coin_power"),
         (_EFFECT_SANITY, "sanity_gain"),
+        (_EFFECT_SANITY_LOSS, "sanity_loss"),
     ):
         m = pattern.fullmatch(core)
         if m:
@@ -701,7 +759,7 @@ def _parse_effect_text(text: str) -> tuple[str, int, str | None, int]:
     raise TriggerParseError(text, "effect phrase not recognized, see the format guide")
 
 
-def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
+def _parse_trigger_lines(text: str, strict: bool = True) -> tuple[list[Trigger], set[str]]:
     """Parses a full multi-line trigger block, as pasted into the trigger
     modal. One line is one Trigger (or one skill-flag tag), blank lines
     are ignored.
@@ -799,6 +857,9 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
                 raise TriggerParseError(line, "the per-turn limit must be at least 1")
             rest = _PER_TURN_RE.sub("", rest).strip()
 
+        rest, note_max, note_max_percent = _take_notes(rest, line, strict)
+        rest = rest.strip()
+
         if not rest.strip():
             raise TriggerParseError(line, "no effect text after the timing tag")
 
@@ -824,6 +885,8 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
         scale_status = None
         scale_per = 0
         scale_basis = "potency"
+        scale_target = False
+        scale_max = 0
         heal_percent = False
         heal_match = _EFFECT_HEAL.fullmatch(_TRAILING_PAREN_RE.sub("", effect_text).strip())
         scaled_match = _EFFECT_SCALED.fullmatch(_TRAILING_PAREN_RE.sub("", effect_text).strip())
@@ -844,17 +907,62 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
                 raise TriggerParseError(line, "Heal can be at most 100% of max HP")
             effect_type, effect_value, status_name, status_count = "heal", int(heal_match.group(1)), None, 0
         elif scaled_match:
-            kind_word, n, per, scale_name, basis = scaled_match.groups()
+            kind_word, n, percent, per, scale_name, basis, on_target = scaled_match.groups()
             scale_status = _norm_status(scale_name)
             scale_per = int(per)
             scale_basis = basis.lower()
+            scale_target = on_target is not None
             if scale_per < 1:
                 raise TriggerParseError(line, "the 'per' number must be at least 1")
-            _check_gainable(scale_status, line)
-            effect_type = "bonus_power" if kind_word.lower() == "deal" else "bonus_coin_power"
+            if scale_target:
+                known = set(SELF_BUFF_STATUSES) | set(TARGET_STATUSES) | set(_active_custom)
+                if scale_status not in known:
+                    raise TriggerParseError(line, f"'{scale_status}' isn't a status the target can hold")
+            else:
+                _check_gainable(scale_status, line)
+            if kind_word.lower() == "deal":
+                effect_type = "bonus_damage_pct" if percent else "bonus_power"
+            elif percent:
+                raise TriggerParseError(line, "Coin Power is a flat number, it can't be a percent")
+            else:
+                effect_type = "bonus_coin_power"
             effect_value, status_name, status_count = int(n), None, 0
+            if effect_type == "bonus_damage_pct" and not note_max:
+                raise TriggerParseError(
+                    line, "a percent that scales needs a cap so it can't run away, "
+                    "e.g. 'Deal +5% damage per 6 Burn Count on the target (max 15%)'"
+                )
+            if note_max_percent and effect_type != "bonus_damage_pct" and strict:
+                raise TriggerParseError(
+                    line, "a % cap only belongs on a percent line, like 'Deal +5% damage per 6 Burn Count on the target (max 15%)'"
+                )
+            scale_max = note_max
         else:
             effect_type, effect_value, status_name, status_count = _parse_effect_text(effect_text)
+            if note_max and strict:
+                raise TriggerParseError(
+                    line, "(max N) only works on a line that scales, like 'Coin Power +1 per 5 Poise Count (max 3)'"
+                )
+
+        if effect_type == "bonus_damage_pct":
+            if not 1 <= effect_value <= MAX_DAMAGE_PCT:
+                raise TriggerParseError(line, f"Deal +N% damage takes N from 1 to {MAX_DAMAGE_PCT} per line")
+            if scale_max > MAX_DAMAGE_PCT:
+                raise TriggerParseError(line, f"the cap on a percent line can be at most {MAX_DAMAGE_PCT}%")
+
+        if strict and effect_type in POWER_EFFECTS:
+            allowed = list(POWER_TIMINGS) + ([] if effect_type == "bonus_damage_pct" else ["coin_start"])
+            if timing not in allowed:
+                where = ", ".join(f"[{k.title()}]" for k, v in SKILL_LEVEL_TIMINGS.items() if v in POWER_TIMINGS)
+                message = (
+                    f"this effect changes the hit before the coins are tossed, so at [{tag_text}] it would do "
+                    f"nothing. It works at {where}"
+                )
+                if effect_type == "bonus_damage_pct":
+                    message += " (a percent covers the whole skill, so it has no per-coin timing)."
+                else:
+                    message += " and, with a :CoinN: prefix, at [Coin Start]."
+                raise TriggerParseError(line, message)
 
         # A hand-typed "(Hint N)" always wins. Otherwise, a trigger that
         # inflicts a status gets its tier worked out the same way an
@@ -893,6 +1001,8 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
             scale_status=scale_status,
             scale_per=scale_per,
             scale_basis=scale_basis,
+            scale_target=scale_target,
+            scale_max=scale_max,
             heal_percent=heal_percent,
             to_ally=to_ally,
             max_per_turn=max_per_turn,
@@ -902,12 +1012,12 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
 
 
 def parse_trigger_text(
-    text: str, custom_statuses: dict[str, str] | None = None,
+    text: str, custom_statuses: dict[str, str] | None = None, strict: bool = True,
 ) -> tuple[list[Trigger], set[str]]:
-    """Parses a trigger block (see _parse_trigger_lines above for the full format). `custom_statuses` maps the slug of each player-made status the owner has to its kind ("buff" or "debuff"), which is what lets lines like 'Gain +2 Pulsation Count' pass."""
+    """Parses a trigger block (see _parse_trigger_lines above for the full format). `custom_statuses` maps the slug of each player-made status the owner has to its kind ("buff" or "debuff"), which is what lets lines like 'Gain +2 Pulsation Count' pass. `strict` (the default) refuses notes and effect/timing pairs that would silently do nothing; the only caller that turns it off is the battle-time rebuild of an already saved passive, so passives saved before these checks keep loading."""
     _active_custom.clear()
     _active_custom.update(custom_statuses or {})
     try:
-        return _parse_trigger_lines(text)
+        return _parse_trigger_lines(text, strict)
     finally:
         _active_custom.clear()
