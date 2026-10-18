@@ -434,6 +434,21 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
             )
             return
 
+        # Attack Weight (hitting extra targets) is a Supermove power. Admins and
+        # exempt characters (NPCs, bosses) can still use it on any skill.
+        if (
+            attack_weight > 1
+            and "supermove" not in flags
+            and not _is_admin(interaction)
+            and not getattr(self.target_fighter, "bp_exempt", False)
+        ):
+            await interaction.response.send_message(
+                "Attack Weight above 1 is only for a [Supermove]. Set it to 1, or add "
+                "[Supermove] to the trigger box.",
+                ephemeral=True,
+            )
+            return
+
         if "supermove" in flags and flags & {"duality", "guard", "evade", "clashable_guard", "counter", "clashable_counter"}:
             await interaction.response.send_message(
                 "A [Supermove] has to be an attack skill, it can't also be Duality, Guard, Evade or Counter.",

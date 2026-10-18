@@ -153,7 +153,7 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   cancel: no coins, no Shield, no triggers, just a log line. `[Clashable
   Guard]`, `[Counter]`, `[Clashable Counter]` are excluded from Offset
   (matches canon's exception clause exactly).
-- **Attack Weight (multi-target splash)**: fully built and confirmed
+- **Attack Weight (multi-target splash)**: Supermove only for players (admins and exempt characters can use it anywhere); fully built and confirmed
   reachable from real play — `AddSkillModal` exposes `attack_weight_input`,
   parsed and passed into `Skill(attack_weight=...)`, so this is no longer a
   "needs verification" item. At `declare()` time, `(attack_weight - 1)`
@@ -370,7 +370,7 @@ logic. Part names and HP show under the fighter in the battle embed. See
 - **Build Points (first part)**: `game/build_points.py` holds every number. A
   character has a BP pool (30 at the start, more from `/character grantbp`),
   and its level is just a label on the pool (45 / 63 / 84 / 108). HP (100 to
-  160), Power (6 to 14, 1 BP per point), Speed range (1 to 8, at least 2 wide,
+  160), Power (6 to 12, 0 / 1 / 2 / 4 / 4 / 6 / 8 BP per step), Speed range (1 to 8, at least 2 wide,
   priced by its average) and Stagger tier removal (5 / 7 / 12) are paid from the
   pool. No single stat may use more than 40% of the pool, and Power + Speed or
   Power + HP at most 60%. Power also caps a skill: Base Power at most

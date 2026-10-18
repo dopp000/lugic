@@ -219,7 +219,8 @@ DAMAGE_MATH: list[HelpEntry] = [
             "the exact same coin results as the main target (no re-rolled coins, "
             "no extra Poise spent), but still gets its OWN resistance, Stagger "
             "check, and Evade roll -- two targets with different resistances can "
-            "end up taking very different final damage from the same attack."
+            "end up taking very different final damage from the same attack.\n"
+            "Only a [Supermove] can have Attack Weight above 1 (admins can set it on anything)."
         ),
     ),
     HelpEntry(
@@ -650,11 +651,11 @@ COMMANDS: list[HelpEntry] = [
             "`/character list` shows yours. `/character view` shows one's stats, only "
             "to you unless you set `public`.\n"
             "`/character edit` changes only the fields you fill in. Name, avatar and "
-            "resistances are yours to change. HP, Speed range, Power and Stagger cost "
-            "Build Points, so only an admin can change those (see Build Points and levels).\n"
+            "Resistances, HP, Speed range, Power and Stagger are part of the build, so "
+            "only an admin can change those (see Build Points and levels).\n"
             "`/character bp` shows a character's level, Build Points and anything to fix.\n"
             "Admins also have `/character grantbp`, `exempt` and `recheck`.\n"
-            "`/character resistance` is a shortcut for setting resistances.\n"
+            "`/character resistance` (admin only) is a shortcut for setting resistances.\n"
             "`/character delete` removes one for good."
         ),
     ),
@@ -668,7 +669,7 @@ COMMANDS: list[HelpEntry] = [
             "on your total: Level 2 at 45 BP, 3 at 63, 4 at 84, 5 at 108.\n"
             "**What costs BP:**\n"
             "- **HP:** 100 is free, up to 160 (about 1 to 8 BP).\n"
-            "- **Power:** 6 is free, 1 BP per point, up to 14.\n"
+            "- **Power:** 6 is free, up to 12. Each step costs more (1, 2, 4, 4, 6, then 8 BP in total).\n"
             "- **Speed range:** between 1 and 8, at least 2 wide. The higher the average, the more it costs (up to 16 BP).\n"
             "- **Stagger:** removing Tier 2 costs 5 BP, Tier 3 costs 7, both 12. Tier 1 can never go.\n"
             "**Limits that stop one-sided builds:** no single stat can use more than 40% of "

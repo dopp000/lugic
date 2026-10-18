@@ -27,8 +27,10 @@ HP_STEP_COSTS = [0, 1, 2, 4, 4, 6, 8]
 
 # --- Power -------------------------------------------------------------------
 POWER_BASE = 6
-POWER_MAX = 14
-POWER_BP_PER_POINT = 1  # 1 BP per point above the base: 8 BP reaches the cap of 14
+POWER_MAX = 12
+# Total BP spent at Power 6, 7, ... 12 (the old reference tables). Like HP, the
+# price climbs unevenly on purpose.
+POWER_STEP_COSTS = [0, 1, 2, 4, 4, 6, 8]
 
 # --- Speed -------------------------------------------------------------------
 SPEED_LOWEST = 1
@@ -68,7 +70,8 @@ def hp_cost(hp: int) -> int:
 
 
 def power_cost(power: int) -> int:
-    return max(0, power - POWER_BASE) * POWER_BP_PER_POINT
+    steps = max(0, power - POWER_BASE)
+    return POWER_STEP_COSTS[min(steps, len(POWER_STEP_COSTS) - 1)]
 
 
 def speed_cost(low: int, high: int) -> int:

@@ -2036,11 +2036,13 @@ a new status gets an icon.
   budget) and `skill_problems` (skills over the Power ceiling). Spent BP is
   always computed from the stats, never stored; only `bp_total`, `bp_log` and
   `bp_exempt` are saved on `Character`.
-- Assumptions to confirm: HP uses the wiki step curve (0,1,2,4,4,6,8 BP per 10
-  HP); Power is a flat 1 BP per point (the wiki table is unclear about which
-  Power values its steps are, and 1 BP per point reaches 14 at 8 BP, matching
-  the earlier 20-BP draft); Speed costs interpolate between whole-number
-  averages. If any of these are wrong, change the tables at the top.
+- Prices: HP and Power use the step table 0,1,2,4,4,6,8 BP (HP per 10 HP, Power
+  per point from 6 to 12, taken from the old BP calculator sheets); Speed costs
+  interpolate between whole-number averages. The old reference text said Power
+  14, but every table stops at 12, so 12 is the cap. Change the tables at the top
+  of the module if that is wrong.
+- Resistances are part of the build, so only admins can set them for now
+  (`/character edit` and `/character resistance`). They are not priced yet.
 - The 40% / 60% caps use the whole pool (`bp_total`), not what is spent.
 - Enforcement points: `/character edit` (copy of the character is checked first,
   nothing saved on failure; non-admins cannot touch HP/Speed/Power/Stagger),

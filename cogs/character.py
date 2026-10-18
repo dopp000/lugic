@@ -242,7 +242,7 @@ class CharacterCog(commands.GroupCog, name="character"):
         embed = build_character_embed(character, owner_name)
         await interaction.response.send_message(embed=embed, ephemeral=not public)
 
-    @app_commands.command(name="edit", description="Edit a character (only fill in what you want to change; HP, Speed, Power and Stagger are admin only)")
+    @app_commands.command(name="edit", description="Edit a character (only fill in what you want to change; HP, Speed, Power, Stagger and resistances are admin only)")
     @app_commands.describe(
         name="Character to edit",
         new_name="Rename the character",
@@ -251,7 +251,7 @@ class CharacterCog(commands.GroupCog, name="character"):
         speed_min="Lowest a skill slot's Speed can roll each round (needs speed_max too)",
         speed_max="Highest a skill slot's Speed can roll each round (needs speed_min too)",
         power="New Power (admin only, costs Build Points)",
-        resistance_types="Resistance(s) to set, comma-separated for several, e.g. 'slash,burn' (needs values too)",
+        resistance_types="Resistance(s) to set, e.g. 'slash,burn' (admin only, needs values too)",
         values="Multiplier for each type above, same order, comma-separated, e.g. '1.25,0.75' (needs resistance_types too)",
         stagger_thresholds="3 HP% values for Tier 1/2/3, comma-separated, descending, e.g. '55,40,25'",
         stagger_disabled_tiers="Which Stagger tiers to strip (2 and/or 3, comma-separated; Tier 1 can't be removed), or 'none'",
@@ -291,11 +291,12 @@ class CharacterCog(commands.GroupCog, name="character"):
             return
 
         build_fields_used = any(
-            v is not None for v in (hp, speed_min, power, stagger_thresholds, stagger_disabled_tiers)
+            v is not None
+            for v in (hp, speed_min, power, stagger_thresholds, stagger_disabled_tiers, resistance_types)
         )
         if build_fields_used and not is_admin(interaction):
             await interaction.response.send_message(
-                "HP, Speed, Power and Stagger are paid for with Build Points, so only an admin "
+                "HP, Speed, Power, Stagger and resistances are part of the build, so only an admin "
                 "can change them. Ask an admin to make the change for you.",
                 ephemeral=True,
             )
@@ -467,7 +468,7 @@ class CharacterCog(commands.GroupCog, name="character"):
 
     @app_commands.command(
         name="resistance",
-        description="Set one or more of a character's resistances",
+        description="Set one or more of a character's resistances (admin only)",
     )
     @app_commands.describe(
         name="Character name",
@@ -487,10 +488,11 @@ class CharacterCog(commands.GroupCog, name="character"):
             await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
-        is_owner = interaction.user.id == character.owner_id
-        if not (is_owner or is_admin(interaction)):
+        if not is_admin(interaction):
             await interaction.response.send_message(
-                "Only the owner or an admin can edit it.", ephemeral=True
+                "Resistances are part of the build, so only an admin can change them. "
+                "Ask an admin to make the change for you.",
+                ephemeral=True,
             )
             return
 
