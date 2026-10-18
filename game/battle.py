@@ -138,6 +138,10 @@ class Fighter:
     # docs/ENGINEERING_NOTES.md#statuses-one-turn-debuffs.
     immobilized_blocked: bool = False
 
+    # True from the turn end this fighter's Sanity hit Panic until the end
+    # of the turn Panic blocked them, when Sanity resets to 0.
+    panicked: bool = False
+
     def __post_init__(self):
         if self.speed_min is None:
             self.speed_min = self.speed

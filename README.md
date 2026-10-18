@@ -287,6 +287,15 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   Power and Deal damage only, and it reads the value after any cost on the
   same line was paid. The spent total resets every battle.
   See `docs/ENGINEERING_NOTES.md#consume-triggers`.
+- **Panic and Low Morale**: Sanity -30 or lower is Low Morale, which does
+  nothing on its own. Sanity -45 is Panic: at turn end the fighter becomes
+  Immobilized for the next turn, and Sanity resets to 0 once that turn has
+  passed. Characters build their own version with conditions usable in any
+  trigger line: `If this unit is Low Morale,`, `If this unit is Panicked,`
+  and the same for `If the target is ...`. Low Morale is also true while
+  Panicked. Example:
+  `:Coin1: [On Hit] If this unit is Panicked, Inflict +3 Sinking Count`.
+  See `docs/ENGINEERING_NOTES.md#panic-and-low-morale`.
 - Still missing: Offense/Defense Level (and Level Up/Down), Clash Power
   Down, Plus/Minus Coin Drop/Boost, HP Healing Down, Curse, and the matching
   buffs (Power Up, Haste, Protection, Damage Up).
@@ -484,10 +493,10 @@ same-side targeting, so it doesn't yet actually let a skill hit allies.
   actually redirected and landed, not a sweep. Deliberate, not a gap.
 - Animated combat reveal pacing (`COIN_FACE_DELAY`/`COIN_DETAIL_DELAY`) is
   untuned beyond "verified it works"; a busy round can run long.
-- Staggered units can still act freely: nothing currently blocks a
-  Staggered fighter from declaring/using Skills or Counters next turn, and
-  their resistances don't flip to a Fatal-style override; only the flat
-  tier-multiplier applies to damage they take.
+- A Staggered fighter cannot declare (`/battle declare` blocks them), but
+  `Battle.all_declared` still waits for them, so `/battle combat` refuses
+  to run until an admin clears the Stagger. Their resistances also don't
+  flip to a Fatal-style override; only the flat tier-multiplier applies.
 
 ## Design Divergences From Canon Limbus, and Where This Is Headed
 
@@ -540,17 +549,12 @@ Durante, and Backups, none of those fit what this bot is for.
    depend on it), then Clash Power, Coin Drop/Boost and the matching buffs.
    Bind, Fragile, type Fragility, Power Down, Damage Down, Paralyze, Poison
    and Immobilized are done.
-4. **Charge's consumption payoff.** Its own Count decay is wired; nothing
-   converts it into Coin Power/Haste/whatever its actual effect should be
-   yet.
-5. **Panic / Low Morale.** -30 SP (Low Morale) / -45 SP (Panic) thresholds.
-   Panic default: target can't act that Turn. Both must be turn-limited by
-   design: never a permanent stat change from one trigger, must expire and
-   be reapplied. Needs a customization layer similar to canon's [Panic Type
-   Changing
-   Effects](https://limbuscompany.wiki.gg/wiki/Status_Effects), for a
-   Sinking-user inflicting it, and for a character with their own version of
-   the behavior.
+4. **Charge's consumption payoff**: done. Charge can be spent with a
+   `Consume` trigger, see Status Effects above.
+5. **Panic / Low Morale**: done, see Status Effects above. Still open: a
+   customization layer like canon's Panic Type Changing Effects is just
+   trigger lines written against the new `If this unit is Low Morale,` and
+   `If this unit is Panicked,` conditions.
 6. **Parts / Core.** For a future multi-part NPC, each skill slot is a
    distinct body part with its own resistances, damage to a Part also drains
    the shared Core HP (matches canon Focused Encounters). Not built; no NPC

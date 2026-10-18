@@ -44,7 +44,9 @@ STATUS_EMOJI_IDS: dict[str, int | None] = {
     "paralyze": 1561189630936875081,
     "poison": 1561189616995008512,
     "immobilized": 1561189600481771572,
-    # Damage Up has no status behind it yet, icon uploaded ahead of time.
+    # Buff icons uploaded ahead of time, no status behind them yet.
+    "power_up": 1538063077856256000,
+    "haste": 1561190558767124512,
     "damage_up": 1561189128106803260,
 }
 

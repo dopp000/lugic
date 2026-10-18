@@ -1605,6 +1605,24 @@ Hooks:
 - Statuses are deliberately not shown in the battle embed (only hint tiers
   are), so a custom resource is hidden in the same way.
 
+<a id="panic-and-low-morale"></a>
+### Panic and Low Morale
+
+- Thresholds `SANITY_LOW_MORALE` (-30) and `SANITY_PANIC` (-45) in
+  game/statuses.py, `morale_state(fighter)` returns the current state.
+- Panic is handled in `apply_turn_end_status_ticks`: a fighter at or below
+  -45 who is not already `panicked` becomes `panicked` and gets Immobilized.
+  The existing Immobilized flow blocks them from declaring and drops their
+  declarations at combat start. When that block is consumed (the
+  `immobilized_blocked` branch) a panicked fighter's Sanity resets to 0 and
+  `panicked` clears. This happens after the Sanity drift of the new round,
+  so the Panic turn itself shows a Sanity slightly above -45.
+- Conditions `caster_morale` / `target_morale` (`status_name` is
+  "low_morale" or "panic"). Low Morale is true while Panicked too. Parsed by
+  `_COND_MORALE`: `If this unit is Low Morale,`, `If the target is Panicked,`.
+- Low Morale has no built-in effect by design. Sinking characters write their
+  own effects with these conditions rather than the engine special-casing them.
+
 <a id="consume-triggers"></a>
 ### Consume triggers
 

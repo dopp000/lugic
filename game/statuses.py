@@ -3,6 +3,23 @@ from dataclasses import dataclass
 # The 5 target-facing statuses that can be inflicted on an opponent and resisted. See docs/ENGINEERING_NOTES.md#statuses-comment-3.
 INFLICTABLE_STATUSES = ["burn", "bleed", "tremor", "rupture", "sinking"]
 
+# Sanity thresholds. Low Morale has no built-in effect, characters write
+# their own lines against it ("If this unit is Low Morale, ..."). Panic
+# makes the fighter Immobilized for a turn, then Sanity resets to 0. See
+# docs/ENGINEERING_NOTES.md#panic-and-low-morale.
+SANITY_LOW_MORALE = -30
+SANITY_PANIC = -45
+
+
+def morale_state(fighter) -> str | None:
+    """'panic', 'low_morale' or None. Panic also counts as Low Morale for conditions."""
+    if getattr(fighter, "panicked", False) or fighter.sanity <= SANITY_PANIC:
+        return "panic"
+    if fighter.sanity <= SANITY_LOW_MORALE:
+        return "low_morale"
+    return None
+
+
 # One-turn debuffs: they land immediately, last the rest of the round,
 # and are wiped at turn end. No resistances apply to them. Two flavours:
 # Potency-based (strength is Potency, Count is just a presence marker

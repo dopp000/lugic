@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from game.statuses import magnitude_to_hint_tier
+from game.statuses import magnitude_to_hint_tier, morale_state
 
 if TYPE_CHECKING:
     # Only for type hints below -- importing these for real would be a
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 CONDITION_TYPES = [
     "always", "target_status", "target_hp_pct", "caster_sanity",
     "caster_status", "first_hit_of_round", "speed_faster", "caster_speed_at_least",
+    "caster_morale", "target_morale",
 ]
 
 EFFECT_TYPES = ["bonus_power", "bonus_coin_power", "inflict_status", "gain_status", "sanity_gain"]
@@ -181,6 +182,9 @@ class Condition:
     off the TriggerContext directly.
     caster_speed_at_least -- value only, checked against
     caster_slot_speed.
+    caster_morale / target_morale -- status_name is "low_morale" (true at
+    -30 Sanity or lower, or Panicked) or "panic" (true at -45 or while
+    Panicked). See morale_state in game/statuses.py.
     first_hit_of_round -- no fields, reads is_first_hit_of_round.
     """
     type: str
@@ -256,6 +260,15 @@ def evaluate_condition(condition: Condition, context: TriggerContext) -> bool:
         if status is None:
             return False
         return status.potency >= condition.min_potency and status.count >= condition.min_count
+
+    if condition.type in ("caster_morale", "target_morale"):
+        who = context.caster if condition.type == "caster_morale" else context.target
+        if who is None:
+            return False
+        state = morale_state(who)
+        if condition.status_name == "panic":
+            return state == "panic"
+        return state in ("low_morale", "panic")
 
     if condition.type == "first_hit_of_round":
         return context.is_first_hit_of_round
@@ -408,6 +421,9 @@ _COND_SPEED_FASTER = re.compile(r"if this unit'?s speed is faster than the targe
 _COND_TARGET_STATUS_ANY = re.compile(r"if (?:the )?target has any ([a-z]+),?\s*(.*)", re.IGNORECASE)
 _COND_TARGET_STATUS_N = re.compile(r"if (?:the )?target has (\d+)\+ ([a-z]+),?\s*(.*)", re.IGNORECASE)
 _COND_CASTER_SANITY = re.compile(r"if this unit'?s sanity is (\d+)\+,?\s*(.*)", re.IGNORECASE)
+_COND_MORALE = re.compile(
+    r"if (this unit|the target) is (low morale|panic(?:ked)?),?\s*(.*)", re.IGNORECASE
+)
 _COND_AT_N_THING = re.compile(r"at (\d+)\+ ([a-z]+),?\s*(.*)", re.IGNORECASE)
 # Multi-word (custom) status names need the comma to know where the name stops.
 _COND_AT_N_THING_COMMA = re.compile(r"at (\d+)\+? ([a-z]+(?: [a-z]+)*?),\s*(.*)", re.IGNORECASE)
@@ -479,6 +495,13 @@ def _parse_condition_and_effect_text(text: str) -> tuple[Condition, str]:
     if m:
         n, status = int(m.group(1)), m.group(2).strip().lower()
         return Condition(type="target_status", status_name=status, min_potency=n), m.group(3)
+
+    m = _COND_MORALE.match(text)
+    if m:
+        who, state, rest = m.groups()
+        ctype = "caster_morale" if who.lower() == "this unit" else "target_morale"
+        key = "panic" if state.lower().startswith("panic") else "low_morale"
+        return Condition(type=ctype, status_name=key), rest
 
     m = _COND_CASTER_SANITY.match(text)
     if m:

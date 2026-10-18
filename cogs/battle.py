@@ -18,7 +18,7 @@ from game.character import load_character
 from game.statuses import (
     StatusInstance, decay_after_trigger, apply_status, INFLICTABLE_STATUSES,
     SETTABLE_STATUSES, ONE_TURN_STATUSES, POTENCY_TURN_STATUSES, fragility_bonus,
-    damage_down_penalty, magnitude_to_hint_tier,
+    damage_down_penalty, magnitude_to_hint_tier, SANITY_PANIC,
 )
 from game.resistances import DAMAGE_TYPES, ALL_RESISTANCE_TYPES, apply_resistance, parse_resistance_multiplier
 from game.emojis import status_label, status_emoji, coin_emoji, coin_roll_emoji, damage_type_emoji, stat_emoji, skill_slot_emoji, hint_emoji, attack_weight_icons, stagger_tier_emoji, stagger_action_emoji
@@ -1086,8 +1086,21 @@ def apply_turn_end_status_ticks(battle: Battle) -> list[str]:
         if f.immobilized_blocked:
             f.statuses.pop("immobilized", None)
             f.immobilized_blocked = False
+            if f.panicked:
+                f.panicked = False
+                f.sanity = 0
+                log.append(f"{status_emoji('panic')} {f.name} recovers from Panic. (Sanity reset to 0)")
         if not f.is_alive():
             continue
+
+        # Panic: Sanity at the floor Immobilizes next turn, Sanity resets
+        # to 0 once that turn has been served.
+        if not f.panicked and f.sanity <= SANITY_PANIC:
+            f.panicked = True
+            f.statuses["immobilized"] = StatusInstance(name="immobilized", potency=1, count=1)
+            log.append(
+                f"{status_emoji('panic')} {f.name} is Panicked and cannot act next turn."
+            )
 
         poison = f.get_status("poison")
         if poison is not None and poison.count > 0:
