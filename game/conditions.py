@@ -1,4 +1,5 @@
 import dataclasses
+import random
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -21,21 +22,25 @@ CONDITION_TYPES = [
 ]
 
 EFFECT_TYPES = [
-    "bonus_power", "bonus_coin_power", "bonus_damage_pct", "inflict_status", "gain_status",
-    "sanity_gain", "sanity_loss", "heal", "remove_status",
+    "bonus_power", "bonus_coin_power", "bonus_damage_pct", "bonus_clash_power", "bonus_final_power",
+    "inflict_status", "gain_status", "sanity_gain", "sanity_loss", "heal", "remove_status",
+    "gain_shield", "level_mod",
 ]
 
 # Effects that land after the toss, once a hit connects (everything but the three
 # power effects below).
 POST_HIT_EFFECTS = (
     "inflict_status", "sanity_gain", "sanity_loss", "gain_status", "heal", "remove_status",
+    "gain_shield", "level_mod",
 )
 
 # Effects that reshape the hit itself. They only do something at the timings
 # below, because the engine reads them before the coins are tossed (Coin Start
 # also works for the two flat ones). Anywhere else they would be ignored, so the
 # parser refuses them there instead of saving a line that does nothing.
-POWER_EFFECTS = ("bonus_power", "bonus_coin_power", "bonus_damage_pct")
+POWER_EFFECTS = ("bonus_power", "bonus_coin_power", "bonus_damage_pct", "bonus_clash_power", "bonus_final_power")
+# Only these two may also sit on a :CoinN: [Coin Start] line.
+COIN_START_EFFECTS = ("bonus_power", "bonus_coin_power")
 POWER_TIMINGS = ("before_use", "on_use", "clash_start", "before_attack")
 
 # One "Deal +N% damage" line can add at most this much (assumption, tune freely).
@@ -385,6 +390,12 @@ class Trigger:
     to_ally: bool = False
     # "(2 times per turn)" / "(once per turn)": 0 means no limit.
     max_per_turn: int = 0
+    # "(30% chance)": rolled each time the line would fire, 0 = always.
+    chance: int = 0
+    # "... next turn": queued and applied when the next round opens.
+    delayed: bool = False
+    # level_mod only: lands on the target (Inflict) instead of the user (Gain).
+    on_target: bool = False
 
     def to_dict(self) -> dict:
         """Used so a Skill carrying this Trigger can be saved to a
@@ -415,6 +426,9 @@ class Trigger:
             "heal_percent": self.heal_percent,
             "to_ally": self.to_ally,
             "max_per_turn": self.max_per_turn,
+            "chance": self.chance,
+            "delayed": self.delayed,
+            "on_target": self.on_target,
         }
 
     @classmethod
@@ -428,6 +442,8 @@ def pay_cost(trigger: Trigger, context: "TriggerContext") -> bool:
     """For a Consume trigger whose condition already passed: spends its cost from the caster and returns True, or returns False (nothing spent) if the caster can't afford it. Triggers with no cost always return True. Only Count is spent, Potency is left as it is. This DOES change state, call it only at the moment a trigger really fires. See docs/ENGINEERING_NOTES.md#consume-triggers."""
     caster = context.caster
     if trigger.max_per_turn and caster.trigger_uses.get(id(trigger), 0) >= trigger.max_per_turn:
+        return False
+    if trigger.chance and random.randint(1, 100) > trigger.chance:
         return False
     if not _pay_consume(trigger, context):
         return False
@@ -535,6 +551,12 @@ _EFFECT_BONUS_POWER = re.compile(r"deal \+(\d+)\s*damage", re.IGNORECASE)
 _EFFECT_COIN_POWER = re.compile(r"coin power \+(\d+)", re.IGNORECASE)
 _EFFECT_SANITY = re.compile(r"gain (\d+) sanity", re.IGNORECASE)
 _EFFECT_SANITY_LOSS = re.compile(r"lose (\d+) sanity", re.IGNORECASE)
+_EFFECT_CLASH_POWER = re.compile(r"clash power \+(\d+)", re.IGNORECASE)
+_EFFECT_FINAL_POWER = re.compile(r"final power \+(\d+)", re.IGNORECASE)
+_EFFECT_SHIELD = re.compile(r"gain (\d+)(%)?(?: max hp)? shield", re.IGNORECASE)
+_EFFECT_LEVEL = re.compile(r"(gain|inflict) (offense|defense) level ([+-])(\d+)", re.IGNORECASE)
+_NEXT_TURN_RE = re.compile(r"\s+next turn\s*$", re.IGNORECASE)
+_CHANCE_NOTE_RE = re.compile(r"(\d+)\s*%\s*chance", re.IGNORECASE)
 _EFFECT_INFLICT_EXPLICIT = re.compile(
     r"inflict ([a-z ]+?) potency:?\s*(\d+),?\s*count:?\s*(\d+)", re.IGNORECASE
 )
@@ -555,20 +577,26 @@ _NOTE_RE = re.compile(r"\s*\(([^()]*)\)\s*$")
 _MAX_NOTE_RE = re.compile(r"max\s+(\d+)\s*(%)?", re.IGNORECASE)
 
 NOTE_HELP = (
-    "Notes the bot enforces: (Hint 1-3), (once per turn), (N times per turn), and (max N) "
-    "on a line that scales with 'per N <status> Count'."
+    "Notes the bot enforces: (Hint 1-3), (once per turn), (N times per turn), (N% chance), and "
+    "(max N) on a line that scales with 'per N <status> Count'."
 )
 
 
-def _take_notes(rest: str, line: str, strict: bool) -> tuple[str, int, bool]:
-    """Peels trailing '(...)' notes off a line. Returns (the line without them, the '(max N)' value or 0, whether it was written 'N%'). A note the bot cannot enforce used to be dropped silently, so a player wrote '(50% chance)' and believed it worked. In strict mode (anything new or edited) that is now an error; saved passives are re-read with strict off so old ones keep loading."""
-    max_value, max_percent = 0, False
+def _take_notes(rest: str, line: str, strict: bool) -> tuple[str, int, bool, int]:
+    """Peels trailing '(...)' notes off a line. Returns (the line without them, the '(max N)' value or 0, whether it was written 'N%', the '(N% chance)' value or 0). A note the bot cannot enforce used to be dropped silently, so a player wrote '(50% chance)' and believed it worked. In strict mode (anything new or edited) that is now an error; saved passives are re-read with strict off so old ones keep loading."""
+    max_value, max_percent, chance = 0, False, 0
     while True:
         m = _NOTE_RE.search(rest)
         if not m:
-            return rest, max_value, max_percent
+            return rest, max_value, max_percent, chance
         note = m.group(1).strip()
         rest = rest[: m.start()]
+        cm = _CHANCE_NOTE_RE.fullmatch(note)
+        if cm:
+            chance = int(cm.group(1))
+            if strict and not 1 <= chance <= 99:
+                raise TriggerParseError(line, "a chance has to be between 1% and 99%")
+            continue
         mm = _MAX_NOTE_RE.fullmatch(note)
         if mm:
             max_value, max_percent = int(mm.group(1)), mm.group(2) is not None
@@ -576,9 +604,7 @@ def _take_notes(rest: str, line: str, strict: bool) -> tuple[str, int, bool]:
         if not strict:
             continue
         low = note.lower()
-        if "chance" in low:
-            why = "chance-based lines aren't supported yet, so it would always happen"
-        elif "encounter" in low or "battle" in low or "scene" in low:
+        if "encounter" in low or "battle" in low or "scene" in low:
             why = "per-Encounter limits aren't supported yet, so it would fire every time"
         else:
             why = "the bot can't enforce it, so it would be ignored"
@@ -706,6 +732,8 @@ def _parse_effect_text(text: str) -> tuple[str, int, str | None, int]:
         (_EFFECT_BONUS_POWER_PCT, "bonus_damage_pct"),
         (_EFFECT_BONUS_POWER, "bonus_power"),
         (_EFFECT_COIN_POWER, "bonus_coin_power"),
+        (_EFFECT_CLASH_POWER, "bonus_clash_power"),
+        (_EFFECT_FINAL_POWER, "bonus_final_power"),
         (_EFFECT_SANITY, "sanity_gain"),
         (_EFFECT_SANITY_LOSS, "sanity_loss"),
     ):
@@ -857,8 +885,12 @@ def _parse_trigger_lines(text: str, strict: bool = True) -> tuple[list[Trigger],
                 raise TriggerParseError(line, "the per-turn limit must be at least 1")
             rest = _PER_TURN_RE.sub("", rest).strip()
 
-        rest, note_max, note_max_percent = _take_notes(rest, line, strict)
+        rest, note_max, note_max_percent, chance = _take_notes(rest, line, strict)
         rest = rest.strip()
+        delayed = False
+        if _NEXT_TURN_RE.search(rest):
+            delayed = True
+            rest = _NEXT_TURN_RE.sub("", rest).strip()
 
         if not rest.strip():
             raise TriggerParseError(line, "no effect text after the timing tag")
@@ -888,6 +920,7 @@ def _parse_trigger_lines(text: str, strict: bool = True) -> tuple[list[Trigger],
         scale_target = False
         scale_max = 0
         heal_percent = False
+        on_target = False
         heal_match = _EFFECT_HEAL.fullmatch(_TRAILING_PAREN_RE.sub("", effect_text).strip())
         scaled_match = _EFFECT_SCALED.fullmatch(_TRAILING_PAREN_RE.sub("", effect_text).strip())
         remove_match = _EFFECT_REMOVE.fullmatch(_TRAILING_PAREN_RE.sub("", effect_text).strip())
@@ -906,6 +939,19 @@ def _parse_trigger_lines(text: str, strict: bool = True) -> tuple[list[Trigger],
             if heal_percent and int(heal_match.group(1)) > 100:
                 raise TriggerParseError(line, "Heal can be at most 100% of max HP")
             effect_type, effect_value, status_name, status_count = "heal", int(heal_match.group(1)), None, 0
+        elif _EFFECT_SHIELD.fullmatch(effect_text.strip().rstrip(".")):
+            sm = _EFFECT_SHIELD.fullmatch(effect_text.strip().rstrip("."))
+            heal_percent = sm.group(2) is not None
+            if int(sm.group(1)) < 1 or (heal_percent and int(sm.group(1)) > 100):
+                raise TriggerParseError(line, "Shield needs 1 or more, or 1 to 100% of max HP")
+            effect_type, effect_value, status_name, status_count = "gain_shield", int(sm.group(1)), None, 0
+        elif _EFFECT_LEVEL.fullmatch(effect_text.strip().rstrip(".")):
+            lm = _EFFECT_LEVEL.fullmatch(effect_text.strip().rstrip("."))
+            amount = int(lm.group(4)) * (1 if lm.group(3) == "+" else -1)
+            if not 1 <= abs(amount) <= 5:
+                raise TriggerParseError(line, "an Offense/Defense Level change is 1 to 5 steps")
+            on_target = lm.group(1).lower() == "inflict"
+            effect_type, effect_value, status_name, status_count = "level_mod", amount, lm.group(2).lower(), 0
         elif scaled_match:
             kind_word, n, percent, per, scale_name, basis, on_target = scaled_match.groups()
             scale_status = _norm_status(scale_name)
@@ -951,15 +997,15 @@ def _parse_trigger_lines(text: str, strict: bool = True) -> tuple[list[Trigger],
                 raise TriggerParseError(line, f"the cap on a percent line can be at most {MAX_DAMAGE_PCT}%")
 
         if strict and effect_type in POWER_EFFECTS:
-            allowed = list(POWER_TIMINGS) + ([] if effect_type == "bonus_damage_pct" else ["coin_start"])
+            allowed = list(POWER_TIMINGS) + (["coin_start"] if effect_type in COIN_START_EFFECTS else [])
             if timing not in allowed:
                 where = ", ".join(f"[{k.title()}]" for k, v in SKILL_LEVEL_TIMINGS.items() if v in POWER_TIMINGS)
                 message = (
                     f"this effect changes the hit before the coins are tossed, so at [{tag_text}] it would do "
                     f"nothing. It works at {where}"
                 )
-                if effect_type == "bonus_damage_pct":
-                    message += " (a percent covers the whole skill, so it has no per-coin timing)."
+                if effect_type not in COIN_START_EFFECTS:
+                    message += " (this one covers the whole skill, so it has no per-coin timing)."
                 else:
                     message += " and, with a :CoinN: prefix, at [Coin Start]."
                 raise TriggerParseError(line, message)
@@ -981,10 +1027,16 @@ def _parse_trigger_lines(text: str, strict: bool = True) -> tuple[list[Trigger],
         else:
             hint_tier = 1
 
-        if to_ally and effect_type not in ("heal", "gain_status", "sanity_gain", "remove_status"):
+        if to_ally and effect_type not in ("heal", "gain_status", "sanity_gain", "remove_status", "gain_shield") and not (
+            effect_type == "level_mod" and not on_target
+        ):
             raise TriggerParseError(
-                line, "'to the ally' only works with Heal, Gain, Remove and Gain Sanity effects"
+                line, "'to the ally' only works with Heal, Gain, Remove, Gain Sanity, Shield and Gain Level effects"
             )
+        if delayed and effect_type not in POST_HIT_EFFECTS:
+            raise TriggerParseError(line, "'next turn' only works on effects that land after the hit (Gain, Inflict, Heal, Shield, Sanity, Level)")
+        if delayed and consume_status:
+            raise TriggerParseError(line, "'next turn' can't be combined with Consume")
 
         triggers.append(Trigger(
             condition=condition,
@@ -1006,6 +1058,9 @@ def _parse_trigger_lines(text: str, strict: bool = True) -> tuple[list[Trigger],
             heal_percent=heal_percent,
             to_ally=to_ally,
             max_per_turn=max_per_turn,
+            chance=chance,
+            delayed=delayed,
+            on_target=on_target,
         ))
 
     return triggers, flags

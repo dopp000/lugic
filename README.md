@@ -628,7 +628,8 @@ Up and Offense Level (`_damage_mods`). The only trailing notes understood are
 `(Hint N)`, `(once per turn)` / `(N times per turn)` and `(max N)` on a scaled
 line. Any other bracket note, such as `(50% chance)` or `(once per
 Encounter)`, is refused, because the old parser dropped it silently and the
-player believed it was enforced. Passives saved before this check are read
+player believed it was enforced. `(30% chance)` is enforced: `pay_cost` rolls it each time the line would
+fire, and a miss spends nothing. Passives saved before this check are read
 back with `strict=False`, so they keep loading.
 
 `UNSUPPORTED_TIMINGS` is currently empty: every recognized timing has real

@@ -1,3 +1,4 @@
+from dataclasses import replace
 import asyncio
 import copy
 import difflib
@@ -1065,8 +1066,10 @@ def _damage_mods(
         parts.append(f"{attacker.name} Damage Up +{round(up * 100)}%")
     if down > 0:
         parts.append(f"{attacker.name} Damage Down -{round(down * 100)}%")
-    off = getattr(attacker, "offense_level", 0) * OFFDEF_PERCENT_PER_STEP / 100
-    dfn = getattr(target, "defense_level", 0) * OFFDEF_PERCENT_PER_STEP / 100
+    off_steps = max(0, min(5, getattr(attacker, "offense_level", 0) + getattr(attacker, "temp_offense", 0)))
+    def_steps = max(0, min(5, getattr(target, "defense_level", 0) + getattr(target, "temp_defense", 0)))
+    off = off_steps * OFFDEF_PERCENT_PER_STEP / 100
+    dfn = def_steps * OFFDEF_PERCENT_PER_STEP / 100
     if off > 0:
         parts.append(f"{attacker.name} Offense Level +{round(off * 100)}%")
     if dfn > 0:
@@ -1311,6 +1314,12 @@ def fire_passive_triggers(battle: Battle) -> list[str]:
         timings.append("combat_start")
 
     log: list[str] = []
+    # "... next turn" effects queued last round land now, before anything else fires.
+    for fighter in battle.fighters:
+        queued, fighter.pending_effects = fighter.pending_effects, []
+        for trig, tgt, ally in queued:
+            if fighter.is_alive():
+                log.extend(apply_trigger_effects([replace(trig, delayed=False)], fighter, tgt, ally=ally))
     for fighter in battle.fighters:
         if not fighter.is_alive():
             continue
@@ -1418,6 +1427,8 @@ def apply_turn_end_status_ticks(battle: Battle) -> list[str]:
         k for fi in battle.fighters for k, cs in fi.custom_statuses.items() if cs.lifetime == "turn"
     }
     for f in battle.fighters:
+        f.temp_offense = 0
+        f.temp_defense = 0
         for name in ONE_TURN_STATUSES:
             f.statuses.pop(name, None)
         for name in turn_custom_keys:
@@ -1627,12 +1638,33 @@ def _warn_wrap(line: str, hint_tier: int) -> str:
     return f"{icon} **{upper}** {icon}"
 
 
+def _bump_level(who: Fighter, t: Trigger):
+    if t.status_name == "offense":
+        who.temp_offense += t.effect_value
+    else:
+        who.temp_defense += t.effect_value
+
+
+def _level_text(t: Trigger) -> str:
+    word = "rises" if t.effect_value > 0 else "falls"
+    return f"{t.status_name.title()} Level {word} by {abs(t.effect_value)} this turn"
+
+
 def apply_trigger_effects(
     triggers: list[Trigger], caster: Fighter, target: Fighter | None, ally: Fighter | None = None,
 ) -> list[str]:
     """Applies the post-hit effects (inflict_status, sanity_gain, gain_status, heal, remove_status) from whichever triggers fired AND actually landed a hit. Dangerous ones (hint_tier 2+) get run through _warn_wrap so they stand out in the fight log. A trigger written with 'to the ally' lands on `ally` (the fighter a [Support] skill was aimed at) instead of the caster, and is skipped if there is no ally. See docs/ENGINEERING_NOTES.md#battle-apply-trigger-effects and #ally-support for the full rationale."""
     log: list[str] = []
     for t in triggers:
+        if t.delayed:
+            caster.pending_effects.append((t, target, ally))
+            continue
+        if t.effect_type == "level_mod" and t.on_target:
+            if target is None:
+                continue
+            _bump_level(target, t)
+            log.append(f"Trigger: {target.name} {_level_text(t)}")
+            continue
         if t.effect_type == "inflict_status":
             if target is None:
                 continue
@@ -1667,6 +1699,15 @@ def apply_trigger_effects(
             who.gain_sanity(t.effect_value)
             line = f"Trigger: {who.name} Sanity +{t.effect_value} ({who.sanity})"
             log.append(_warn_wrap(line, t.hint_tier) if t.hint_tier >= 2 else line)
+        elif t.effect_type == "gain_shield":
+            if not who.is_alive() or who.eliminated:
+                continue
+            amount = max(1, round(who.max_hp * t.effect_value / 100)) if t.heal_percent else t.effect_value
+            who.shield += amount
+            log.append(f"Trigger: {who.name} gains {status_emoji('shield')} {amount} Shield ({who.shield})")
+        elif t.effect_type == "level_mod":
+            _bump_level(who, t)
+            log.append(f"Trigger: {who.name} {_level_text(t)}")
         elif t.effect_type == "sanity_loss":
             who.lose_sanity(t.effect_value)
             line = f"Trigger: {who.name} Sanity -{t.effect_value} ({who.sanity})"

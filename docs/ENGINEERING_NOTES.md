@@ -2195,3 +2195,19 @@ a new status gets an icon.
 - `Lose N Sanity` is `sanity_loss` (self only, not `to the ally`), applied in
   `apply_trigger_effects` with `Fighter.lose_sanity`. All post-hit effect types now live in
   `POST_HIT_EFFECTS`, which replaces three copies of the tuple in `game/skills.py`.
+
+<a id="effects-patch-2"></a>
+## Clash/Final Power, Shield, temporary levels, next turn, chance
+
+- `Clash Power +N` (`bonus_clash_power`) fills `Skill.clash_power`, added to the side's final Power only in
+  the `resolve_round_clash` comparison (like the Level gap), never to damage. `Final Power +N`
+  (`bonus_final_power`) fills `Skill.final_power_bonus`, added to each coin's final Power in `resolve_skill`
+  (so it is damage). Both are POWER_EFFECTS: same four timings as percent damage, no Coin Start.
+- `Gain N Shield` / `Gain N% max HP Shield` (`gain_shield`) adds to `Fighter.shield`, the Guard pool.
+- `Gain|Inflict Offense|Defense Level +/-N` (`level_mod`) changes `Fighter.temp_offense/temp_defense`, wiped in
+  `apply_turn_end_status_ticks`. `_damage_mods` adds them to the character's own level and clamps to 0..5.
+- `... next turn` (`Trigger.delayed`): `apply_trigger_effects` queues `(trigger, target, ally)` on
+  `caster.pending_effects`; `fire_passive_triggers` flushes the queue first, at the start of the next
+  `/battle combat`. Not allowed with Consume or on power effects.
+- `(N% chance)` (`Trigger.chance`) is rolled inside `pay_cost` after the per-turn check and before the Consume
+  cost, so a miss neither spends nor counts toward the per-turn limit. Range 1 to 99.

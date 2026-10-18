@@ -47,6 +47,7 @@ def skill_severity(skill) -> int:
         elif t.effect_type == "bonus_coin_power":
             expected += t.effect_value * 0.5 * left * (left + 1) / 2
     # "Deal +N% damage" lines multiply the whole thing (a scaled line counts at its cap).
+    expected += sum(t.effect_value * n for t in skill.triggers if t.effect_type == "bonus_final_power")
     pct = sum((t.scale_max or t.effect_value) for t in skill.triggers if t.effect_type == "bonus_damage_pct")
     return round(expected * (1 + pct / 100))
 

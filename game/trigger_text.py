@@ -27,6 +27,13 @@ EFFECT_TEMPLATES = [
     "Deal +N% damage",
     "Deal +N% damage per N Burn Count on the target (max N%)",
     "Coin Power +N",
+    "Clash Power +N",
+    "Final Power +N",
+    "Gain N Shield",
+    "Gain N% max HP Shield",
+    "Gain Offense Level +N",
+    "Inflict Defense Level -N",
+    "Gain 2 Haste next turn",
     "Gain N Sanity",
     "Lose N Sanity",
     "Heal N HP",
@@ -120,6 +127,15 @@ def _describe_effect(t: Trigger, names) -> str:
             text = f"Gain +{t.status_count} {s} Count"
     elif t.effect_type == "sanity_gain":
         text = f"Gain {t.effect_value} Sanity"
+    elif t.effect_type == "bonus_clash_power":
+        text = f"Clash Power +{t.effect_value}{scale}"
+    elif t.effect_type == "bonus_final_power":
+        text = f"Final Power +{t.effect_value}{scale}"
+    elif t.effect_type == "gain_shield":
+        text = f"Gain {t.effect_value}{'% max HP' if t.heal_percent else ''} Shield"
+    elif t.effect_type == "level_mod":
+        sign = "+" if t.effect_value > 0 else "-"
+        text = f"{'Inflict' if t.on_target else 'Gain'} {t.status_name.title()} Level {sign}{abs(t.effect_value)} (this turn)"
     elif t.effect_type == "sanity_loss":
         text = f"Lose {t.effect_value} Sanity"
     elif t.effect_type == "heal":
@@ -132,6 +148,10 @@ def _describe_effect(t: Trigger, names) -> str:
         text = f"spend {t.consume_amount} {_name(t.consume_status, names)}, then {text}"
     if t.to_ally:
         text += " (on the ally)"
+    if t.delayed:
+        text += ", next turn"
+    if t.chance:
+        text += f" ({t.chance}% chance)"
     return text
 
 
@@ -158,7 +178,10 @@ def damage_range(skill) -> tuple[int, int, int]:
     for t in skill.triggers:
         first = t.coin_index or 1
         left = max(0, n - first + 1)
-        if t.effect_type == "bonus_power":
+        if t.effect_type == "bonus_final_power":
+            extra = t.effect_value * n
+            low, avg, high = low + extra, avg + extra, high + extra
+        elif t.effect_type == "bonus_power":
             extra = t.effect_value * left
             low, avg, high = low + extra, avg + extra, high + extra
         elif t.effect_type == "bonus_coin_power":

@@ -171,6 +171,13 @@ class Fighter:
     # Shield HP from a [Guard] skill: an overhead pool consumed BEFORE regular HP, not a resistance or a damage-avoidance mechanic -- incoming... See docs/ENGINEERING_NOTES.md#battle-comment-137.
     shield: int = 0
 
+    # Offense/Defense Level steps from trigger lines. They stack on the character's own level
+    # and are wiped at turn end.
+    temp_offense: int = 0
+    temp_defense: int = 0
+    # "... next turn" effects waiting for the next round: (Trigger, target, ally) tuples.
+    pending_effects: list = field(default_factory=list)
+
     # True once this fighter has hit 0 HP and been formally removed from
     # their side for the rest of THIS battle -- a one-way transition, not
     # just "currently at 0 HP". is_alive() only reflects the current HP

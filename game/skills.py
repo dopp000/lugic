@@ -38,6 +38,10 @@ class Skill:
     # Percent damage picked up from "Deal +N% damage" lines while this skill is being
     # used (see resolve_triggers). Battle-only: it is never saved with the skill.
     damage_pct: int = 0
+    # "Clash Power +N" counts only in the clash comparison, "Final Power +N" is added to every
+    # coin's final Power (so it is damage too). Also battle-only, filled by resolve_triggers.
+    clash_power: int = 0
+    final_power_bonus: int = 0
 
     def __post_init__(self):
         # Pads status lists up to `coins` entries if a Skill gets built
@@ -212,7 +216,9 @@ def resolve_skill(
         heads = flip_coin(heads_chance)
         if heads:
             power += coin_power
-        final_power = 0 if coin_index <= paralyzed_coins else max(0, power - power_down + power_up)
+        final_power = 0 if coin_index <= paralyzed_coins else max(
+            0, power - power_down + power_up + skill.final_power_bonus
+        )
 
         # Evade no longer lives here -- it's a declared Skill of its
         # own now (the [Evade] flag), resolved by find_eligible_evade
@@ -286,13 +292,17 @@ def resolve_triggers(
     bonus_power = sum(effective_value(t, context) for t in fired if t.effect_type == "bonus_power")
     bonus_coin_power = sum(effective_value(t, context) for t in fired if t.effect_type == "bonus_coin_power")
     bonus_pct = sum(effective_value(t, context) for t in fired if t.effect_type == "bonus_damage_pct")
+    bonus_clash = sum(effective_value(t, context) for t in fired if t.effect_type == "bonus_clash_power")
+    bonus_final = sum(effective_value(t, context) for t in fired if t.effect_type == "bonus_final_power")
 
-    if bonus_power or bonus_coin_power or bonus_pct:
+    if bonus_power or bonus_coin_power or bonus_pct or bonus_clash or bonus_final:
         skill = replace(
             skill,
             base_power=skill.base_power + bonus_power,
             coin_power=skill.coin_power + bonus_coin_power,
             damage_pct=skill.damage_pct + bonus_pct,
+            clash_power=skill.clash_power + bonus_clash,
+            final_power_bonus=skill.final_power_bonus + bonus_final,
         )
 
     post_hit = [t for t in fired if t.effect_type in POST_HIT_EFFECTS]
@@ -441,8 +451,8 @@ def resolve_round_clash(
         result_b = resolve_skill(temp_b, heads_chance_b, context_b)
 
         # Level gap bonus: only the round comparison sees it, never the damage.
-        compare_a = result_a.final_power + power_bonus_a
-        compare_b = result_b.final_power + power_bonus_b
+        compare_a = result_a.final_power + power_bonus_a + skill_a.clash_power
+        compare_b = result_b.final_power + power_bonus_b + skill_b.clash_power
         if compare_a > compare_b:
             loser = "b"
             coins_b -= 1
