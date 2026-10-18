@@ -1615,18 +1615,29 @@ Hooks:
   are), so a custom resource is hidden in the same way.
 
 <a id="ally-support"></a>
-### Support skills and ally effects
+### Duality skills and ally effects
 
-- `support` is a skill flag (`SKILL_FLAG_TAGS`), forced to exactly 1 coin
-  with Guard/Evade. `/battle declare` branches early for it: the target must
-  be on the caster's side (self allowed), alive and not eliminated, and it
-  skips target-slot validation, Clash stealing and Attack Weight. The action
-  is stored with `target_slot=1`, which nothing reads for it.
-- `combat()` pulls support entries out of `entries` before any pairing, so
-  they can never clash or be paired, sorts them by slot Speed (fastest
-  first), and for each fires the skill's `on_use` triggers through
-  `resolve_triggers` with `TriggerContext.ally` set to the declared ally.
-  The result lines go into `passive_log`.
+- `duality` is a skill flag (`SKILL_FLAG_TAGS`); `[Support]` is kept as an
+  alias that parses to `duality`, and `Skill.from_dict` renames a saved
+  `support` tag, so old skills keep working. It is no longer limited to one
+  coin. `/battle declare` branches early only when the target is on the
+  caster's side (self allowed): the target must be alive and not eliminated,
+  and it skips target-slot validation, Clash stealing and Attack Weight. The
+  action is stored with `target_slot=1`, which nothing reads for it. Aimed at
+  an enemy a Duality skill takes the normal attack path.
+- `combat()` pulls ally-mode Duality entries (`_is_ally_duality`) out of
+  `entries` before any pairing, so they can never clash or be paired, sorts
+  them by slot Speed (fastest first), and for each runs the pre-roll chain,
+  flips the coins with `resolve_skill`, and fires `attack_end` plus the
+  per-coin triggers, with `TriggerContext.target` and `.ally` both set to the
+  declared ally. No damage is dealt and `Inflict` lines do nothing (the
+  effect target is None). The result lines go into `passive_log`.
+- `If the target is an ally,` / `...an enemy,` are the `target_is_ally` /
+  `target_is_enemy` conditions (side comparison). `(N times per turn)` sets
+  `Trigger.max_per_turn`; `pay_cost` enforces it with `Fighter.trigger_uses`
+  (keyed by `id(trigger)`, cleared in `clear_declaration`), so every call
+  site that already pays costs gets the limit for free. Not built yet:
+  Shield from max HP, SP and Stagger recovery on an ally.
 - `Trigger.to_ally` is set by a trailing `to the ally` / `to an ally` /
   `to that ally` on any effect line (stripped before the rest is parsed, so it
   also works on a Consume payoff). It is only allowed on heal, gain_status,

@@ -148,6 +148,8 @@ class Fighter:
     # number, not the attacker's slot. See find_eligible_evade in
     # cogs/battle.py.
     evade_used_slots: set[int] = field(default_factory=set)
+    # id(Trigger) -> times it fired this round, for "(2 times per turn)" lines.
+    trigger_uses: dict[int, int] = field(default_factory=dict)
 
     # Stagger. See docs/ENGINEERING_NOTES.md#battle-comment-122.
     stagger_thresholds: list[float] = field(default_factory=lambda: list(DEFAULT_STAGGER_THRESHOLDS))
@@ -434,6 +436,7 @@ class Fighter:
         self.clashable_counter_used_this_round = False
         self.clashable_guard_used_this_round = False
         self.evade_used_slots = set()
+        self.trigger_uses = {}
         self.shield = 0
 
     def __str__(self):

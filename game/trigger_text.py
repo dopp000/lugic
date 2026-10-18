@@ -44,6 +44,7 @@ CONDITION_EXAMPLES = [
     "If this unit's Speed is faster than the target's,",
     "If the target has any Burn,",
     "If the target has 3+ Burn,",
+    "If the target is an ally,",
     "If this unit's Sanity is 20+,",
     "At 10+ Speed,",
     "At 5+ Poise,",
@@ -83,6 +84,10 @@ def _describe_condition(t: Trigger, names) -> str:
     if c.type in ("caster_morale", "target_morale"):
         who = "you are" if c.type == "caster_morale" else "the target is"
         return f"{who} {'Panicked' if c.status_name == 'panic' else 'Low Morale'}"
+    if c.type == "target_is_ally":
+        return "the target is an ally"
+    if c.type == "target_is_enemy":
+        return "the target is an enemy"
     if c.type == "target_hp_pct":
         return f"target HP is {c.value}% or {'more' if c.comparison == 'gte' else 'less'}"
     return ""
@@ -126,7 +131,8 @@ def describe_trigger(t: Trigger, names: dict[str, str] | None = None) -> str:
         when = f"Coin {t.coin_index}, {when}"
     cond = _describe_condition(t, names)
     effect = _describe_effect(t, names)
-    return f"{when}: " + (f"if {cond} -> " if cond else "") + effect
+    limit = f" (max {t.max_per_turn}x per turn)" if t.max_per_turn else ""
+    return f"{when}: " + (f"if {cond} -> " if cond else "") + effect + limit
 
 
 def damage_range(skill) -> tuple[int, int, int]:

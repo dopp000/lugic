@@ -412,7 +412,7 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
         # coin -- the whole defense-skill cascade (find_eligible_evade,
         # the Clashable Guard/Counter interception passes) assumes one
         # clean win/lose roll per declared defense skill.
-        ONE_COIN_ONLY_TAGS = {"guard", "evade", "clashable_guard", "support"}
+        ONE_COIN_ONLY_TAGS = {"guard", "evade", "clashable_guard"}
         offending_tags = flags & ONE_COIN_ONLY_TAGS
         if offending_tags and coins != 1:
             await interaction.response.send_message(
@@ -422,9 +422,9 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
             )
             return
 
-        if "supermove" in flags and flags & {"support", "guard", "evade", "clashable_guard", "counter", "clashable_counter"}:
+        if "supermove" in flags and flags & {"duality", "guard", "evade", "clashable_guard", "counter", "clashable_counter"}:
             await interaction.response.send_message(
-                "A [Supermove] has to be an attack skill, it can't also be Support, Guard, Evade or Counter.",
+                "A [Supermove] has to be an attack skill, it can't also be Duality, Guard, Evade or Counter.",
                 ephemeral=True,
             )
             return
@@ -2349,16 +2349,10 @@ class BattleCog(commands.GroupCog, name="battle"):
             await interaction.response.send_message(f"No fighter named {target}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
-        # [Support] skills are aimed at an ally (or the caster), never an
-        # enemy, and skip the whole clash/target-slot flow below.
-        if "support" in skill.tags:
-            if target_fighter.side != caster.side:
-                await interaction.response.send_message(
-                    f"{skill.name} is a Support skill, it can only be aimed at an ally "
-                    f"(Side {caster.side}).",
-                    ephemeral=True,
-                )
-                return
+        # A [Duality] skill aimed at an ally (or the caster) is a support
+        # action: no Clash, no target slot. Aimed at an enemy it is a
+        # normal attack and goes through the flow below.
+        if "duality" in skill.tags and target_fighter.side == caster.side:
             if not target_fighter.is_alive() or target_fighter.eliminated:
                 await interaction.response.send_message(
                     f"{target_fighter.name} is down and can't be helped.", ephemeral=True
@@ -2366,7 +2360,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                 return
             caster.declare_in_slot(slot, skill, target_fighter, 1)
             await interaction.response.send_message(
-                f"{caster.name} declared **{skill.name}** (Support) on {target_fighter.name} "
+                f"{caster.name} declared **{skill.name}** (Duality, on an ally) on {target_fighter.name} "
                 f"in Slot {slot}.",
                 ephemeral=True,
             )
@@ -2383,7 +2377,7 @@ class BattleCog(commands.GroupCog, name="battle"):
             await interaction.response.send_message(
                 f"{caster.name} can't target {target_fighter.name}, they're on the same side "
                 f"(Side {caster.side}). Only enemies can be targeted, unless the skill has the "
-                f"[Support] flag.",
+                f"[Duality] flag.",
                 ephemeral=True,
             )
             return
@@ -2666,21 +2660,31 @@ class BattleCog(commands.GroupCog, name="battle"):
                     "extra_targets": action.extra_targets, "used": False,
                 })
 
-        # [Support] skills never clash or attack: pulled out of the
-        # entries here, before any pairing happens, and resolved right
-        # away fastest slot first. Their [On Use] lines land on the
-        # declared ally (or on the caster, for lines without 'to the
-        # ally'). See docs/ENGINEERING_NOTES.md#ally-support.
-        support_entries = [e for e in entries if "support" in e["skill"].tags]
-        entries = [e for e in entries if "support" not in e["skill"].tags]
+        # A [Duality] skill aimed at an ally never clashes or deals
+        # damage: pulled out of the entries here, before any pairing
+        # happens, and resolved right away fastest slot first. Its coins
+        # still flip (so Coin Power, coin and Attack End lines all run),
+        # and its lines land on the ally if they end in 'to the ally',
+        # otherwise on the caster. See docs/ENGINEERING_NOTES.md#duality.
+        def _is_ally_duality(e) -> bool:
+            return "duality" in e["skill"].tags and e["target"].side == e["caster"].side
+
+        support_entries = [e for e in entries if _is_ally_duality(e)]
+        entries = [e for e in entries if not _is_ally_duality(e)]
         support_entries.sort(key=lambda e: e["caster"].slot_speed(e["slot"]), reverse=True)
         for e in support_entries:
             sup_caster, sup_ally = e["caster"], e["target"]
             if not sup_caster.is_alive():
                 continue
-            sup_context = TriggerContext(caster=sup_caster, target=None, battle=battle, ally=sup_ally)
-            _, sup_post = resolve_triggers(e["skill"], sup_context, "on_use")
-            sup_lines = apply_trigger_effects(sup_post, sup_caster, None, ally=sup_ally)
+            sup_context = TriggerContext(
+                caster=sup_caster, target=sup_ally, battle=battle, ally=sup_ally,
+                caster_slot_speed=sup_caster.slot_speed(e["slot"]),
+            )
+            sup_skill, sup_pre = _resolve_pre_roll_chain(e["skill"], sup_context, PRE_ROLL_SOLO_TIMINGS)
+            sup_result = resolve_skill(sup_skill, sup_caster.heads_chance(), sup_context)
+            _, sup_end = resolve_triggers(sup_skill, sup_context, "attack_end")
+            sup_coin = [t for c in sup_result.coin_results for t in c.fired_triggers]
+            sup_lines = apply_trigger_effects(sup_pre + sup_coin + sup_end, sup_caster, None, ally=sup_ally)
             ally_note = f" on {sup_ally.name}" if sup_ally is not sup_caster else ""
             passive_log.append(f"**{sup_caster.name}** uses **{e['skill'].name}**{ally_note}.")
             passive_log.extend(sup_lines)
@@ -3797,7 +3801,7 @@ class BattleCog(commands.GroupCog, name="battle"):
 
     @declare.autocomplete("target")
     async def declare_target_autocomplete(self, interaction: discord.Interaction, current: str):
-        """Enemies for an attack, allies (and yourself) for a Support skill."""
+        """Enemies for an attack. A Duality skill can also aim at allies (and yourself)."""
         battle = self.battles.get(interaction.channel_id)
         if battle is None:
             return []
@@ -3809,10 +3813,8 @@ class BattleCog(commands.GroupCog, name="battle"):
             if not f.is_alive() or f.eliminated or cur not in f.name.lower():
                 continue
             if caster is not None:
-                support = skill is not None and "support" in skill.tags
-                if support != (f.side == caster.side):
-                    continue
-                if not support and f is caster:
+                duality = skill is not None and "duality" in skill.tags
+                if not duality and (f.side == caster.side or f is caster):
                     continue
             out.append(app_commands.Choice(name=f.name[:100], value=f.name))
         return out[:25]

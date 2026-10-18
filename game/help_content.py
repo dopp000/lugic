@@ -48,17 +48,21 @@ SKILL_TAGS: list[HelpEntry] = [
         ),
     ),
     HelpEntry(
-        key="support",
-        title="Support",
-        summary="Aim this skill at an ally. It never attacks or Clashes.",
+        key="duality",
+        title="Duality",
+        summary="Attacks an enemy, or helps an ally. You pick when you declare.",
         body=(
-            "A **Support** skill is declared on an ally (or yourself) instead of an enemy. "
-            "It is always 1 coin, never Clashes and deals no damage. When combat "
-            "starts it fires its **[On Use]** lines. Add **to the ally** to a line "
-            "to put its effect on the ally you aimed at, for example "
-            "`[On Use] Heal 8 HP to the ally` or `[On Use] Gain +2 Haste Count to the ally`. "
+            "A **Duality** skill works two ways depending on who you aim it at.\n"
+            "- **Aimed at an enemy:** it is a normal attack. It Clashes as usual unless "
+            "it also has **[Unclashable]**.\n"
+            "- **Aimed at an ally (or yourself):** nobody takes damage and nothing Clashes, "
+            "but the coins still flip and its lines still fire. Use the condition "
+            "`If the target is an ally,` to write lines that only happen in this mode "
+            "(and `If the target is an enemy,` for the attack mode).\n"
+            "Add **to the ally** to a line to put its effect on the ally you aimed at, for "
+            "example `[Attack End] If the target is an ally, Heal 8 HP to the ally`. "
             "Heal, Gain, Gain Sanity and Remove (clear a status) can go to an ally. "
-            "Lines without it affect you."
+            "Lines without it affect you. Old skills tagged `[Support]` now count as Duality."
         ),
     ),
     HelpEntry(
@@ -76,7 +80,7 @@ SKILL_TAGS: list[HelpEntry] = [
             "The drain can push you into Panic.\n"
             "- **Reuse:** every time you use the same Supermove again in one battle, the "
             "cost and the drain are 50% bigger.\n"
-            "It can't also be Support, Guard, Evade or Counter. Check `/battle mystatus` "
+            "It can't also be Duality, Guard, Evade or Counter. Check `/battle mystatus` "
             "to see a drain that is still running."
         ),
     ),
@@ -423,9 +427,10 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
             "The **tag** says when it fires. The **condition** is optional and says "
             "when it is allowed to. The **effect** is what happens. A line holds ONE "
             "effect, so if you want two, write two lines and repeat the tag. "
-            "Blank lines are ignored. A tag on its own line (like `[Support]`) just "
+            "Blank lines are ignored. A tag on its own line (like `[Duality]`) just "
             "switches a skill flag on.\n"
-            "Per-coin tags need a coin number first: `:Coin1: [On Hit] ...`."
+            "Per-coin tags need a coin number first: `:Coin1: [On Hit] ...`.\n"
+            "Add `(2 times per turn)` or `(once per turn)` to a line to cap how often it can fire each round."
         ),
     ),
     HelpEntry(
@@ -471,6 +476,7 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
             "`If this unit's Sanity is 20+,`\n"
             "`At 10+ Speed,` (your slot speed) or `At 5+ Poise,` (a status you hold)\n"
             "`If this unit is Low Morale,` / `If the target is Panic,`\n"
+            "`If the target is an ally,` / `If the target is an enemy,` (for Duality skills)\n"
             "`N+` checks **Count** by default. Write `Potency` after the name to check "
             "Potency instead: `At 3+ Poise Potency,`. A custom status with two words "
             "needs the comma: `At 2+ Death Mark, ...`."
@@ -520,7 +526,7 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
         title="Allies",
         summary="Aim an effect at an ally, or react to one.",
         body=(
-            "End a line with **to the ally** to put its effect on the ally a `[Support]` "
+            "End a line with **to the ally** to put its effect on the ally a `[Duality]` "
             "skill is aimed at: `[On Use] Heal 8 HP to the ally`. Heal, Gain, Gain Sanity "
             "and Remove can do this.\n"
             "**[Ally ...]** tags sit on your own skill and fire when an ally does something: "
@@ -552,8 +558,8 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
             "`[Turn Start] Gain +1 Charge Count`\n"
             "`[On Use] Consume 3 Charge: Coin Power +2`\n"
             "**A medic:**\n"
-            "`[Support]`\n"
-            "`[On Use] Heal 10% max HP to the ally`\n"
+            "`[Duality]`\n"
+            "`[Attack End] If the target is an ally, Heal 10% max HP to the ally (2 times per turn)`\n"
             "**A reaction:**\n"
             "`[Ally Is Hit] Gain 2 Protection`"
         ),
@@ -600,7 +606,7 @@ COMMANDS: list[HelpEntry] = [
         body=(
             "`/battle declare` locks a skill into one of your slots, aimed at a slot "
             "on an enemy. Whether it Clashes depends on the enemy aiming back at you. "
-            "Support skills are aimed at an ally instead.\n"
+            "Duality skills can be aimed at an ally instead.\n"
             "`/battle undeclare` clears one slot so you can change your mind.\n"
             "`/battle combat` resolves the round.\n"
             "`/battle log` shows the recap and full log of a recent round again.\n"

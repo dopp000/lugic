@@ -77,7 +77,7 @@ class Skill:
             coin_status_potencies=list(data.get("coin_status_potencies", [])),
             coin_status_counts=list(data.get("coin_status_counts", [])),
             triggers=[Trigger.from_dict(t) for t in data.get("triggers", [])],
-            tags=set(data.get("tags", [])),
+            tags={"duality" if t == "support" else t for t in data.get("tags", [])},
             attack_weight=data.get("attack_weight", 1),
         )
 

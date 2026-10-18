@@ -328,11 +328,17 @@ logic. Part names and HP show under the fighter in the battle embed. See
   **Protection** (-10% damage taken per Count, max 10). Damage Up,
   Protection, Fragile and Damage Down all add into one multiplier applied
   once to the whole hit, floored at 0.
-- **Support skills and ally effects** (first half of the `[Ally ...]` work):
-  give a skill the `[Support]` flag (on its own line, 1 coin) and it is
-  declared on an ally or yourself with `/battle declare`. It never attacks or
-  Clashes, and at combat start (fastest slot first, listed with the passive
-  triggers) its `[On Use]` lines fire. Add `to the ally` at the end of a line
+- **Duality skills and ally effects** (first half of the `[Ally ...]` work;
+  `[Duality]` replaces `[Support]`, and old `[Support]` text and saved skills
+  still work as Duality): give a skill the `[Duality]` flag (on its own line).
+  Aimed at an enemy it is a normal attack (any number of coins, Clashes unless
+  it is also `[Unclashable]`). Aimed at an ally or yourself with
+  `/battle declare` nobody takes damage and nothing Clashes, but the coins
+  still flip and its `[Before Use]`, `[On Use]`, coin-timing and `[Attack End]`
+  lines fire (fastest slot first, listed with the passive triggers). Write
+  `If the target is an ally,` / `If the target is an enemy,` to split the two
+  modes, and end a line with `(2 times per turn)` or `(once per turn)` to cap
+  how often it fires each round. Add `to the ally` at the end of a line
   to put the effect on the declared ally: `[On Use] Heal 8 HP to the ally`,
   `[On Use] Gain +2 Haste Count to the ally`, `[On Use] Gain 3 Sanity to the
   ally`, `[On Use] Remove Bleed to the ally`. Only Heal, Gain, Gain Sanity and
@@ -347,7 +353,7 @@ logic. Part names and HP show under the fighter in the battle embed. See
   Hard hitters also drain Sanity at every turn end afterwards (40+ damage:
   5 x 2 turns, 80+: 8 x 3, 130+: 10 x 3), before the Panic check. Every reuse
   of the same Supermove in a battle adds 50% to both cost and drain. Cannot be
-  combined with Support, Guard, Evade or Counter. `/battle mystatus` shows a
+  combined with Duality, Guard, Evade or Counter. `/battle mystatus` shows a
   running drain and the uses so far. See `docs/ENGINEERING_NOTES.md#supermoves`.
 - **Ally reaction timings** (second half of `[Ally ...]`): put these on a
   passive and they fire when one of the owner's allies (same side, not the
@@ -464,7 +470,7 @@ See `docs/ENGINEERING_NOTES.md#round-recap-and-log`.
 **Autocomplete.** Name and number options suggest values as you type: your own fighters
 (`fighter` on declare, undeclare, addskill, removeskill, editskill, removefighter),
 any fighter on skills, setstatus and the Parts commands, enemies (or allies for a
-`[Support]` skill) for `target`, your fighter's own free slots for `slot`, the
+`[Duality]` skill) for `target`, your fighter's own free slots for `slot`, the
 target's slots with Part names and HP for `target_slot`, saved characters for
 `addfighter` and every `/character` `name` (your own, or everyone's for an admin).
 See `docs/ENGINEERING_NOTES.md#autocomplete`.
@@ -510,7 +516,7 @@ then read the full explanation; Back/Home navigate without re-running the
 command. Ephemeral, ~5 minute timeout on the buttons. Content lives in
 `game/help_content.py`, written in plain language on purpose, kept
 separate from this file. **Five categories exist so far**: **Skill Tags**
-(one dropdown entry per flag, including Support and Supermove), **Damage Math** (the basic
+(one dropdown entry per flag, including Duality and Supermove), **Damage Math** (the basic
 hit formula, resistance, Stagger's multiplier, Rupture vs. Crit, Attack
 Weight splash, Parts and Core) and **Status Effects** (21 topics: Potency and Count, the
 five Sin statuses, Poise, Charge, every debuff and buff, Low Morale and
@@ -532,7 +538,7 @@ status, stat or damage-type icon in front of its first mention in each page
 descriptions can't show custom emoji, so they stay plain.
 
 Category buttons (`Skill Tags`, `Damage Math`, `Status Effects`, `Trigger Syntax`, `Commands`) and five of
-the ten skill tags (`Target Fixed`, `Unclashable`, `Indiscriminate`, `Support`, `Supermove`) have no
+the ten skill tags (`Target Fixed`, `Unclashable`, `Indiscriminate`, `Supermove`) have no
 custom emoji yet (`HELP_CATEGORY_EMOJI_IDS` / `SKILL_TAG_EMOJI_IDS` in
 `game/emojis.py`, both `None` placeholders) — same gradual-fill
 convention as every other icon in that file. The other five tags already

@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 CONDITION_TYPES = [
     "always", "target_status", "target_hp_pct", "caster_sanity",
     "caster_status", "first_hit_of_round", "speed_faster", "caster_speed_at_least",
-    "caster_morale", "target_morale",
+    "caster_morale", "target_morale", "target_is_ally", "target_is_enemy",
 ]
 
 EFFECT_TYPES = [
@@ -149,7 +149,8 @@ SKILL_FLAG_TAGS = {
     "guard": "guard",
     "clashable guard": "clashable_guard",
     "evade": "evade",
-    "support": "support",
+    "duality": "duality",
+    "support": "duality",  # old name, still accepted
     "supermove": "supermove",
 }
 
@@ -289,6 +290,12 @@ def evaluate_condition(condition: Condition, context: TriggerContext) -> bool:
             return state == "panic"
         return state in ("low_morale", "panic")
 
+    if condition.type in ("target_is_ally", "target_is_enemy"):
+        if context.target is None:
+            return False
+        same_side = context.target.side == context.caster.side
+        return same_side if condition.type == "target_is_ally" else not same_side
+
     if condition.type == "first_hit_of_round":
         return context.is_first_hit_of_round
 
@@ -351,6 +358,8 @@ class Trigger:
     # instead of the caster. Only for heal, gain_status, sanity_gain and
     # remove_status.
     to_ally: bool = False
+    # "(2 times per turn)" / "(once per turn)": 0 means no limit.
+    max_per_turn: int = 0
 
     def to_dict(self) -> dict:
         """Used so a Skill carrying this Trigger can be saved to a
@@ -378,6 +387,7 @@ class Trigger:
             "scale_basis": self.scale_basis,
             "heal_percent": self.heal_percent,
             "to_ally": self.to_ally,
+            "max_per_turn": self.max_per_turn,
         }
 
     @classmethod
@@ -389,6 +399,18 @@ class Trigger:
 
 def pay_cost(trigger: Trigger, context: "TriggerContext") -> bool:
     """For a Consume trigger whose condition already passed: spends its cost from the caster and returns True, or returns False (nothing spent) if the caster can't afford it. Triggers with no cost always return True. Only Count is spent, Potency is left as it is. This DOES change state, call it only at the moment a trigger really fires. See docs/ENGINEERING_NOTES.md#consume-triggers."""
+    caster = context.caster
+    if trigger.max_per_turn and caster.trigger_uses.get(id(trigger), 0) >= trigger.max_per_turn:
+        return False
+    if not _pay_consume(trigger, context):
+        return False
+    if trigger.max_per_turn:
+        caster.trigger_uses[id(trigger)] = caster.trigger_uses.get(id(trigger), 0) + 1
+    return True
+
+
+def _pay_consume(trigger: "Trigger", context: "TriggerContext") -> bool:
+    """The Consume half of pay_cost."""
     if trigger.consume_status is None:
         return True
     from game.statuses import StatusInstance
@@ -445,6 +467,8 @@ _TAG_RE = re.compile(r"^\s*(?::coin(\d+):\s*)?\[([^\]]+)\]\s*(.*)$", re.IGNORECA
 # silently accepted as something else.
 _TRAILING_PAREN_RE = re.compile(r"\s*\([^()]*\)\s*$")
 
+_COND_TARGET_SIDE = re.compile(r"if (?:the )?target is an? (ally|enemy),?\s*(.*)", re.IGNORECASE)
+_PER_TURN_RE = re.compile(r"\(\s*(?:(\d+) times?|once|twice) per turn\s*\)", re.IGNORECASE)
 _COND_SPEED_FASTER = re.compile(r"if this unit'?s speed is faster than the target'?s,?\s*(.*)", re.IGNORECASE)
 _COND_TARGET_STATUS_ANY = re.compile(r"if (?:the )?target has any ([a-z]+),?\s*(.*)", re.IGNORECASE)
 _COND_TARGET_STATUS_N = re.compile(
@@ -532,6 +556,10 @@ def _parse_condition_and_effect_text(text: str) -> tuple[Condition, str]:
     condition phrase is recognized, since plenty of valid lines are pure
     effects with no gate beyond their timing tag.
     """
+    m = _COND_TARGET_SIDE.match(text)
+    if m:
+        return Condition(type=f"target_is_{m.group(1).lower()}"), m.group(2)
+
     m = _COND_SPEED_FASTER.match(text)
     if m:
         return Condition(type="speed_faster"), m.group(1)
@@ -757,6 +785,15 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
                 raise TriggerParseError(line, "Hint tier must be 1, 2, or 3")
             rest = _HINT_RE.sub("", rest).strip()
 
+        max_per_turn = 0
+        per_turn = _PER_TURN_RE.search(rest)
+        if per_turn:
+            word = per_turn.group(0).lower()
+            max_per_turn = int(per_turn.group(1)) if per_turn.group(1) else (2 if "twice" in word else 1)
+            if max_per_turn < 1:
+                raise TriggerParseError(line, "the per-turn limit must be at least 1")
+            rest = _PER_TURN_RE.sub("", rest).strip()
+
         if not rest.strip():
             raise TriggerParseError(line, "no effect text after the timing tag")
 
@@ -853,6 +890,7 @@ def _parse_trigger_lines(text: str) -> tuple[list[Trigger], set[str]]:
             scale_basis=scale_basis,
             heal_percent=heal_percent,
             to_ally=to_ally,
+            max_per_turn=max_per_turn,
         ))
 
     return triggers, flags
