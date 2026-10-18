@@ -21,7 +21,16 @@ CONDITION_TYPES = [
     "caster_morale", "target_morale", "target_is_ally", "target_is_enemy",
     "caster_hp_pct", "target_sanity", "speed_diff", "target_affinity",
     "target_negative_count", "target_defending", "ally_rank",
+    "side_tag_count", "target_tag", "allies_defeated",
 ]
+
+MAX_TAGS = 3
+MAX_TAG_LENGTH = 30
+
+
+def norm_tag(text: str) -> str:
+    """'  N   Corp ' -> 'n corp'. Tags are matched ignoring case and extra spaces."""
+    return " ".join(text.lower().split())
 
 # Skill tags that count as a Defense Skill for "If the target is using a Defense Skill".
 DEFENSE_SKILL_TAGS = {"guard", "evade", "counter", "clashable_guard", "clashable_counter"}
@@ -462,6 +471,31 @@ def evaluate_condition(condition: Condition, context: TriggerContext, skill=None
                 active += 1
         return active >= condition.value
 
+    if condition.type == "side_tag_count":
+        if context.battle is None:
+            return False
+        count = sum(
+            1 for f in context.battle.fighters
+            if f.side == context.caster.side and f.is_alive() and not f.eliminated
+            and condition.status_name in getattr(f, "tags", [])
+        )
+        return count >= condition.value
+
+    if condition.type == "target_tag":
+        if context.target is None:
+            return False
+        return condition.status_name in getattr(context.target, "tags", [])
+
+    if condition.type == "allies_defeated":
+        if context.battle is None:
+            return False
+        down = sum(
+            1 for f in context.battle.fighters
+            if f is not context.caster and f.side == context.caster.side
+            and (not f.is_alive() or f.eliminated)
+        )
+        return down >= condition.value
+
     if condition.type == "ally_rank":
         if context.ally is None:
             return False
@@ -713,6 +747,11 @@ _COND_NEGATIVE = re.compile(
 _COND_DEFENDING = re.compile(
     r"if the target is using an? defen[cs]e skill,?\s*(.*)", re.IGNORECASE
 )
+_COND_SIDE_TAG = re.compile(
+    r"if (\d+)\+ units on your side have the ([a-z0-9' -]+?) tag,?\s*(.*)", re.IGNORECASE
+)
+_COND_TARGET_TAG = re.compile(r"if the target has the ([a-z0-9' -]+?) tag,?\s*(.*)", re.IGNORECASE)
+_COND_ALLIES_DEFEATED = re.compile(r"if (\d+)\+ allies are defeated,?\s*(.*)", re.IGNORECASE)
 _COND_ALLY_RANK = re.compile(r"if the ally has the ([a-z%]+(?: [a-z%]+)*?),\s*(.*)", re.IGNORECASE)
 _COND_AT_N_THING = re.compile(r"at (\d+)\+ ([a-z]+)(?: (potency|count))?,?\s*(.*)", re.IGNORECASE)
 # Multi-word (custom) status names need the comma to know where the name stops.
@@ -887,6 +926,29 @@ def _parse_condition_and_effect_text(text: str) -> tuple[Condition, str]:
         if not 1 <= n <= len(TARGET_STATUSES):
             raise TriggerParseError(text, f"The number of negative effects must be between 1 and {len(TARGET_STATUSES)}.")
         return Condition(type="target_negative_count", value=n), m.group(2)
+
+    m = _COND_SIDE_TAG.match(text)
+    if m:
+        n, tag = int(m.group(1)), norm_tag(m.group(2))
+        if not 1 <= n <= 20:
+            raise TriggerParseError(text, "the number of units must be between 1 and 20")
+        if len(tag) > MAX_TAG_LENGTH:
+            raise TriggerParseError(text, f"a tag is at most {MAX_TAG_LENGTH} characters")
+        return Condition(type="side_tag_count", status_name=tag, value=n), m.group(3)
+
+    m = _COND_TARGET_TAG.match(text)
+    if m:
+        tag = norm_tag(m.group(1))
+        if len(tag) > MAX_TAG_LENGTH:
+            raise TriggerParseError(text, f"a tag is at most {MAX_TAG_LENGTH} characters")
+        return Condition(type="target_tag", status_name=tag), m.group(2)
+
+    m = _COND_ALLIES_DEFEATED.match(text)
+    if m:
+        n = int(m.group(1))
+        if not 1 <= n <= 20:
+            raise TriggerParseError(text, "the number of allies must be between 1 and 20")
+        return Condition(type="allies_defeated", value=n), m.group(2)
 
     m = _COND_ALLY_RANK.match(text)
     if m:

@@ -70,6 +70,9 @@ CONDITION_EXAMPLES = [
     "If the target has 3+ negative effects,",
     "If the target is using a Defense Skill,",
     "If the ally has the fastest Speed,",
+    "If 3+ units on your side have the N Corp tag,",
+    "If the target has the Dawn Office tag,",
+    "If 2+ allies are defeated,",
     "At 10+ Speed,",
     "At 5+ Poise,",
     "If this unit is Low Morale,",
@@ -111,6 +114,12 @@ def _describe_condition(t: Trigger, names) -> str:
         return f"the target is {c.status_name.title()} to this skill's damage type"
     if c.type == "target_negative_count":
         return f"the target has {c.value}+ different negative effects"
+    if c.type == "side_tag_count":
+        return f"{c.value}+ living units on your side have the {c.status_name.title()} tag"
+    if c.type == "target_tag":
+        return f"the target has the {c.status_name.title()} tag"
+    if c.type == "allies_defeated":
+        return f"{c.value}+ of your allies are defeated"
     if c.type == "ally_rank":
         return f"the ally has the {describe_selector(c.status_name)} (of your allies)"
     if c.type == "target_defending":

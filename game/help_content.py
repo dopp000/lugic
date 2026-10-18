@@ -494,6 +494,9 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
             "`If the target has 3+ negative effects,` (different statuses on them)\n"
             "`If the target is using a Defense Skill,`\n"
             "`If the ally has the fastest Speed,` (for `[Ally ...]` and Support lines)\n"
+            "`If 3+ units on your side have the N Corp tag,` (living units, you included) / "
+            "`If the target has the Dawn Office tag,` / `If 2+ allies are defeated,`. "
+            "Tags are set by an admin with `/character tags` and must be spelled the same.\n"
             "`At 10+ Speed,` (your slot speed) or `At 5+ Poise,` (a status you hold)\n"
             "`If this unit is Low Morale,` / `If the target is Panic,`\n"
             "`If the target is an ally,` / `If the target is an enemy,` (for Duality skills)\n"
@@ -696,7 +699,7 @@ COMMANDS: list[HelpEntry] = [
             "Resistances, HP, Speed range, Power and Stagger are part of the build, so "
             "only an admin can change those (see Build Points and levels).\n"
             "`/character bp` shows a character's level, Build Points and anything to fix.\n"
-            "Admins also have `/character grantbp`, `grantsp`, `grantpp`, `passive`, `removepassive`, `rank`, `archetype`, `exempt`, `drawback` and `recheck`.\n"
+            "Admins also have `/character grantbp`, `grantsp`, `grantpp`, `passive`, `removepassive`, `tags`, `rank`, `archetype`, `exempt`, `drawback` and `recheck`.\n"
             "`/character resistance` (admin only) is a shortcut for setting resistances.\n"
             "`/character delete` removes one for good."
         ),

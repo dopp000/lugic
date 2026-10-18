@@ -21,6 +21,7 @@ from game.build_points import (
 )
 from game.resistances import ALL_RESISTANCE_TYPES, DAMAGE_TYPES, parse_resistance_multiplier
 from game.emojis import status_emoji, damage_type_emoji, register_custom_status_emoji
+from game.conditions import MAX_TAG_LENGTH, MAX_TAGS, norm_tag
 from game.passives import MAX_PASSIVES, parse_passive
 from game.custom_statuses import (
     CustomStatus, KINDS, LIFETIMES, MAX_CUSTOM_STATUSES_PER_CHARACTER, slugify, validate_name,
@@ -97,6 +98,9 @@ def build_character_embed(character: Character, owner_name: str) -> discord.Embe
             )[:1000],
             inline=False,
         )
+
+    if character.tags:
+        embed.add_field(name="Tags", value=", ".join(character.tags)[:300], inline=False)
 
     if character.custom_statuses:
         embed.add_field(
@@ -1303,6 +1307,43 @@ class CharacterCog(commands.GroupCog, name="character"):
         cur = current.lower()
         return [app_commands.Choice(name=p["name"][:100], value=p["name"]) for p in character.passives if cur in p["name"].lower()][:25]
 
+    @app_commands.command(name="tags", description="Admin only: set a character's group tags (up to 3) for passive conditions")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(
+        name="Character",
+        tag_1="First tag, e.g. N Corp (leave all three empty to clear them)",
+        tag_2="Second tag (optional)",
+        tag_3="Third tag (optional)",
+    )
+    async def tags(
+        self, interaction: discord.Interaction, name: str,
+        tag_1: str | None = None, tag_2: str | None = None, tag_3: str | None = None,
+    ):
+        if not is_admin(interaction):
+            await interaction.response.send_message("Only an admin can set tags.", ephemeral=True)
+            return
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
+            return
+        chosen: list[str] = []
+        for raw in (tag_1, tag_2, tag_3):
+            if not raw or not raw.strip():
+                continue
+            tag = " ".join(raw.strip().split())
+            if len(tag) > MAX_TAG_LENGTH:
+                await interaction.response.send_message(
+                    f"A tag is at most {MAX_TAG_LENGTH} characters, `{tag[:40]}` is too long.", ephemeral=True
+                )
+                return
+            if norm_tag(tag) in [norm_tag(t) for t in chosen]:
+                continue
+            chosen.append(tag)
+        character.tags = chosen[:MAX_TAGS]
+        save_character(character)
+        shown = ", ".join(character.tags) if character.tags else "none"
+        await interaction.response.send_message(f"{character.name} tags: {shown}.", ephemeral=True)
+
     @app_commands.command(name="grantsp", description="Admin only: give a character Skill Points (or take some away)")
     @app_commands.default_permissions(manage_guild=True)
     @app_commands.describe(
@@ -1481,7 +1522,7 @@ class CharacterCog(commands.GroupCog, name="character"):
     for _command in (
         view, edit, resistance, addskill, skills, removeskill, editskill,
         addstatus, statuses, removestatus, delete, say, bp, grantbp, exempt, drawback,
-        rank, archetype, grantsp, grantpp, passive, removepassive,
+        rank, archetype, grantsp, grantpp, passive, removepassive, tags,
     ):
         _command.autocomplete("name")(_character_name_autocomplete)
     del _command

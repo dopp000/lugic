@@ -84,6 +84,9 @@ class Character:
     pp_total: int = 0
     pp_log: list[dict] = field(default_factory=list)
     passives: list = field(default_factory=list)
+    # Up to 3 free text group tags an admin sets ("N Corp", "Dawn Office"). Passive
+    # conditions can count them: "If 3+ units on your side have the N Corp tag,".
+    tags: list = field(default_factory=list)
     status_pp: dict = field(default_factory=dict)
     sp_log: list[dict] = field(default_factory=list)
 
@@ -129,6 +132,7 @@ class Character:
             "pp_total": self.pp_total,
             "pp_log": self.pp_log,
             "passives": self.passives,
+            "tags": self.tags,
             "status_pp": self.status_pp,
             "sp_log": self.sp_log,
             "supermove_drawbacks": self.supermove_drawbacks,

@@ -2266,3 +2266,15 @@ a new status gets an icon.
 - `Self On Death` (`self_on_death`, passive only): fired from `fire_hit_ally_reactions` when a landed hit kills the
   owner, with the killer as the target (`Inflict 3 Burn` hits the killer). Deaths from Burn, Poison or Bleed do not
   fire it yet (those paths have no attacker).
+
+<a id="group-tags-patch-6"></a>
+## Group tags
+
+- `Character.tags` (up to `MAX_TAGS` = 3 strings of at most `MAX_TAG_LENGTH` = 30), set by an admin with
+  `/character tags`, saved in the character JSON (old files load with none). `Fighter.from_character` copies them
+  lowercased with spaces collapsed (`norm_tag`). NPCs from `/battle addnpc` have no tags.
+- Conditions: `side_tag_count` (`If N+ units on your side have the X tag,`, counts living, non eliminated units on the
+  caster's side, the caster included), `target_tag` (`If the target has the X tag,`), `allies_defeated`
+  (`If N+ allies are defeated,`, other units on the caster's side that are down or eliminated).
+- The parser cannot check a tag exists (it can name an ally's tag the owner does not have), so a typo simply never
+  matches. The help page says tags must be spelled the same; matching ignores case and extra spaces.

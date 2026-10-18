@@ -107,6 +107,8 @@ class Fighter:
     # Hidden skills built from the Character's passives (game/passives.py). Never in
     # `skills`, so they cannot be declared; the engine sweeps them with trigger_skills().
     passive_skills: list = field(default_factory=list)
+    # Group tags copied from the Character (see Character.tags). Lowercase, for conditions.
+    tags: list = field(default_factory=list)
     avatar_url: str | None = None
     # Decimal damage multipliers, 1.0 = Normal (see game/resistances.py).
     resistances: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_RESISTANCES))
@@ -237,6 +239,7 @@ class Fighter:
         fighter.defense_level = getattr(character, "defense_level", 0)
         fighter.status_ranks = dict(getattr(character, "status_ranks", {}) or {})
         fighter.defense_archetypes = list(getattr(character, "defense_archetypes", []) or [])
+        fighter.tags = [" ".join(t.lower().split()) for t in (getattr(character, "tags", []) or [])]
         from game.passives import build_passive_skill
         kinds = {k: cs.kind for k, cs in character.custom_statuses.items()}
         fighter.passive_skills = [

@@ -531,6 +531,7 @@ that flag.
 | `grantpp` | Admin. Gives Passive Points for a GM-approved moment (max 2 per grant, reason required), logs it and DMs the owner. |
 | `passive` | Admin. Gives an identity passive (name, Passive or Support, PP cost 1 to 6, up to 3 trigger lines). Kept off the skill list. |
 | `removepassive` | Admin. Removes a passive and frees its PP. |
+| `tags` | Admin. Sets up to 3 group tags (like `N Corp`) that passive conditions can count. |
 | `grantsp` | Admin. Adds (or removes) Skill Points like `grantbp`, logs the reason and DMs the owner. |
 | `grantbp` | Admin. Adds (or removes, with a negative number) BP, logs the reason, and DMs the owner. Warns if the build is now over budget. |
 | `exempt` | Admin. Skips every Build Point check for a character (NPCs and bosses). Optional `level` fixes the Level it fights at (0 clears it). |
