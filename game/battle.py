@@ -55,6 +55,20 @@ class DeclaredAction:
 
 
 @dataclass
+class Part:
+    """One body part of a multi-part enemy, tied to one of its skill slots.
+    Hits aimed at that slot use the part's resistances (if it has its own)
+    and also drain the part's HP. The shared Core HP is the Fighter's own hp.
+    See docs/ENGINEERING_NOTES.md#parts-and-core.
+    """
+    name: str
+    hp: int
+    max_hp: int
+    resistances: dict[str, float] | None = None  # None = use the fighter's own
+    broken: bool = False
+
+
+@dataclass
 class Fighter:
     name: str
     side: str
@@ -79,6 +93,9 @@ class Fighter:
     slot_speeds: list[int] = field(default_factory=list)
 
     skills: dict[str, Skill] = field(default_factory=dict)
+
+    # Body parts of a multi-part enemy, keyed by skill slot number (1-based).
+    parts: dict[int, Part] = field(default_factory=dict)
 
     # This fighter's own player-made statuses (copied from the Character).
     custom_statuses: dict[str, CustomStatus] = field(default_factory=dict)
@@ -204,6 +221,29 @@ class Fighter:
         if 1 <= slot <= len(self.slot_speeds):
             return self.slot_speeds[slot - 1]
         return 0
+
+    def resistances_for_slot(self, slot: int | None) -> dict[str, float]:
+        """The resistances that apply to a hit aimed at `slot`: the Part's own if it has them, else the fighter's."""
+        part = self.parts.get(slot) if slot is not None else None
+        if part is not None and part.resistances is not None:
+            return part.resistances
+        return self.resistances
+
+    def slot_disabled(self, slot: int) -> bool:
+        """True if this skill slot belongs to a broken Part."""
+        part = self.parts.get(slot)
+        return part is not None and part.broken
+
+    def hit_part(self, slot: int | None, amount: int) -> list[str]:
+        """Drains the Part at `slot` (if any) by `amount`. A Part at 0 HP breaks and its slot can't be declared until repaired. Returns log lines."""
+        part = self.parts.get(slot) if slot is not None else None
+        if part is None or amount <= 0:
+            return []
+        part.hp = max(0, part.hp - amount)
+        if part.hp == 0 and not part.broken:
+            part.broken = True
+            return [f"{self.name}'s **{part.name}** (Slot {slot}) is broken! That slot can't act until it is repaired."]
+        return []
 
     def get_status(self, name: str) -> StatusInstance | None:
         return self.statuses.get(name)

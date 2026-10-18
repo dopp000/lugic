@@ -198,6 +198,22 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   Slots or do anything beyond this — no Backup/Substitute/Retreat system
   exists to hand the fight off to.
 
+### Parts / Core
+
+A multi-part enemy is one Fighter whose skill slots can each be a **Part**
+(`Part` in `game/battle.py`, `Fighter.parts`, keyed by slot). Admin-only
+`/battle addpart fighter slot name hp [resistances]`, `removepart`,
+`repairpart`. Attackers need no new input: the `target_slot` they already
+pick in `/battle declare` is the Part. A hit on that slot uses
+`Fighter.resistances_for_slot` (the Part's own resistances, else the fighter's),
+and after damage lands `Fighter.hit_part` drains the Part's HP while the
+fighter's own HP is the shared Core. At 0 HP a Part breaks: `/battle declare`
+refuses that slot until `repairpart`. A broken Part still drains the Core when
+hit. A break lands from the next declaration on, an attack already declared
+that round still resolves. Attack Weight splash hits use the same Part
+logic. Part names and HP show under the fighter in the battle embed. See
+`docs/ENGINEERING_NOTES.md#parts-and-core`.
+
 ## Status Effects: Current State
 
 - **Data model is solid**: `StatusInstance(name, potency, count)`, proper
@@ -402,6 +418,8 @@ three. All closed since the last README pass.
 | `undeclare` | Owner-or-admin. Clears one declared slot. |
 | `removefighter` | Owner or admin (`ADMIN_ROLE_ID`) via `_can_manage_fighter`. |
 | `setstatus` | Admin-only (`ADMIN_ROLE_ID`) via `_is_admin`, enforced in code; also hidden from the Discord command list by default for anyone without Manage Server (`default_permissions`), though a server whose admin role doesn't carry that permission should re-scope it via Server Settings → Integrations. Sets HP, Sanity, Speed (min+max), resistances, Power, Stagger thresholds/enabled-tiers, one status, whichever fields are passed. Refuses to touch an eliminated fighter at all. |
+| `addpart` / `removepart` / `repairpart` | Admin-only. Parts / Core for a multi-part enemy, see Combat Features. `addpart fighter slot name hp [resistances]` makes a skill slot a body Part; `repairpart` restores HP and un-breaks it. |
+| `mystatus` | Private view of your own fighter's exact statuses and numbers. |
 | `combat` | Resolves the round. See Animated Combat Phase. Also where Turn-End status ticks (Burn/Sinking/Charge) and Elimination checks run, once per round. |
 | `end` | Ends the battle. |
 
@@ -448,7 +466,7 @@ command. Ephemeral, ~5 minute timeout on the buttons. Content lives in
 separate from this file. **Four categories exist so far**: **Skill Tags**
 (one dropdown entry per flag, including Support), **Damage Math** (the basic
 hit formula, resistance, Stagger's multiplier, Rupture vs. Crit, Attack
-Weight splash) and **Status Effects** (21 topics: Potency and Count, the
+Weight splash, Parts and Core) and **Status Effects** (21 topics: Potency and Count, the
 five Sin statuses, Poise, Charge, every debuff and buff, Low Morale and
 Panic, custom statuses; each entry key is the status key so its icon comes
 from `STATUS_EMOJI_IDS` automatically) and **Trigger Syntax** (10 topics: line
@@ -603,10 +621,8 @@ Durante, and Backups, none of those fit what this bot is for.
    customization layer like canon's Panic Type Changing Effects is just
    trigger lines written against the new `If this unit is Low Morale,` and
    `If this unit is Panicked,` conditions.
-6. **Parts / Core.** For a future multi-part NPC, each skill slot is a
-   distinct body part with its own resistances, damage to a Part also drains
-   the shared Core HP (matches canon Focused Encounters). Not built; no NPC
-   needing it exists yet.
+6. **Parts / Core**: done, see Combat Features. Still open: Part-specific Stagger,
+   auto-breaking a Part's declared attack mid-round, and storing Parts on a saved NPC character.
 7. **A worked-examples guide**: converting a real Limbus kit passive into
    this bot's Trigger syntax. The Trigger Syntax section documents the
    grammar; there's no "here's a real passive → here's the Trigger lines"

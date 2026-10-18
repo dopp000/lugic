@@ -7,7 +7,7 @@ from discord.ext import commands
 from discord import app_commands
 
 from game.battle import (
-    Battle, Fighter, BATTLE_TYPES,
+    Battle, Fighter, Part, BATTLE_TYPES,
     SANITY_PER_COIN_CLASH_WIN, SANITY_CLASH_LOSS, SANITY_PER_HEADS_UNOPPOSED,
     STAGGER_MULTIPLIERS,
 )
@@ -21,7 +21,7 @@ from game.statuses import (
     damage_down_penalty, damage_up_bonus, protection_reduction,
     magnitude_to_hint_tier, SANITY_PANIC,
 )
-from game.resistances import DAMAGE_TYPES, ALL_RESISTANCE_TYPES, apply_resistance, parse_resistance_multiplier
+from game.resistances import DAMAGE_TYPES, ALL_RESISTANCE_TYPES, DEFAULT_RESISTANCES, apply_resistance, parse_resistance_multiplier
 from game.emojis import status_label, status_emoji, coin_emoji, coin_roll_emoji, damage_type_emoji, stat_emoji, skill_slot_emoji, hint_emoji, attack_weight_icons, stagger_tier_emoji, stagger_action_emoji
 
 LOG_CHANNEL_ID = 1538071557560213595  # #bot-combat-logs
@@ -55,6 +55,26 @@ def _is_admin(interaction: discord.Interaction) -> bool:
     if isinstance(interaction.user, discord.Member):
         return any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles)
     return False
+
+
+def _parse_resistance_list(raw: str) -> tuple[dict[str, float] | None, str | None]:
+    """'slash:0.5,pierce:1.5' -> full resistance dict (unlisted types stay 1.0). Returns (dict, error)."""
+    result = dict(DEFAULT_RESISTANCES)
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        bits = token.split(":")
+        if len(bits) != 2:
+            return None, f"'{token}' is invalid. Use 'Type:Value', comma-separated, e.g. 'slash:0.5,pierce:1.5'."
+        r_type, r_raw = bits[0].strip().lower(), bits[1].strip()
+        if r_type not in ALL_RESISTANCE_TYPES:
+            return None, f"'{r_type}' isn't a valid resistance type. Choose from: {', '.join(ALL_RESISTANCE_TYPES)}."
+        value, error = parse_resistance_multiplier(r_raw)
+        if error:
+            return None, f"{r_type}: {error}"
+        result[r_type] = value
+    return result, None
 
 
 def _mystatus_text(fighter: Fighter) -> str:
@@ -761,9 +781,17 @@ def build_battle_embed(battle: Battle) -> discord.Embed:
             # alone is the signal, spelling it out was redundant.
             hint_line = f"\n-# {hint_emoji(hint_tier)}" if hint_tier else ""
 
+            parts_line = ""
+            if f.parts:
+                bits = [
+                    f"Slot {n} {p.name} " + ("(broken)" if p.broken else f"{p.hp}/{p.max_hp}")
+                    for n, p in sorted(f.parts.items())
+                ]
+                parts_line = "\n-# Parts: " + ", ".join(bits)
+
             lines.append(
                 f"**{f.name}**{down_tag} ({stat_emoji('hp')} {f.hp}/{f.max_hp}, "
-                f"{stat_emoji('sanity')} {f.sanity}){tag}\n{slot_line}{hint_line}"
+                f"{stat_emoji('sanity')} {f.sanity}){tag}\n{slot_line}{parts_line}{hint_line}"
             )
         embed.add_field(name=f"Side {side_name}", value="\n\n".join(lines), inline=False)
 
@@ -857,6 +885,7 @@ def _damage_mods(target: Fighter, attacker: Fighter, damage_type: str) -> tuple[
 
 def apply_incoming_hit(
     attacker_skill: Skill, result: SkillResult, target: Fighter, caster: Fighter,
+    target_slot: int | None = None,
 ) -> tuple[int, list[str], list[Trigger]]:
     """Applies each landed coin's damage/status, and collects whichever
     per-coin Triggers (on_hit/heads_hit/tails_hit) fired on that coin.
@@ -868,6 +897,7 @@ def apply_incoming_hit(
     log: list[str] = []
     total_damage = 0
     per_coin_triggers: list[Trigger] = []
+    resist = target.resistances_for_slot(target_slot)
     poise = caster.get_status("poise")
     stagger_multiplier = (
         STAGGER_MULTIPLIERS[target.current_stagger_tier - 1]
@@ -877,7 +907,7 @@ def apply_incoming_hit(
     for i, coin in enumerate(result.coin_results):
         per_coin_triggers.extend(coin.fired_triggers)
         raw = coin.damage_dealt + (coin.crit_bonus_damage if coin.is_crit else 0)
-        resisted = apply_resistance(raw, target.resistances.get(attacker_skill.damage_type, 1.0))
+        resisted = apply_resistance(raw, resist.get(attacker_skill.damage_type, 1.0))
         if resisted != raw:
             log.append(
                 f"Coin {i + 1}: ({damage_type_emoji(attacker_skill.damage_type)} "
@@ -908,7 +938,7 @@ def apply_incoming_hit(
 
         status_name = attacker_skill.coin_statuses[i] if i < len(attacker_skill.coin_statuses) else None
         if status_name:
-            resistance_multiplier = target.resistances.get(status_name, 1.0)
+            resistance_multiplier = resist.get(status_name, 1.0)
             raw_potency = (
                 attacker_skill.coin_status_potencies[i]
                 if i < len(attacker_skill.coin_status_potencies) else 0
@@ -1907,6 +1937,91 @@ class BattleCog(commands.GroupCog, name="battle"):
         # The ONLY response for this interaction -- everything about the skill (name, stats, damage type, statuses, triggers) is now collected in... See docs/ENGINEERING_NOTES.md#battle-comment-1345.
         await interaction.response.send_modal(AddSkillModal(target_fighter))
 
+    async def _admin_part_target(self, interaction: discord.Interaction, fighter: str, slot: int):
+        """Shared checks for /battle addpart, removepart and repairpart. Returns the Fighter or None (after replying)."""
+        battle = self.battles.get(interaction.channel_id)
+        if battle is None:
+            await interaction.response.send_message("No active battle here.", ephemeral=True)
+            return None
+        if not _is_admin(interaction):
+            await interaction.response.send_message("Only an admin can manage Parts.", ephemeral=True)
+            return None
+        target = battle.get_fighter(fighter)
+        if target is None:
+            await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            return None
+        if not (1 <= slot <= target.skill_slots):
+            await interaction.response.send_message(
+                f"{target.name} only has skill slots 1-{target.skill_slots}.", ephemeral=True
+            )
+            return None
+        return target
+
+    @app_commands.command(
+        name="addpart",
+        description="Make one of a fighter's skill slots a body Part with its own HP (admin only)",
+    )
+    @app_commands.describe(
+        fighter="The multi-part enemy",
+        slot="Which of its skill slots is this Part (also the slot attackers aim at)",
+        name="Part name, e.g. Left Claw",
+        hp="This Part's HP. Hits to this slot also drain the fighter's own (Core) HP",
+        resistances="Optional own resistances for this Part, e.g. 'slash:0.5,pierce:1.5'",
+    )
+    async def addpart(
+        self, interaction: discord.Interaction, fighter: str, slot: int, name: str,
+        hp: app_commands.Range[int, 1, 100000], resistances: str | None = None,
+    ):
+        target = await self._admin_part_target(interaction, fighter, slot)
+        if target is None:
+            return
+        part_resistances = None
+        if resistances:
+            part_resistances, error = _parse_resistance_list(resistances)
+            if error:
+                await interaction.response.send_message(f"Resistances: {error}", ephemeral=True)
+                return
+        target.parts[slot] = Part(name=name.strip()[:40], hp=hp, max_hp=hp, resistances=part_resistances)
+        await interaction.response.send_message(
+            f"{target.name} Slot {slot} is now **{name.strip()[:40]}** ({hp} HP).", ephemeral=True
+        )
+        await sync_battle_message(self.bot, self.battles[interaction.channel_id])
+
+    @app_commands.command(name="removepart", description="Turn a Part back into a normal skill slot (admin only)")
+    @app_commands.describe(fighter="The multi-part enemy", slot="Which slot's Part to remove")
+    async def removepart(self, interaction: discord.Interaction, fighter: str, slot: int):
+        target = await self._admin_part_target(interaction, fighter, slot)
+        if target is None:
+            return
+        if target.parts.pop(slot, None) is None:
+            await interaction.response.send_message(f"{target.name} Slot {slot} isn't a Part.", ephemeral=True)
+            return
+        await interaction.response.send_message(f"{target.name} Slot {slot} is a normal slot again.", ephemeral=True)
+        await sync_battle_message(self.bot, self.battles[interaction.channel_id])
+
+    @app_commands.command(name="repairpart", description="Restore a Part's HP and un-break its slot (admin only)")
+    @app_commands.describe(
+        fighter="The multi-part enemy", slot="Which slot's Part to repair",
+        hp="HP to set it to (leave blank for full)",
+    )
+    async def repairpart(
+        self, interaction: discord.Interaction, fighter: str, slot: int,
+        hp: app_commands.Range[int, 1, 100000] | None = None,
+    ):
+        target = await self._admin_part_target(interaction, fighter, slot)
+        if target is None:
+            return
+        part = target.parts.get(slot)
+        if part is None:
+            await interaction.response.send_message(f"{target.name} Slot {slot} isn't a Part.", ephemeral=True)
+            return
+        part.hp = min(hp, part.max_hp) if hp is not None else part.max_hp
+        part.broken = False
+        await interaction.response.send_message(
+            f"{target.name}'s {part.name} is repaired ({part.hp}/{part.max_hp}).", ephemeral=True
+        )
+        await sync_battle_message(self.bot, self.battles[interaction.channel_id])
+
     @app_commands.command(
         name="mystatus",
         description="Privately see the exact statuses and resources on your own fighter",
@@ -2131,6 +2246,14 @@ class BattleCog(commands.GroupCog, name="battle"):
         if not (1 <= slot <= caster.skill_slots):
             await interaction.response.send_message(
                 f"{caster.name} only has skill slots 1-{caster.skill_slots}.", ephemeral=True
+            )
+            return
+
+        if caster.slot_disabled(slot):
+            part = caster.parts[slot]
+            await interaction.response.send_message(
+                f"{caster.name}'s {part.name} (Slot {slot}) is broken and can't act until it is repaired.",
+                ephemeral=True,
             )
             return
 
@@ -2808,6 +2931,7 @@ class BattleCog(commands.GroupCog, name="battle"):
             loser_is_clashable_guard = "clashable_guard" in loser_skill.tags
             guard_note: str | None = None
             winner_slot = entry_a["slot"] if outcome.winner == "a" else entry_b["slot"]
+            loser_slot = entry_b["slot"] if outcome.winner == "a" else entry_a["slot"]
 
             if winner_is_clashable_guard:
                 total_damage, status_log, per_coin_triggers = 0, [], []
@@ -2834,7 +2958,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                     total_damage, per_coin_triggers = 0, []
                 else:
                     total_damage, hit_log, per_coin_triggers = apply_incoming_hit(
-                        winner_skill, outcome.winner_final_result, loser, winner
+                        winner_skill, outcome.winner_final_result, loser, winner, loser_slot
                     )
                     status_log += hit_log
                 if not evaded and loser_is_clashable_guard and total_damage > 0:
@@ -2846,6 +2970,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                     total_damage = reduced
 
             loser.take_damage(total_damage)
+            status_log += loser.hit_part(loser_slot, total_damage)
             loser_stagger_before = loser.current_stagger_tier
             loser.check_stagger(battle.round_number)
             stagger_post_hit: list[Trigger] = []
@@ -3112,10 +3237,11 @@ class BattleCog(commands.GroupCog, name="battle"):
                         total_damage, per_coin_triggers = 0, []
                     else:
                         total_damage, hit_log, per_coin_triggers = apply_incoming_hit(
-                            adjusted_skill, result, target, fighter
+                            adjusted_skill, result, target, fighter, entry["target_slot"]
                         )
                         status_log += hit_log
                     target.take_damage(total_damage)
+                    status_log += target.hit_part(entry["target_slot"], total_damage)
                     target_stagger_before = target.current_stagger_tier
                     target.check_stagger(battle.round_number)
                     stagger_post_hit: list[Trigger] = []
@@ -3230,7 +3356,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                                 continue
                             raw_coin = coin.damage_dealt + (coin.crit_bonus_damage if coin.is_crit else 0)
                             resisted_coin = apply_resistance(
-                                raw_coin, splash_fighter.resistances.get(adjusted_skill.damage_type, 1.0)
+                                raw_coin, splash_fighter.resistances_for_slot(splash_slot).get(adjusted_skill.damage_type, 1.0)
                             )
                             coin_total = resisted_coin
 
@@ -3254,7 +3380,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                                 if i < len(adjusted_skill.coin_statuses) else None
                             )
                             if status_name:
-                                resistance_multiplier = splash_fighter.resistances.get(status_name, 1.0)
+                                resistance_multiplier = splash_fighter.resistances_for_slot(splash_slot).get(status_name, 1.0)
                                 raw_potency = (
                                     adjusted_skill.coin_status_potencies[i]
                                     if i < len(adjusted_skill.coin_status_potencies) else 0
@@ -3297,6 +3423,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                             splash_total = frag_splash_total
 
                         splash_shield_absorbed, splash_hp_lost = splash_fighter.take_damage(splash_total)
+                        splash_log += splash_fighter.hit_part(splash_slot, splash_total)
                         splash_fighter.check_stagger(battle.round_number)
                         splash_breakdown = (
                             f" ({splash_shield_absorbed} absorbed by {status_emoji('shield')} Shield, "

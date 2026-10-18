@@ -199,6 +199,22 @@ DAMAGE_MATH: list[HelpEntry] = [
             "end up taking very different final damage from the same attack."
         ),
     ),
+    HelpEntry(
+        key="parts_core",
+        title="Parts and Core",
+        summary="Multi-part enemies: aim at a body part, drain the Core.",
+        body=(
+            "Some enemies are built from **Parts**. Each Part is one of the enemy's "
+            "skill slots, so aiming at its Slot 2 means hitting that Part. A hit "
+            "uses the Part's own resistances (if it has any), lowers the Part's HP, "
+            "and also lowers the enemy's main HP, the **Core**. Killing the Core "
+            "defeats the enemy.\n"
+            "When a Part reaches 0 HP it is **broken**: that slot can't be used "
+            "from the next round on, until an admin repairs it. A broken Part keeps "
+            "draining the Core when hit. Part names and HP show under the enemy in "
+            "the battle display."
+        ),
+    ),
 ]
 
 

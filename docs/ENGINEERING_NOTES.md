@@ -1898,3 +1898,19 @@ entries). It is plain text written by hand, not generated from
 was run through `parse_trigger_text` when it was written. Protection's emoji ID
 (`STATUS_EMOJI_IDS["protection"]`) was filled in the same patch. Skill tag
 emojis are deliberately left empty.
+
+<a id="parts-and-core"></a>
+## Parts and Core
+
+Parts live on the Fighter (`parts: dict[int, Part]`, keyed by skill slot),
+not on a separate object, so no new targeting input was needed: the
+declared `target_slot` already says which Part is aimed at. The three
+combat hit sites pass that slot (`loser_slot` for a Clash winner's hit,
+`entry["target_slot"]` for an unopposed hit, `splash_slot` for Attack
+Weight splash) into `apply_incoming_hit` or the splash math for
+resistances, then call `Fighter.hit_part(slot, total_damage)` right after
+`take_damage`. Damage into a Part is the final damage before Shield, the
+Core always takes it too. Breaking does NOT pop the Part's own declared
+action mid-combat, because the resolution loop reads `declared_actions`
+while it runs. It only blocks future declares via `slot_disabled`. Parts
+are battle-only for now and are not saved on a Character.
