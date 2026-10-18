@@ -104,6 +104,11 @@ SKILL_LEVEL_TIMINGS = {
     "ally on stagger": "ally_on_stagger",
     "ally turn start": "ally_turn_start",
     "ally combat start": "ally_combat_start",
+    # Passive-only reactions of the owner itself (see game/passives.py): when this
+    # fighter takes a landed hit, is newly Staggered, or defeats someone.
+    "self is hit": "self_is_hit",
+    "self on stagger": "self_on_stagger",
+    "self on kill": "self_on_kill",
 }
 
 # Per-coin timing tags: need a :CoinN: prefix on the line, fire once per

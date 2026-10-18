@@ -2090,6 +2090,22 @@ a new status gets an icon.
   target into the same additive multiplier as Fragile/Protection/Damage Up/Down,
   so the splash loop gets it too. Fixed-damage statuses (Burn and so on) do not use
   it. Admin-only through `/character edit offense_level/defense_level`.
+- Passives (`game/passives.py`) and Passive Points: `Character.passives` is a list of
+  {name, kind, lines, cost, note}; the lines are trigger text. They are NOT skills: in
+  battle `Fighter.from_character` turns each into a hidden `Skill` on
+  `Fighter.passive_skills` (tag `passive`), so a passive can never be declared and takes
+  no slot. `Fighter.trigger_skills()` (skills + passives) is what the sweeps use now:
+  `fire_passive_triggers` (Turn/Combat Start, Ally Turn/Combat Start), `fire_ally_reactions`
+  and `fire_evade_triggers`. Three passive-only timings (`self_is_hit`, `self_on_stagger`,
+  `self_on_kill`, in `PASSIVE_ONLY_TIMINGS`) fire from `fire_self_reactions`, called by
+  `fire_hit_ally_reactions`; they sweep passives only, and the skill form refuses them.
+  `parse_passive` limits lines to `PASSIVE_TIMINGS` (what the engine actually fires). PP:
+  `pp_total`/`pp_log`, `/character grantpp` (max 2 per call, reason required); spent =
+  passive costs + `status_pp` (unique statuses created after this rule: 1 PP, +1 keeps
+  Potency, +1 potency_every; older ones are free). Over `pp_total` is a `check_build`
+  problem. Passive and support passives behave the same (Support is a label). Per-hit
+  conditions like "HP below X%" or "at N stacks" are not passive timings yet; they only
+  work as conditions inside a line (`[Turn Start] If ... , ...`), as in skills.
 - Non-keyword effects: `nonkeyword_grants(skill)` finds every one-turn status
   (`ONE_TURN_STATUSES`) a skill hands out, from its coins and its inflict/gain trigger
   lines; size is Potency for `POTENCY_TURN_STATUSES`, else max(Potency, Count). Price is

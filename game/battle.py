@@ -104,6 +104,9 @@ class Fighter:
     # Status ranks copied from the Character, see game/build_points.py.
     status_ranks: dict = field(default_factory=dict)
     defense_archetypes: list = field(default_factory=list)
+    # Hidden skills built from the Character's passives (game/passives.py). Never in
+    # `skills`, so they cannot be declared; the engine sweeps them with trigger_skills().
+    passive_skills: list = field(default_factory=list)
     avatar_url: str | None = None
     # Decimal damage multipliers, 1.0 = Normal (see game/resistances.py).
     resistances: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_RESISTANCES))
@@ -219,6 +222,11 @@ class Fighter:
         fighter.defense_level = getattr(character, "defense_level", 0)
         fighter.status_ranks = dict(getattr(character, "status_ranks", {}) or {})
         fighter.defense_archetypes = list(getattr(character, "defense_archetypes", []) or [])
+        from game.passives import build_passive_skill
+        kinds = {k: cs.kind for k, cs in character.custom_statuses.items()}
+        fighter.passive_skills = [
+            s for s in (build_passive_skill(p, kinds) for p in getattr(character, "passives", []) or []) if s
+        ]
         # If the saved character has its own speed range (set via /character edit), it takes over from the flat speed default that __post_init__... See docs/ENGINEERING_NOTES.md#battle-comment-166.
         if character.speed_min is not None:
             fighter.speed_min = character.speed_min
@@ -240,6 +248,10 @@ class Fighter:
         for cs in fighter.custom_statuses.values():
             register_custom_status_emoji(cs)
         return fighter
+
+    def trigger_skills(self) -> list:
+        """Every skill the engine sweeps for passive-style timings: the known skills plus the hidden passives."""
+        return list(self.skills.values()) + list(self.passive_skills)
 
     def roll_slot_speeds(self):
         """Rerolls every skill slot's own Speed within [speed_min, speed_max]. See docs/ENGINEERING_NOTES.md#battle-fighter-roll-slot-speeds for the full rationale."""

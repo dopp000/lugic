@@ -24,6 +24,7 @@ from game.build_points import (
     OFFDEF_PERCENT_PER_STEP, SP_PER_EXTRA_LINE, check_build, skill_points_spent, skill_power_problem, skill_rank_problems,
     skill_archetype, skill_defense_problem, nonkeyword_grants,
 )
+from game.passives import PASSIVE_ONLY_TIMINGS
 from game.npc_tiers import NPC_TIERS, describe as describe_tier
 from game.statuses import (
     StatusInstance, decay_after_trigger, apply_status, INFLICTABLE_STATUSES,
@@ -414,6 +415,13 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
         except TriggerParseError as e:
             await interaction.response.send_message(
                 friendly_error_text(self.triggers_input.value or "", e, list(custom_kinds))[:1900],
+                ephemeral=True,
+            )
+            return
+        if any(t.timing in PASSIVE_ONLY_TIMINGS for t in triggers):
+            await interaction.response.send_message(
+                "Self Is Hit, Self On Stagger and Self On Kill are only for passives, an admin sets those "
+                "with /character passive. They would never fire on a skill.",
                 ephemeral=True,
             )
             return
@@ -1166,7 +1174,7 @@ def fire_evade_triggers(defender: Fighter, attacker: Fighter, battle: Battle) ->
     """
     log: list[str] = []
     context = TriggerContext(caster=defender, target=attacker, battle=battle)
-    for skill in defender.skills.values():
+    for skill in defender.trigger_skills():
         _, post_hit = resolve_triggers(skill, context, "on_evade")
         log.extend(apply_trigger_effects(post_hit, defender, attacker))
     return log
@@ -1301,7 +1309,7 @@ def fire_passive_triggers(battle: Battle) -> list[str]:
     for fighter in battle.fighters:
         if not fighter.is_alive():
             continue
-        for skill in fighter.skills.values():
+        for skill in fighter.trigger_skills():
             context = TriggerContext(caster=fighter, target=None, battle=battle)
             for timing in timings:
                 _, post_hit = resolve_triggers(skill, context, timing)
@@ -1314,7 +1322,7 @@ def fire_passive_triggers(battle: Battle) -> list[str]:
         if not owner.is_alive():
             continue
         for ally_fighter in _living_allies(battle, owner):
-            for skill in owner.skills.values():
+            for skill in owner.trigger_skills():
                 context = TriggerContext(caster=owner, target=None, battle=battle, ally=ally_fighter)
                 for timing in ally_timings:
                     _, post_hit = resolve_triggers(skill, context, timing)
@@ -1337,9 +1345,19 @@ def fire_ally_reactions(
     log: list[str] = []
     for owner in _living_allies(battle, actor):
         context = TriggerContext(caster=owner, target=other, battle=battle, ally=actor)
-        for skill in owner.skills.values():
+        for skill in owner.trigger_skills():
             _, post_hit = resolve_triggers(skill, context, event)
             log.extend(apply_trigger_effects(post_hit, owner, other, ally=actor))
+    return log
+
+
+def fire_self_reactions(battle: Battle, owner: Fighter, event: str, other: Fighter | None = None) -> list[str]:
+    """Fires a passive-only timing (Self Is Hit / Self On Stagger / Self On Kill) on `owner`'s passives. `other` is the enemy involved."""
+    log: list[str] = []
+    context = TriggerContext(caster=owner, target=other, battle=battle)
+    for skill in owner.passive_skills:
+        _, post_hit = resolve_triggers(skill, context, event)
+        log.extend(apply_trigger_effects(post_hit, owner, other))
     return log
 
 
@@ -1350,7 +1368,12 @@ def fire_hit_ally_reactions(
     """All the [Ally ...] reactions to one landed attack: the attacker's allies hear On Hit / On Crit / On Kill, the target's allies hear Is Hit / On Stagger (only if this hit newly Staggered them). Nothing fires for an evaded or zero-damage hit."""
     if evaded or damage <= 0:
         return []
-    log = fire_ally_reactions(battle, attacker, "ally_on_hit", target)
+    log = fire_self_reactions(battle, target, "self_is_hit", attacker)
+    if not target.is_alive():
+        log += fire_self_reactions(battle, attacker, "self_on_kill", target)
+    if stagger_before == 0 and target.current_stagger_tier > 0:
+        log += fire_self_reactions(battle, target, "self_on_stagger", attacker)
+    log += fire_ally_reactions(battle, attacker, "ally_on_hit", target)
     if was_crit:
         log += fire_ally_reactions(battle, attacker, "ally_on_crit", target)
     if not target.is_alive():

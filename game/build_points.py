@@ -228,6 +228,25 @@ def skill_defense_problem(owned, skill) -> str | None:
     return f"{defense_label(key)} is a defense archetype ({DEFENSE_ARCHETYPES[key]} BP) and this character does not own it."
 
 
+# --- Passive Points ------------------------------------------------------------
+# A slow second currency. Admins grant it only for GM-approved moments (at most 2 per
+# event). It pays for identity passives (the admin sets the price) and for new unique
+# statuses (1 PP, +1 if it keeps Potency, +1 if it gains Potency from Count).
+PP_MAX_GRANT = 2
+PP_COST_MAX = 6
+
+
+def status_pp_cost(keep_potency: bool, potency_every: int) -> int:
+    return 1 + int(bool(keep_potency)) + int(potency_every > 0)
+
+
+def passive_points_spent(c) -> int:
+    passives = sum(int(p.get("cost", 0)) for p in (getattr(c, "passives", None) or []))
+    statuses = sum(int(v) for k, v in (getattr(c, "status_pp", None) or {}).items()
+                   if k in (getattr(c, "custom_statuses", None) or {}))
+    return passives + statuses
+
+
 # --- Skill Points ------------------------------------------------------------
 # The first trigger line on a skill is free. Every extra line costs this many SP.
 # Supermoves are paid for in BP instead, so they cost no SP.
@@ -419,6 +438,12 @@ def check_build(c) -> BuildReport:
         def_problems.append(f"{len(set(owned_def))} defense archetypes, but a character can own at most {DEFENSE_MAX}.")
     if owned_def:
         costs["Defense archetypes"] = sum(DEFENSE_ARCHETYPES.get(k, 0) for k in set(owned_def))
+    pp_used = passive_points_spent(c)
+    pp_problems: list[str] = []
+    if pp_used > getattr(c, "pp_total", 0):
+        pp_problems.append(
+            f"Passives and unique statuses use {pp_used} Passive Points but only {getattr(c, 'pp_total', 0)} are available."
+        )
     nk_total, nk_lines = nonkeyword_total(c)
     nk_problems: list[str] = []
     if nk_total:
@@ -474,6 +499,7 @@ def check_build(c) -> BuildReport:
     p.extend(rank_problems)
     p.extend(def_problems)
     p.extend(nk_problems)
+    p.extend(pp_problems)
 
     if hp < HP_BASE:
         p.append(f"HP {hp} is below the minimum of {HP_BASE}.")

@@ -78,6 +78,13 @@ class Character:
     status_ranks: dict = field(default_factory=dict)
     # Defense archetypes bought with BP (at most 2), e.g. ["guard", "evade"].
     defense_archetypes: list = field(default_factory=list)
+    # Passive Points: a slow second currency, granted by admins for GM-approved
+    # moments. They pay for identity passives (self.passives: dicts with name,
+    # kind, lines, cost, note) and for unique statuses (status_pp: key -> cost).
+    pp_total: int = 0
+    pp_log: list[dict] = field(default_factory=list)
+    passives: list = field(default_factory=list)
+    status_pp: dict = field(default_factory=dict)
     sp_log: list[dict] = field(default_factory=list)
 
     def add_skill(self, skill: Skill):
@@ -119,6 +126,10 @@ class Character:
             "sp_total": self.sp_total,
             "status_ranks": self.status_ranks,
             "defense_archetypes": self.defense_archetypes,
+            "pp_total": self.pp_total,
+            "pp_log": self.pp_log,
+            "passives": self.passives,
+            "status_pp": self.status_pp,
             "sp_log": self.sp_log,
             "supermove_drawbacks": self.supermove_drawbacks,
         }

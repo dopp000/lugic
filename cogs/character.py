@@ -17,10 +17,11 @@ from game.character import (
 )
 from game.build_points import (
     check_build, build_summary, level_for, next_level_at, character_level,
-    DEFENSE_ARCHETYPES, OFFDEF_PERCENT_PER_STEP, RANKED_STATUSES, defense_label, STARTING_BP, skill_points_spent,
+    DEFENSE_ARCHETYPES, OFFDEF_PERCENT_PER_STEP, PP_MAX_GRANT, passive_points_spent, status_pp_cost, RANKED_STATUSES, defense_label, STARTING_BP, skill_points_spent,
 )
 from game.resistances import ALL_RESISTANCE_TYPES, DAMAGE_TYPES, parse_resistance_multiplier
 from game.emojis import status_emoji, damage_type_emoji, register_custom_status_emoji
+from game.passives import MAX_PASSIVES, parse_passive
 from game.custom_statuses import (
     CustomStatus, KINDS, LIFETIMES, MAX_CUSTOM_STATUSES_PER_CHARACTER, slugify, validate_name,
 )
@@ -86,6 +87,16 @@ def build_character_embed(character: Character, owner_name: str) -> discord.Embe
     elif not report.ok:
         build_line += f"\n⚠ {len(report.all_problems())} thing(s) to fix, see /character bp"
     embed.add_field(name="Build", value=build_line, inline=False)
+
+    if character.passives:
+        embed.add_field(
+            name="Passives",
+            value="\n".join(
+                f"{'Support ' if p.get('kind') == 'support' else ''}**{p['name']}**: " + "; ".join(p.get("lines", []))
+                for p in character.passives
+            )[:1000],
+            inline=False,
+        )
 
     if character.custom_statuses:
         embed.add_field(
@@ -761,6 +772,21 @@ class CharacterCog(commands.GroupCog, name="character"):
             )
             return
 
+        pp_cost = status_pp_cost(keep_potency, potency_every)
+        if not character.bp_exempt:
+            trial_used = passive_points_spent(character) + pp_cost
+            if trial_used > character.pp_total:
+                await interaction.response.send_message(
+                    f"A unique status costs Passive Points (1, +1 if it keeps Potency, +1 if it gains Potency "
+                    f"from Count). This one costs {pp_cost}, and {character.name} has "
+                    f"{character.pp_total - passive_points_spent(character)} left. An admin gives them with "
+                    "/character grantpp, only for GM-approved moments.",
+                    ephemeral=True,
+                )
+                return
+        else:
+            pp_cost = 0
+
         parsed_emoji_id = None
         animated = False
         if emoji_id:
@@ -785,6 +811,8 @@ class CharacterCog(commands.GroupCog, name="character"):
             keep_potency=keep_potency, potency_every=potency_every,
         )
         character.custom_statuses[key] = cs
+        if pp_cost:
+            character.status_pp[key] = pp_cost
         save_character(character)
         register_custom_status_emoji(cs)
 
@@ -841,6 +869,7 @@ class CharacterCog(commands.GroupCog, name="character"):
             )
             return
         removed = character.custom_statuses.pop(slugify(status_name), None)
+        character.status_pp.pop(slugify(status_name), None)
         if removed is None:
             await interaction.response.send_message(
                 f"{character.name} has no custom status called '{status_name}'.", ephemeral=True
@@ -953,6 +982,14 @@ class CharacterCog(commands.GroupCog, name="character"):
             text += "\nEverything is within the rules."
         else:
             text += f"\n**To fix:**\n{_problem_lines(report.all_problems(), 12)}"
+        if character.pp_total or character.passives or character.status_pp:
+            text += f"\nPassive Points: {passive_points_spent(character)}/{character.pp_total} used"
+            for p in character.passives:
+                label = "Support Passive" if p.get("kind") == "support" else "Passive"
+                text += f"\n- {label} {p['name']}: {p.get('cost', 0)} PP" + (f" ({p['note']})" if p.get("note") else "")
+            for k, v in character.status_pp.items():
+                if k in character.custom_statuses:
+                    text += f"\n- Unique status {character.custom_statuses[k].name}: {v} PP"
         if character.defense_archetypes:
             text += "\nDefense archetypes: " + ", ".join(defense_label(k) for k in character.defense_archetypes)
         if character.status_ranks:
@@ -1120,6 +1157,151 @@ class CharacterCog(commands.GroupCog, name="character"):
                 self.bot, character.owner_id,
                 f"An admin gave **{character.name}** {what}. Now {report.spent}/{report.total} BP spent.",
             )
+
+    @app_commands.command(name="grantpp", description="Admin only: give a character Passive Points for a GM-approved moment")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(
+        name="Character to change",
+        amount="1 for a solid character-beat scene, 2 for an arc-culminating moment (max 2 per event). Negative removes",
+        reason="The moment that earned it (required, shown in the history and sent to the owner)",
+    )
+    async def grantpp(self, interaction: discord.Interaction, name: str, amount: int, reason: str):
+        if not is_admin(interaction):
+            await interaction.response.send_message("Only an admin can change Passive Points.", ephemeral=True)
+            return
+        if amount > PP_MAX_GRANT:
+            await interaction.response.send_message(
+                f"One event gives at most {PP_MAX_GRANT} Passive Points. Grant {PP_MAX_GRANT} now, and again for another event.",
+                ephemeral=True,
+            )
+            return
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
+            return
+        new_total = max(0, character.pp_total + amount)
+        applied = new_total - character.pp_total
+        character.pp_total = new_total
+        character.pp_log.append({
+            "amount": applied,
+            "reason": reason,
+            "by": interaction.user.id,
+            "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        })
+        save_character(character)
+        used = passive_points_spent(character)
+        msg = f"{character.name} now has {new_total} Passive Points, {used} used."
+        if used > new_total:
+            msg += "\nThey use more than they have, so the build is flagged until a passive or status is removed or more PP are granted."
+        await interaction.response.send_message(msg, ephemeral=True)
+        if interaction.user.id != character.owner_id:
+            await dm_owner(
+                self.bot, character.owner_id,
+                f"Your character **{character.name}** {'gained' if applied >= 0 else 'lost'} "
+                f"{abs(applied)} Passive Points ({reason}). Now {used}/{new_total} used.",
+            )
+
+    @app_commands.command(name="passive", description="Admin only: give a character an identity passive (always-on rules), paid with Passive Points")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.choices(kind=[
+        app_commands.Choice(name="Passive", value="passive"),
+        app_commands.Choice(name="Support Passive", value="support"),
+    ])
+    @app_commands.describe(
+        name="Character",
+        passive_name="Name of the passive",
+        kind="Passive or Support Passive (a label, they work the same)",
+        cost="Passive Points it costs (1 to 6), your call as GM",
+        line_1="First rule, e.g. [Turn Start] Gain 1 Charge Count. Timings: Turn Start, Combat Start, Ally ..., On Evade, Self Is Hit, Self On Stagger, Self On Kill",
+        line_2="Second rule (optional)",
+        line_3="Third rule (optional)",
+        note="What the passive is, for the record",
+    )
+    async def passive(
+        self, interaction: discord.Interaction, name: str, passive_name: str,
+        kind: app_commands.Choice[str], cost: app_commands.Range[int, 1, 6], line_1: str,
+        line_2: str | None = None, line_3: str | None = None, note: str | None = None,
+    ):
+        if not is_admin(interaction):
+            await interaction.response.send_message("Only an admin can give a passive.", ephemeral=True)
+            return
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
+            return
+        title = passive_name.strip()
+        if not title or len(title) > 40:
+            await interaction.response.send_message("Give the passive a name of 1 to 40 characters.", ephemeral=True)
+            return
+        if any(p["name"].lower() == title.lower() for p in character.passives):
+            await interaction.response.send_message(
+                f"{character.name} already has a passive called {title}. Remove it first to redo it.", ephemeral=True
+            )
+            return
+        if len(character.passives) >= MAX_PASSIVES:
+            await interaction.response.send_message(
+                f"A character can have at most {MAX_PASSIVES} passives.", ephemeral=True
+            )
+            return
+        lines = [l.strip() for l in (line_1, line_2, line_3) if l and l.strip()]
+        kinds = {k: cs.kind for k, cs in character.custom_statuses.items()}
+        _, error = parse_passive(lines, kinds)
+        if error:
+            await interaction.response.send_message(error[:1900], ephemeral=True)
+            return
+        entry = {"name": title, "kind": kind.value, "lines": lines, "cost": cost, "note": (note or "").strip()}
+        trial = copy.deepcopy(character)
+        trial.passives.append(entry)
+        used = passive_points_spent(trial)
+        if used > character.pp_total:
+            await interaction.response.send_message(
+                f"{character.name} has {character.pp_total} Passive Points and this would use {used}. "
+                "Grant more with /character grantpp (GM-approved moments only).",
+                ephemeral=True,
+            )
+            return
+        character.passives.append(entry)
+        save_character(character)
+        await interaction.response.send_message(
+            f"{character.name} now has the {kind.name} **{title}** ({cost} PP). {used}/{character.pp_total} PP used.",
+            ephemeral=True,
+        )
+        if interaction.user.id != character.owner_id:
+            await dm_owner(
+                self.bot, character.owner_id,
+                f"An admin gave **{character.name}** the {kind.name} **{title}** ({cost} PP)."
+                + (f" {entry['note']}" if entry["note"] else ""),
+            )
+
+    @app_commands.command(name="removepassive", description="Admin only: take an identity passive away from a character (frees its Passive Points)")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(name="Character", passive_name="The passive to remove")
+    async def removepassive(self, interaction: discord.Interaction, name: str, passive_name: str):
+        if not is_admin(interaction):
+            await interaction.response.send_message("Only an admin can remove a passive.", ephemeral=True)
+            return
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
+            return
+        keep = [p for p in character.passives if p["name"].lower() != passive_name.strip().lower()]
+        if len(keep) == len(character.passives):
+            await interaction.response.send_message(f"{character.name} has no passive called {passive_name}.", ephemeral=True)
+            return
+        character.passives = keep
+        save_character(character)
+        await interaction.response.send_message(
+            f"Removed {passive_name} from {character.name}. {passive_points_spent(character)}/{character.pp_total} PP used.",
+            ephemeral=True,
+        )
+
+    @removepassive.autocomplete("passive_name")
+    async def removepassive_name_autocomplete(self, interaction: discord.Interaction, current: str):
+        character = load_character(getattr(interaction.namespace, "name", "") or "")
+        if character is None:
+            return []
+        cur = current.lower()
+        return [app_commands.Choice(name=p["name"][:100], value=p["name"]) for p in character.passives if cur in p["name"].lower()][:25]
 
     @app_commands.command(name="grantsp", description="Admin only: give a character Skill Points (or take some away)")
     @app_commands.default_permissions(manage_guild=True)
@@ -1299,6 +1481,7 @@ class CharacterCog(commands.GroupCog, name="character"):
     for _command in (
         view, edit, resistance, addskill, skills, removeskill, editskill,
         addstatus, statuses, removestatus, delete, say, bp, grantbp, exempt, drawback,
+        rank, archetype, grantsp, grantpp, passive, removepassive,
     ):
         _command.autocomplete("name")(_character_name_autocomplete)
     del _command
