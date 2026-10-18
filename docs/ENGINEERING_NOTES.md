@@ -1978,3 +1978,14 @@ character cap) and, with the Full Log entries, onto `Battle.history` as a
 `RoundRecord`, capped at `MAX_HISTORY` (5) rounds. `_log_embeds` is the shared
 packer for the Full Log button and `/battle log`. History lives with the Battle
 object, so it ends with the battle like everything else.
+
+<a id="round-ping"></a>
+## Round ping
+
+`build_round_ping(battle)` is a pure function over the Battle, called at the very end of
+`combat()` after the new status embed is posted and `start_new_round()` has already rerolled
+speeds and cleared expired Stagger, so `Fighter.can_act()` already reflects the new round.
+It groups fighters by `owner_id`, one mention per owner. The send uses
+`AllowedMentions(users=True)` and swallows `discord.HTTPException`, a failed ping must never
+break the end of a combat phase. Returns None when a side is wiped out so a finished battle is
+not pinged.

@@ -433,6 +433,13 @@ three. All closed since the last README pass.
 | `combat` | Resolves the round. See Animated Combat Phase. Also where Turn-End status ticks (Burn/Sinking/Charge) and Elimination checks run, once per round. |
 | `end` | Ends the battle. |
 
+**Round ping.** After a round resolves and the fresh battle status is posted, the bot sends
+one public message mentioning the owners of every fighter that can act in the new round, with
+their fighters in brackets (`build_round_ping`). Fighters with no linked owner, Staggered,
+Immobilized (including Panicked) or eliminated fighters are left out, and nothing is sent
+when a side has nobody left standing. Not sent when a battle is first created. Other ping
+ideas (a waiting list, a ready-to-resolve notice) are not built.
+
 **Round recap and `/battle log`.** Every Combat Phase ends with a "Round N Recap" field on
 the results message: which fights happened, and for each fighter whose numbers changed,
 HP, Sanity, newly gained Stagger, a lost Shield, Parts that broke, statuses gained,

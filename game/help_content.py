@@ -574,7 +574,7 @@ COMMANDS: list[HelpEntry] = [
             "`/battle addskill` for this battle only.\n"
             "4. Each round everyone uses `/battle declare` to lock in skills, in secret.\n"
             "5. `/battle combat` resolves the round once everyone has declared. Speeds "
-            "reroll every round.\n"
+            "reroll every round, and the bot pings the owners who can act in the new round.\n"
             "6. Repeat 4 and 5 until one side is done, then `/battle end`.\n"
             "Most name and slot options suggest choices as you type."
         ),

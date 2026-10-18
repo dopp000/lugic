@@ -1513,6 +1513,21 @@ def apply_trigger_effects(
     return log
 
 
+def build_round_ping(battle: Battle) -> str | None:
+    """The "declare now" message for a freshly opened round: one mention per owner, listing their fighters that can act. None if nobody with a linked owner can act, or a side has no one left standing (the battle looks over). See docs/ENGINEERING_NOTES.md#round-ping."""
+    for side in ("A", "B"):
+        if not any(f.is_alive() and not f.eliminated for f in battle.side(side)):
+            return None
+    by_owner: dict[int, list[str]] = {}
+    for f in battle.fighters:
+        if f.owner_id is not None and not f.eliminated and f.can_act():
+            by_owner.setdefault(f.owner_id, []).append(f.name)
+    if not by_owner:
+        return None
+    parts = [f"<@{owner}> ({', '.join(names)})" for owner, names in by_owner.items()]
+    return f"**Round {battle.round_number}** is open. Declare with `/battle declare`: " + ", ".join(parts)
+
+
 def _log_embeds(entries: list[tuple[str, str]], title: str = "Combat Log") -> list[discord.Embed]:
     """Packs a round's (label, detail) log entries into at most 10 embeds. Shared by the Full Log button and /battle log."""
     embeds: list[discord.Embed] = []
@@ -3701,6 +3716,13 @@ class BattleCog(commands.GroupCog, name="battle"):
         # Once the whole phase is done, post the updated battle status as a FRESH message in the channel (not just a silent edit of whatever the... See docs/ENGINEERING_NOTES.md#battle-comment-2173.
         status_message = await interaction.channel.send(embed=build_battle_embed(battle))
         battle.message_id = status_message.id
+
+        ping_text = build_round_ping(battle)
+        if ping_text:
+            try:
+                await interaction.channel.send(ping_text, allowed_mentions=discord.AllowedMentions(users=True))
+            except discord.HTTPException:
+                pass
 
     @app_commands.command(name="log", description="Read an earlier round's recap and full log again (only you see it)")
     @app_commands.describe(round="Which round (leave blank for the latest)")
