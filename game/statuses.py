@@ -29,6 +29,10 @@ POTENCY_TURN_STATUSES = ["bind", "power_down"]
 COUNT_TURN_STATUSES = [
     "fragile", "slash_fragility", "pierce_fragility", "blunt_fragility",
     "damage_down", "paralyze",
+    # Self buffs, same lifetime: Power Up (+Count Final Power), Haste
+    # (+Count Speed), Damage Up (+10% damage dealt per Count) and
+    # Protection (-10% damage taken per Count).
+    "power_up", "haste", "damage_up", "protection",
 ]
 ONE_TURN_STATUSES = POTENCY_TURN_STATUSES + COUNT_TURN_STATUSES
 
@@ -36,6 +40,7 @@ ONE_TURN_STATUSES = POTENCY_TURN_STATUSES + COUNT_TURN_STATUSES
 PERCENT_COUNT_CAP = 10
 PERCENT_COUNT_STATUSES = [
     "fragile", "slash_fragility", "pierce_fragility", "blunt_fragility", "damage_down",
+    "damage_up", "protection",
 ]
 
 # Longer-lived debuffs added alongside: Poison (Count, fixed damage at
@@ -59,6 +64,16 @@ def _count_of(statuses: dict, key: str) -> int:
 def fragility_bonus(statuses: dict, damage_type: str) -> float:
     """Extra damage fraction a target takes from Fragile plus the matching type Fragility (0.0 if neither is active). 10% per Count, each capped at +100%."""
     return (_count_of(statuses, "fragile") + _count_of(statuses, f"{damage_type}_fragility")) * PERCENT_PER_COUNT
+
+
+def damage_up_bonus(statuses: dict) -> float:
+    """Fraction of extra damage an attacker with Damage Up deals (10% per Count, max 100%)."""
+    return _count_of(statuses, "damage_up") * PERCENT_PER_COUNT
+
+
+def protection_reduction(statuses: dict) -> float:
+    """Fraction of damage a target with Protection avoids (10% per Count, max 100%)."""
+    return _count_of(statuses, "protection") * PERCENT_PER_COUNT
 
 
 def damage_down_penalty(statuses: dict) -> float:

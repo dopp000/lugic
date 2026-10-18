@@ -18,7 +18,8 @@ from game.character import load_character
 from game.statuses import (
     StatusInstance, decay_after_trigger, apply_status, INFLICTABLE_STATUSES,
     SETTABLE_STATUSES, ONE_TURN_STATUSES, POTENCY_TURN_STATUSES, fragility_bonus,
-    damage_down_penalty, magnitude_to_hint_tier, SANITY_PANIC,
+    damage_down_penalty, damage_up_bonus, protection_reduction,
+    magnitude_to_hint_tier, SANITY_PANIC,
 )
 from game.resistances import DAMAGE_TYPES, ALL_RESISTANCE_TYPES, apply_resistance, parse_resistance_multiplier
 from game.emojis import status_label, status_emoji, coin_emoji, coin_roll_emoji, damage_type_emoji, stat_emoji, skill_slot_emoji, hint_emoji, attack_weight_icons, stagger_tier_emoji, stagger_action_emoji
@@ -801,6 +802,24 @@ def resolve_evade(
     return won, log
 
 
+def _damage_mods(target: Fighter, attacker: Fighter, damage_type: str) -> tuple[float, list[str]]:
+    """Fragile / type Fragility / Damage Up / Damage Down / Protection folded into one multiplier, plus a log description of each part that applies. They add together, floored at 0. See docs/ENGINEERING_NOTES.md#statuses-one-turn-debuffs."""
+    frag = fragility_bonus(target.statuses, damage_type)
+    up = damage_up_bonus(attacker.statuses)
+    down = damage_down_penalty(attacker.statuses)
+    prot = protection_reduction(target.statuses)
+    parts = []
+    if frag > 0:
+        parts.append(f"{target.name} Fragile +{round(frag * 100)}%")
+    if prot > 0:
+        parts.append(f"{target.name} Protection -{round(prot * 100)}%")
+    if up > 0:
+        parts.append(f"{attacker.name} Damage Up +{round(up * 100)}%")
+    if down > 0:
+        parts.append(f"{attacker.name} Damage Down -{round(down * 100)}%")
+    return max(0.0, 1 + frag + up - down - prot), parts
+
+
 def apply_incoming_hit(
     attacker_skill: Skill, result: SkillResult, target: Fighter, caster: Fighter,
 ) -> tuple[int, list[str], list[Trigger]]:
@@ -883,15 +902,9 @@ def apply_incoming_hit(
         )
         total_damage = boosted
 
-    frag = fragility_bonus(target.statuses, attacker_skill.damage_type)
-    down = damage_down_penalty(caster.statuses)
-    if (frag > 0 or down > 0) and total_damage > 0:
-        boosted = round(total_damage * max(0.0, 1 + frag - down))
-        parts = []
-        if frag > 0:
-            parts.append(f"{target.name} Fragile +{round(frag * 100)}%")
-        if down > 0:
-            parts.append(f"{caster.name} Damage Down -{round(down * 100)}%")
+    mod, parts = _damage_mods(target, caster, attacker_skill.damage_type)
+    if parts and total_damage > 0:
+        boosted = round(total_damage * mod)
         log.append(
             f"{status_emoji('fragile')} {', '.join(parts)}: {total_damage} -> {boosted} damage"
         )
@@ -1313,6 +1326,8 @@ def apply_trigger_effects(triggers: list[Trigger], caster: Fighter, target: Figh
             current = caster.get_status(t.status_name)
             new_instance = apply_status(current, t.status_name, t.effect_value, t.status_count)
             caster.set_status_instance(new_instance)
+            if t.status_name == "haste":
+                caster.shift_slot_speeds(new_instance.count - (current.count if current else 0))
             line = (
                 f"Trigger: {caster.name} gains {status_emoji(t.status_name)} "
                 f"{status_label(t.status_name)}: {new_instance.potency}/{new_instance.count}"
@@ -1684,6 +1699,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                         new_inst = apply_status(None, status_name.value, 1 if count > 0 else 0, count)
                     if status_name.value == "bind":
                         target_fighter.shift_slot_speeds(-(new_inst.potency - (old.potency if old else 0)))
+                    if status_name.value == "haste":
+                        target_fighter.shift_slot_speeds(new_inst.count - (old.count if old else 0))
                 target_fighter.set_status_instance(new_inst)
                 changes.append(
                     f"{status_emoji(status_name.value)} {status_name.name} -> {potency}/{count}"
@@ -3045,13 +3062,11 @@ class BattleCog(commands.GroupCog, name="battle"):
                             )
                             splash_total = boosted_splash_total
 
-                        splash_frag = fragility_bonus(splash_fighter.statuses, adjusted_skill.damage_type)
-                        splash_down = damage_down_penalty(fighter.statuses)
-                        if (splash_frag > 0 or splash_down > 0) and splash_total > 0:
-                            frag_splash_total = round(splash_total * max(0.0, 1 + splash_frag - splash_down))
+                        splash_mod, splash_parts = _damage_mods(splash_fighter, fighter, adjusted_skill.damage_type)
+                        if splash_parts and splash_total > 0:
+                            frag_splash_total = round(splash_total * splash_mod)
                             splash_log.append(
-                                f"{status_emoji('fragile')} Fragile +{round(splash_frag * 100)}% / "
-                                f"Damage Down -{round(splash_down * 100)}% on {splash_fighter.name}: "
+                                f"{status_emoji('fragile')} {', '.join(splash_parts)}: "
                                 f"{splash_total} -> {frag_splash_total} damage"
                             )
                             splash_total = frag_splash_total

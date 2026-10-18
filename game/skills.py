@@ -166,11 +166,15 @@ def resolve_skill(
     # Power of the first X coins to 0. Both come from the caster's own
     # statuses, so they need a context.
     power_down = 0
+    power_up = 0
     paralyzed_coins = 0
     if context is not None and context.caster is not None:
         pd = context.caster.get_status("power_down")
         if pd is not None and pd.count > 0:
             power_down = pd.potency
+        pu = context.caster.get_status("power_up")
+        if pu is not None and pu.count > 0:
+            power_up = pu.count
         para = context.caster.get_status("paralyze")
         if para is not None and para.count > 0:
             paralyzed_coins = para.count
@@ -204,7 +208,7 @@ def resolve_skill(
         heads = flip_coin(heads_chance)
         if heads:
             power += coin_power
-        final_power = 0 if coin_index <= paralyzed_coins else max(0, power - power_down)
+        final_power = 0 if coin_index <= paralyzed_coins else max(0, power - power_down + power_up)
 
         # Evade no longer lives here -- it's a declared Skill of its
         # own now (the [Evade] flag), resolved by find_eligible_evade

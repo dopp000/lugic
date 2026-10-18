@@ -1574,6 +1574,15 @@ Hooks:
   fighters, and `combat()` clears their declarations and sets
   `Fighter.immobilized_blocked`. Turn end removes the status only if it
   actually blocked that round, so one inflicted mid-combat carries over.
+- Self buffs share this machinery (all in `COUNT_TURN_STATUSES`): power_up
+  adds Count to `final_power` in `resolve_skill`, haste calls
+  `shift_slot_speeds(+delta Count)` when gained (gain_status path and
+  setstatus), damage_up and protection (Count capped at 10 via
+  `PERCENT_COUNT_STATUSES`) feed `_damage_mods` in cogs/battle.py, which
+  folds Fragile, Damage Up, Damage Down and Protection into one multiplier
+  `1 + frag + up - down - prot` (floored at 0), used by the primary hit and
+  Attack Weight splash. They are gained only (in `SELF_BUFF_STATUSES`), not
+  inflictable on others.
 - No resistances (the wiki gives none). Triggers still get an auto hint
   tier from potency * count.
 - Known gap: a Stagger'd fighter also cannot declare yet `all_declared`

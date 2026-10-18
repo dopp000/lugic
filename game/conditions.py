@@ -150,7 +150,7 @@ SKILL_FLAG_TAGS = {
 # stat a caster holds. "Gain N Evasion" is no longer valid trigger
 # text for this reason -- it now falls through to the same "not a
 # tracked resource" rejection any other unrecognized name would get.
-SELF_BUFF_STATUSES = ["poise", "charge"]
+SELF_BUFF_STATUSES = ["poise", "charge", "power_up", "haste", "damage_up", "protection"]
 
 # Target-facing statuses, mirrors statuses.py's INFLICTABLE_STATUSES.
 # Duplicated here rather than imported so this module doesn't need to

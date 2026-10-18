@@ -303,9 +303,15 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   target waits for the `[Ally ...]` trigger prefix, because `/battle declare`
   only allows targeting enemies. Heal boosts and HP Healing Down are not
   built. See `docs/ENGINEERING_NOTES.md#healing`.
+- **Self buffs** (Count-based, last the rest of the round, wiped at turn
+  end, gained like any self buff, e.g. `[Turn Start] Gain +2 Haste Count`):
+  **Power Up** (+Count Final Power on every coin), **Haste** (+Count Speed on
+  every slot), **Damage Up** (+10% damage dealt per Count, max 10) and
+  **Protection** (-10% damage taken per Count, max 10). Damage Up,
+  Protection, Fragile and Damage Down all add into one multiplier applied
+  once to the whole hit, floored at 0. Protection has no emoji yet.
 - Still missing: Offense/Defense Level (and Level Up/Down), Clash Power
-  Down, Plus/Minus Coin Drop/Boost, HP Healing Down, Curse, and the matching
-  buffs (Power Up, Haste, Protection, Damage Up).
+  Down, Plus/Minus Coin Drop/Boost, HP Healing Down, Curse.
 - Charge has no consumption payoff (see above) — smaller, but still open.
 - No turn-based expiry independent of triggering (a status that should wear
   off after N turns even if its trigger never fires isn't modeled — every

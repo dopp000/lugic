@@ -46,6 +46,7 @@ STATUS_EMOJI_IDS: dict[str, int | None] = {
     "immobilized": 1561189600481771572,
     # Buff icons uploaded ahead of time, no status behind them yet.
     "power_up": 1538063077856256000,
+    "protection": None,
     "haste": 1561190558767124512,
     "damage_up": 1561189128106803260,
 }
@@ -194,6 +195,8 @@ def status_emoji(status_name: str) -> str:
         "pierce_fragility": "Pierce_Fragility",
         "blunt_fragility": "Blunt_Fragility",
         "power_down": "Power_Down",
+        "power_up": "Power_Up",
+        "damage_up": "Damage_Up",
         "damage_down": "Damage_Down",
     }
     display_name = display_names.get(key, status_name.capitalize())
