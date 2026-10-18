@@ -5,7 +5,7 @@ from discord import app_commands
 from game.help_content import HELP_CATEGORIES, HelpEntry
 from game.emojis import (
     help_category_emoji, skill_tag_emoji,
-    HELP_CATEGORY_EMOJI_IDS, SKILL_TAG_EMOJI_IDS,
+    HELP_CATEGORY_EMOJI_IDS, SKILL_TAG_EMOJI_IDS, STATUS_EMOJI_IDS, status_emoji,
 )
 
 HELP_COLOR = 0x5865F2
@@ -17,6 +17,7 @@ HELP_COLOR = 0x5865F2
 # _entry_emoji_id just returns None for it.
 _ENTRY_EMOJI_IDS: dict[str, dict[str, int | None]] = {
     "skill_tags": SKILL_TAG_EMOJI_IDS,
+    "status_effects": STATUS_EMOJI_IDS,
 }
 
 
@@ -29,6 +30,8 @@ def _entry_text_icon(category_key: str, entry_key: str) -> str:
     ':Name:' text if no real ID exists yet)."""
     if category_key == "skill_tags":
         return skill_tag_emoji(entry_key)
+    if category_key == "status_effects" and STATUS_EMOJI_IDS.get(entry_key) is not None:
+        return status_emoji(entry_key)
     return ""
 
 

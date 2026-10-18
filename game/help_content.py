@@ -8,9 +8,8 @@ is developing this bot (code references, "see Combat Features", commit
 hashes), this is written for whoever is PLAYING on it. Keep it short,
 plain, and free of internal names a player never sees.
 
-Only two categories exist so far (Skill Tags, Damage Math) -- the two
-things explicitly asked for first. More categories (Status Effects,
-Trigger Syntax, Commands) can slot in later the same way: a new list of
+Three categories exist so far (Skill Tags, Damage Math, Status Effects).
+More categories (Trigger Syntax, Commands) can slot in later the same way: a new list of
 HelpEntry plus one new line in HELP_CATEGORIES.
 """
 
@@ -207,6 +206,177 @@ DAMAGE_MATH: list[HelpEntry] = [
 # embed's category buttons, that category's entries). cogs/help.py reads
 # this list to build the Home view -- add a line here (and a matching
 # entry list above) to add a whole new category later.
+STATUS_EFFECTS: list[HelpEntry] = [
+    HelpEntry(
+        key="stacking",
+        title="Potency and Count",
+        summary="The two numbers on every status, and what the warning icons mean.",
+        body=(
+            "Most statuses have two numbers. **Potency** is how strong it is. **Count** is how many times it can still happen, or how long it lasts. Gaining the same status again adds to both. Potency tops out at 99.\n\nSome statuses only last for the turn they land in and are wiped at turn end (Bind, Fragile and friends). Others stay until they run out. Each status page says which.\n\nYou usually can't see exact numbers on an enemy. The icons under a fighter's name hint at how dangerous their statuses and passives are."
+        ),
+    ),
+    HelpEntry(
+        key="burn",
+        title="Burn",
+        summary="Damage to you at turn end, then it fades.",
+        body=(
+            "At the end of the turn you take fixed damage equal to Burn's **Potency**, then its **Count** drops by 1. At 0 Count it is gone. Shield soaks the damage first."
+        ),
+    ),
+    HelpEntry(
+        key="bleed",
+        title="Bleed",
+        summary="Hurts you whenever you attack, then it fades.",
+        body=(
+            "Each time you use an attack skill, you take fixed damage equal to Bleed's **Potency** for **every coin** in that skill, and its Count drops by 1. Defense skills (Guard, Counter and so on) don't count as attacking."
+        ),
+    ),
+    HelpEntry(
+        key="tremor",
+        title="Tremor",
+        summary="Tremor Burst makes the target easier to Stagger.",
+        body=(
+            "Tremor does nothing alone. When a skill with a **[Tremor Burst]** line hits a target holding Tremor, the target's Stagger thresholds rise by Tremor's **Potency** in percentage points, which means they Stagger sooner. Then Tremor's Count drops by 1."
+        ),
+    ),
+    HelpEntry(
+        key="rupture",
+        title="Rupture",
+        summary="Hits on you deal extra fixed damage.",
+        body=(
+            "Every coin that hits you deals extra fixed damage equal to Rupture's **Potency**, and its Count drops by 1 each time. The extra damage is capped at 10% of your max HP per coin, so a huge stack can't one-shot you."
+        ),
+    ),
+    HelpEntry(
+        key="sinking",
+        title="Sinking",
+        summary="Drains your Sanity at turn end.",
+        body=(
+            "At the end of the turn you lose Sanity equal to Sinking's **Potency**. It does not fade on its own. Low Sanity makes your coins land tails more often and can lead to Low Morale and Panic."
+        ),
+    ),
+    HelpEntry(
+        key="poise",
+        title="Poise",
+        summary="Chance to Crit.",
+        body=(
+            "Each coin has a **5% Crit chance per Potency** (up to 100%). A Crit adds **20% more damage** to that coin and uses up 1 Count. Poise is something you gain on yourself."
+        ),
+    ),
+    HelpEntry(
+        key="charge",
+        title="Charge",
+        summary="A stored resource you spend with Consume.",
+        body=(
+            "Charge does nothing by itself. Skills and passives give it to you, and a **Consume** line spends it for a payoff, for example `Consume 3 Charge: Coin Power +2`. Its Count drops by 1 each turn end, up to a cap of 20."
+        ),
+    ),
+    HelpEntry(
+        key="bind",
+        title="Bind",
+        summary="Makes you slower this turn.",
+        body=(
+            "Every skill slot loses Speed equal to Bind's **Potency**, down to a minimum of 0. Lasts for the turn, then it's wiped."
+        ),
+    ),
+    HelpEntry(
+        key="power_down",
+        title="Power Down",
+        summary="Weakens every coin this turn.",
+        body=(
+            "Each coin loses Final Power equal to Power Down's **Potency** (never below 0). Lasts for the turn."
+        ),
+    ),
+    HelpEntry(
+        key="fragile",
+        title="Fragile",
+        summary="You take more damage this turn.",
+        body=(
+            "You take **10% more damage per Count**, up to 10 Count (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All last for the turn and add together."
+        ),
+    ),
+    HelpEntry(
+        key="damage_down",
+        title="Damage Down",
+        summary="You deal less damage this turn.",
+        body=(
+            "Your hits deal **10% less damage per Count**, up to 10 Count. Lasts for the turn."
+        ),
+    ),
+    HelpEntry(
+        key="paralyze",
+        title="Paralyze",
+        summary="Your first coins deal nothing this turn.",
+        body=(
+            "The **first X coins** of each skill you use have their power fixed to 0, where X is Paralyze's **Count**. Lasts for the turn."
+        ),
+    ),
+    HelpEntry(
+        key="poison",
+        title="Poison",
+        summary="Damage at turn end, then it halves.",
+        body=(
+            "At the end of the turn you take fixed damage equal to Poison's **Count**, then the Count is **halved**. It keeps going across turns until it hits 0."
+        ),
+    ),
+    HelpEntry(
+        key="immobilized",
+        title="Immobilized",
+        summary="You can't act.",
+        body=(
+            "You can't declare any skills, and anything you already declared is dropped when combat starts. It is removed after the turn it stops you. If it lands during combat, it carries into next turn."
+        ),
+    ),
+    HelpEntry(
+        key="power_up",
+        title="Power Up",
+        summary="Stronger coins this turn.",
+        body=(
+            "Each coin gains Final Power equal to Power Up's **Count**. A buff you gain on yourself. Lasts for the turn."
+        ),
+    ),
+    HelpEntry(
+        key="haste",
+        title="Haste",
+        summary="Faster this turn.",
+        body=(
+            "Every skill slot gains Speed equal to Haste's **Count**. A buff you gain on yourself. Lasts for the turn."
+        ),
+    ),
+    HelpEntry(
+        key="damage_up",
+        title="Damage Up",
+        summary="You deal more damage this turn.",
+        body=(
+            "Your hits deal **10% more damage per Count**, up to 10 Count. Lasts for the turn. Damage Up, Damage Down, Fragile and Protection all add together into one number."
+        ),
+    ),
+    HelpEntry(
+        key="protection",
+        title="Protection",
+        summary="You take less damage this turn.",
+        body=(
+            "You take **10% less damage per Count**, up to 10 Count. Lasts for the turn."
+        ),
+    ),
+    HelpEntry(
+        key="panic",
+        title="Low Morale and Panic",
+        summary="What happens at very low Sanity.",
+        body=(
+            "At **-30 Sanity** you are on **Low Morale**. It has no effect on its own, but some characters have skills that care about it. At **-45 Sanity** you **Panic**: you can't act next turn, then your Sanity resets to 0."
+        ),
+    ),
+    HelpEntry(
+        key="custom",
+        title="Custom statuses",
+        summary="Resources a character makes for themselves.",
+        body=(
+            "A character can have its own statuses (like a Pulsation counter), made with `/character addstatus`. A **buff** is gained by the owner, a **debuff** is inflicted on enemies. Skills spend them with `Consume N Name: payoff`, and some can turn spent Count into permanent Potency. Ask your GM what yours do."
+        ),
+    ),
+]
+
 HELP_CATEGORIES: list[tuple[str, str, str, list[HelpEntry]]] = [
     (
         "skill_tags",
@@ -219,5 +389,11 @@ HELP_CATEGORIES: list[tuple[str, str, str, list[HelpEntry]]] = [
         "Damage Math",
         "How a hit's final damage number gets calculated.",
         DAMAGE_MATH,
+    ),
+    (
+        "status_effects",
+        "Status Effects",
+        "What each status does and how long it lasts.",
+        STATUS_EFFECTS,
     ),
 ]

@@ -441,16 +441,18 @@ Drill-down menu: pick a category button, then a topic from a dropdown,
 then read the full explanation; Back/Home navigate without re-running the
 command. Ephemeral, ~5 minute timeout on the buttons. Content lives in
 `game/help_content.py`, written in plain language on purpose, kept
-separate from this file. **Only two categories exist so far** (the two
-things asked for first): **Skill Tags** (all 8 flags, one per dropdown
-entry) and **Damage Math** (the basic hit formula, resistance, Stagger's
-multiplier, Rupture vs. Crit, Attack Weight splash). Status Effects,
-Trigger Syntax, and a Commands category are the natural next additions —
-same pattern, a new entry list in `game/help_content.py` plus one new
+separate from this file. **Three categories exist so far**: **Skill Tags**
+(one dropdown entry per flag, including Support), **Damage Math** (the basic
+hit formula, resistance, Stagger's multiplier, Rupture vs. Crit, Attack
+Weight splash) and **Status Effects** (21 topics: Potency and Count, the
+five Sin statuses, Poise, Charge, every debuff and buff, Low Morale and
+Panic, custom statuses; each entry key is the status key so its icon comes
+from `STATUS_EMOJI_IDS` automatically). Trigger Syntax and a Commands
+category are the natural next additions, same pattern, a new entry list in `game/help_content.py` plus one new
 line in `HELP_CATEGORIES`, no changes needed to `cogs/help.py` itself.
 
-Category buttons (`Skill Tags`, `Damage Math`) and three of the eight
-skill tags (`Target Fixed`, `Unclashable`, `Indiscriminate`) have no
+Category buttons (`Skill Tags`, `Damage Math`, `Status Effects`) and four of
+the nine skill tags (`Target Fixed`, `Unclashable`, `Indiscriminate`, `Support`) have no
 custom emoji yet (`HELP_CATEGORY_EMOJI_IDS` / `SKILL_TAG_EMOJI_IDS` in
 `game/emojis.py`, both `None` placeholders) — same gradual-fill
 convention as every other icon in that file. The other five tags already
