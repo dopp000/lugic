@@ -492,6 +492,7 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
             "`If the target is Weak to this skill's damage type,` (or `Fatal`, 1.5x or more)\n"
             "`If the target has 3+ negative effects,` (different statuses on them)\n"
             "`If the target is using a Defense Skill,`\n"
+            "`If the ally has the fastest Speed,` (for `[Ally ...]` and Support lines)\n"
             "`At 10+ Speed,` (your slot speed) or `At 5+ Poise,` (a status you hold)\n"
             "`If this unit is Low Morale,` / `If the target is Panic,`\n"
             "`If the target is an ally,` / `If the target is an enemy,` (for Duality skills)\n"
@@ -561,7 +562,12 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
             "**[Ally ...]** tags sit on your own skill and fire when an ally does something: "
             "`[Ally On Hit]`, `[Ally On Crit]`, `[Ally On Kill]`, `[Ally Is Hit]`, "
             "`[Ally On Stagger]`, `[Ally Turn Start]`, `[Ally Combat Start]`. "
-            "The effect lands on you unless the line ends with `to the ally`."
+            "The effect lands on you unless the line ends with `to the ally`.\n"
+            "**Pick the ally yourself:** `to the ally with the lowest HP` chooses one living ally "
+            "(never you) when the line fires: `[Turn Start] Heal 5 to the ally with the lowest HP`. "
+            "Choices: fastest/slowest Speed, highest/lowest HP, HP percent, Max HP, SP, "
+            "most/least Charge (any status), earliest/latest deployment. A tie goes to whoever was "
+            "deployed first. As a condition: `If the ally has the fastest Speed,`."
         ),
     ),
     HelpEntry(

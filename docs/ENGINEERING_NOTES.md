@@ -2230,3 +2230,18 @@ a new status gets an icon.
 - Defense Skill: true if any of the target's declared actions carries a tag in `DEFENSE_SKILL_TAGS`.
 - Not done: coin position and coin face conditions. A coin line already names its coin with `:CoinN:` and the
   heads/tails timings cover face, so they would only repeat what the line can already say.
+
+<a id="ally-selectors-patch-4"></a>
+## Ally selectors
+
+- `parse_selector` turns a phrase ("lowest HP", "most Charge") into a spec like `hp|min`; `select_ally(caster, battle, spec)`
+  picks the best living ally (never the caster, ties go to the earliest in `battle.fighters`). The metric for
+  Speed is the fastest slot (`max(slot_speeds)`), the same one the Hint line uses.
+- `... to the ally with the X` sets `Trigger.ally_select` (and `to_ally`). `bind_ally` runs where a line fires
+  (`resolve_triggers`, coin lines in `resolve_skill`) and returns a copy with the runtime-only `selected_ally`, so
+  `pay_cost` still sees the original trigger and per-turn counts keep working. `apply_trigger_effects` uses
+  `selected_ally` for these lines (and skips the line if there is no ally), ignoring the `ally` argument.
+- Condition `ally_rank` (`If the ally has the X,`) is true when `context.ally` is the selected ally. It needs an
+  `[Ally ...]` timing or a Support skill, where the context has an ally.
+- A delayed (next turn) selector line picks its ally when it fires, not when it is applied.
+- The Support Passive kind is still the same as a normal passive; selectors are what make it useful.

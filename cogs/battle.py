@@ -1682,7 +1682,7 @@ def apply_trigger_effects(
             log.append(_warn_wrap(line, t.hint_tier) if t.hint_tier >= 2 else line)
             continue
 
-        who = ally if t.to_ally else caster
+        who = t.selected_ally if t.ally_select else (ally if t.to_ally else caster)
         if who is None:
             continue
 

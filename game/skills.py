@@ -2,7 +2,7 @@ import random
 from dataclasses import dataclass, field, replace
 
 from game.conditions import (
-    POST_HIT_EFFECTS, POWER_TIMINGS, Trigger, TriggerContext, evaluate_condition, pay_cost, effective_value,
+    POST_HIT_EFFECTS, POWER_TIMINGS, Trigger, TriggerContext, bind_ally, evaluate_condition, pay_cost, effective_value,
 )
 
 
@@ -211,7 +211,7 @@ def resolve_skill(
             ]
             power += sum(effective_value(t, context) for t in coin_start_fired if t.effect_type == "bonus_power")
             coin_power += sum(effective_value(t, context) for t in coin_start_fired if t.effect_type == "bonus_coin_power")
-            fired_triggers.extend(t for t in coin_start_fired if t.effect_type in POST_HIT_EFFECTS)
+            fired_triggers.extend(bind_ally(t, context) for t in coin_start_fired if t.effect_type in POST_HIT_EFFECTS)
 
         heads = flip_coin(heads_chance)
         if heads:
@@ -262,7 +262,7 @@ def resolve_skill(
                 if t.effect_type not in POST_HIT_EFFECTS:
                     continue
                 if evaluate_condition(t.condition, context, skill) and pay_cost(t, context):
-                    fired_triggers.append(t)
+                    fired_triggers.append(bind_ally(t, context))
 
         results.append(CoinResult(
             heads=heads, power_after=final_power, damage_dealt=(0 if is_evaded else final_power),
@@ -305,7 +305,7 @@ def resolve_triggers(
             final_power_bonus=skill.final_power_bonus + bonus_final,
         )
 
-    post_hit = [t for t in fired if t.effect_type in POST_HIT_EFFECTS]
+    post_hit = [bind_ally(t, context) for t in fired if t.effect_type in POST_HIT_EFFECTS]
     return skill, post_hit
 
 

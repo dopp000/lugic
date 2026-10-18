@@ -20,7 +20,7 @@ CONDITION_TYPES = [
     "caster_status", "first_hit_of_round", "speed_faster", "caster_speed_at_least",
     "caster_morale", "target_morale", "target_is_ally", "target_is_enemy",
     "caster_hp_pct", "target_sanity", "speed_diff", "target_affinity",
-    "target_negative_count", "target_defending",
+    "target_negative_count", "target_defending", "ally_rank",
 ]
 
 # Skill tags that count as a Defense Skill for "If the target is using a Defense Skill".
@@ -216,6 +216,88 @@ TARGET_STATUSES = [
 ]
 
 
+# --- Ally selectors ("the ally with the fastest Speed") ----------------------
+# A selector spec is "stat|max" or "stat|min". stat is speed, hp, hp_pct, max_hp,
+# sanity, deployed (position in the battle's fighter list) or status:NAME:count|potency.
+_SELECTOR_PHRASES = {
+    "fastest speed": "speed|max", "slowest speed": "speed|min",
+    "highest hp": "hp|max", "lowest hp": "hp|min",
+    "highest hp percent": "hp_pct|max", "lowest hp percent": "hp_pct|min",
+    "highest max hp": "max_hp|max", "lowest max hp": "max_hp|min",
+    "highest sanity": "sanity|max", "lowest sanity": "sanity|min",
+    "highest sp": "sanity|max", "lowest sp": "sanity|min",
+    "first deployed": "deployed|min", "last deployed": "deployed|max",
+    "earliest deployment": "deployed|min", "latest deployment": "deployed|max",
+}
+SELECTOR_EXAMPLES = [
+    "fastest Speed", "slowest Speed", "highest HP", "lowest HP", "lowest HP percent",
+    "highest Max HP", "lowest SP", "most Charge", "least Burn Count", "earliest deployment",
+]
+
+
+def parse_selector(text: str) -> str | None:
+    """'fastest Speed' -> 'speed|max'. None if the phrase is not a selector."""
+    key = " ".join(text.strip().lower().replace("%", " percent").split())
+    if key in _SELECTOR_PHRASES:
+        return _SELECTOR_PHRASES[key]
+    m = re.fullmatch(r"(most|least) ([a-z]+(?: [a-z]+)*?)(?: (count|potency))?", key)
+    if m:
+        name = "_".join(m.group(2).split())
+        known = set(SELF_BUFF_STATUSES) | set(TARGET_STATUSES) | set(_active_custom)
+        if name in known:
+            return f"status:{name}:{m.group(3) or 'count'}|{'max' if m.group(1) == 'most' else 'min'}"
+    return None
+
+
+def describe_selector(spec: str) -> str:
+    """'hp|min' -> 'lowest HP', for previews."""
+    stat, direction = spec.split("|")
+    names = {"speed": ("fastest Speed", "slowest Speed"), "hp": ("highest HP", "lowest HP"),
+             "hp_pct": ("highest HP percent", "lowest HP percent"), "max_hp": ("highest Max HP", "lowest Max HP"),
+             "sanity": ("highest Sanity", "lowest Sanity"), "deployed": ("latest deployment", "earliest deployment")}
+    if stat in names:
+        return names[stat][0 if direction == "max" else 1]
+    _, name, basis = stat.split(":")
+    return f"{'most' if direction == 'max' else 'least'} {name.replace('_', ' ').title()} {basis.title()}"
+
+
+def _selector_metric(fighter, battle, stat: str) -> float:
+    if stat == "speed":
+        return max(fighter.slot_speeds, default=0)
+    if stat == "hp":
+        return fighter.hp
+    if stat == "hp_pct":
+        return fighter.hp / fighter.max_hp if fighter.max_hp > 0 else 0
+    if stat == "max_hp":
+        return fighter.max_hp
+    if stat == "sanity":
+        return fighter.sanity
+    if stat == "deployed":
+        return battle.fighters.index(fighter)
+    if stat.startswith("status:"):
+        _, name, basis = stat.split(":")
+        st = fighter.get_status(name)
+        if st is None:
+            return 0
+        return st.potency if basis == "potency" else st.count
+    return 0
+
+
+def select_ally(caster, battle, spec: str):
+    """The living ally of `caster` (never the caster) that best fits `spec`, or None. Ties go to whoever was deployed first."""
+    if battle is None:
+        return None
+    stat, direction = spec.split("|")
+    pool = [
+        f for f in battle.fighters
+        if f is not caster and f.side == caster.side and f.is_alive() and not f.eliminated
+    ]
+    if not pool:
+        return None
+    pick = max if direction == "max" else min
+    return pick(pool, key=lambda f: _selector_metric(f, battle, stat))
+
+
 @dataclass
 class Condition:
     """One check against battle state. type is one of CONDITION_TYPES.
@@ -379,6 +461,11 @@ def evaluate_condition(condition: Condition, context: TriggerContext, skill=None
                 active += 1
         return active >= condition.value
 
+    if condition.type == "ally_rank":
+        if context.ally is None:
+            return False
+        return select_ally(context.caster, context.battle, condition.status_name) is context.ally
+
     if condition.type == "target_defending":
         if context.target is None:
             return False
@@ -450,6 +537,10 @@ class Trigger:
     delayed: bool = False
     # level_mod only: lands on the target (Inflict) instead of the user (Gain).
     on_target: bool = False
+    # "... to the ally with the lowest HP": a selector spec like "hp|min" (see parse_selector).
+    ally_select: str | None = None
+    # Runtime only, never saved: the ally ally_select picked when this line fired.
+    selected_ally: object = None
 
     def to_dict(self) -> dict:
         """Used so a Skill carrying this Trigger can be saved to a
@@ -483,6 +574,7 @@ class Trigger:
             "chance": self.chance,
             "delayed": self.delayed,
             "on_target": self.on_target,
+            "ally_select": self.ally_select,
         }
 
     @classmethod
@@ -490,6 +582,15 @@ class Trigger:
         data = dict(data)
         data["condition"] = Condition.from_dict(data["condition"])
         return cls(**data)
+
+
+def bind_ally(trigger: Trigger, context: "TriggerContext") -> Trigger:
+    """For a 'to the ally with the ...' line: a copy that remembers which ally was picked right now. Other lines come back unchanged."""
+    if not trigger.ally_select:
+        return trigger
+    return dataclasses.replace(
+        trigger, selected_ally=select_ally(context.caster, context.battle, trigger.ally_select)
+    )
 
 
 def pay_cost(trigger: Trigger, context: "TriggerContext") -> bool:
@@ -597,6 +698,7 @@ _COND_NEGATIVE = re.compile(
 _COND_DEFENDING = re.compile(
     r"if the target is using an? defen[cs]e skill,?\s*(.*)", re.IGNORECASE
 )
+_COND_ALLY_RANK = re.compile(r"if the ally has the ([a-z%]+(?: [a-z%]+)*?),\s*(.*)", re.IGNORECASE)
 _COND_AT_N_THING = re.compile(r"at (\d+)\+ ([a-z]+)(?: (potency|count))?,?\s*(.*)", re.IGNORECASE)
 # Multi-word (custom) status names need the comma to know where the name stops.
 _COND_AT_N_THING_COMMA = re.compile(r"at (\d+)\+? ([a-z]+(?: [a-z]+)*?),\s*(.*)", re.IGNORECASE)
@@ -635,6 +737,7 @@ _EFFECT_INFLICT_EXPLICIT = re.compile(
 _EFFECT_INFLICT_COUNT = re.compile(r"inflict \+(\d+) ([a-z ]+?) count", re.IGNORECASE)
 _EFFECT_INFLICT_BARE = re.compile(r"inflict (\d+) ([a-z ]+)", re.IGNORECASE)
 _EFFECT_GAIN_STATUS = re.compile(r"gain (\d+) ([a-z ]+)", re.IGNORECASE)
+_TO_SELECTED_ALLY_RE = re.compile(r"\s+to the ally with the ([a-z%]+(?: [a-z%]+)*?)\s*$", re.IGNORECASE)
 _TO_ALLY_RE = re.compile(r"\s+to (?:the |an |that )?ally\s*$", re.IGNORECASE)
 _EFFECT_REMOVE = re.compile(r"remove ([a-z ]+)", re.IGNORECASE)
 _EFFECT_HEAL = re.compile(r"heal (\d+)\s*(%)?(?: max)?\s*(?:hp)?", re.IGNORECASE)
@@ -768,6 +871,16 @@ def _parse_condition_and_effect_text(text: str) -> tuple[Condition, str]:
         if not 1 <= n <= len(TARGET_STATUSES):
             raise TriggerParseError(text, f"The number of negative effects must be between 1 and {len(TARGET_STATUSES)}.")
         return Condition(type="target_negative_count", value=n), m.group(2)
+
+    m = _COND_ALLY_RANK.match(text)
+    if m:
+        spec = parse_selector(m.group(1))
+        if spec is None:
+            raise TriggerParseError(
+                text,
+                f"'{m.group(1)}' isn't an ally selector. Try: " + ", ".join(SELECTOR_EXAMPLES),
+            )
+        return Condition(type="ally_rank", status_name=spec), m.group(2)
 
     m = _COND_DEFENDING.match(text)
     if m:
@@ -1012,7 +1125,18 @@ def _parse_trigger_lines(text: str, strict: bool = True) -> tuple[list[Trigger],
 
         condition, effect_text = _parse_condition_and_effect_text(rest)
         to_ally = False
-        if _TO_ALLY_RE.search(effect_text):
+        ally_select = None
+        sel = _TO_SELECTED_ALLY_RE.search(effect_text)
+        if sel:
+            ally_select = parse_selector(sel.group(1))
+            if ally_select is None:
+                raise TriggerParseError(
+                    line,
+                    f"'{sel.group(1)}' isn't an ally selector. Try: " + ", ".join(SELECTOR_EXAMPLES),
+                )
+            to_ally = True
+            effect_text = effect_text[:sel.start()]
+        elif _TO_ALLY_RE.search(effect_text):
             to_ally = True
             effect_text = _TO_ALLY_RE.sub("", effect_text)
         consume_status = None
@@ -1176,6 +1300,7 @@ def _parse_trigger_lines(text: str, strict: bool = True) -> tuple[list[Trigger],
             chance=chance,
             delayed=delayed,
             on_target=on_target,
+            ally_select=ally_select,
         ))
 
     return triggers, flags

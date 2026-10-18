@@ -15,6 +15,7 @@ from game.conditions import (
     TARGET_STATUSES,
     Trigger,
     TriggerParseError,
+    describe_selector,
 )
 from game.emojis import status_label
 
@@ -37,6 +38,7 @@ EFFECT_TEMPLATES = [
     "Gain N Sanity",
     "Lose N Sanity",
     "Heal N HP",
+    "Heal N to the ally with the lowest HP",
     "Heal N% max HP",
     "Inflict +N Burn Count",
     "Inflict N Burn",
@@ -63,6 +65,7 @@ CONDITION_EXAMPLES = [
     "If the target is Weak to this skill's damage type,",
     "If the target has 3+ negative effects,",
     "If the target is using a Defense Skill,",
+    "If the ally has the fastest Speed,",
     "At 10+ Speed,",
     "At 5+ Poise,",
     "If this unit is Low Morale,",
@@ -104,6 +107,8 @@ def _describe_condition(t: Trigger, names) -> str:
         return f"the target is {c.status_name.title()} to this skill's damage type"
     if c.type == "target_negative_count":
         return f"the target has {c.value}+ different negative effects"
+    if c.type == "ally_rank":
+        return f"the ally has the {describe_selector(c.status_name)} (of your allies)"
     if c.type == "target_defending":
         return "the target is using a Defense Skill"
     if c.type == "caster_speed_at_least":
@@ -167,7 +172,9 @@ def _describe_effect(t: Trigger, names) -> str:
         text = t.effect_type
     if t.consume_status:
         text = f"spend {t.consume_amount} {_name(t.consume_status, names)}, then {text}"
-    if t.to_ally:
+    if t.ally_select:
+        text += f" (on the ally with the {describe_selector(t.ally_select)})"
+    elif t.to_ally:
         text += " (on the ally)"
     if t.delayed:
         text += ", next turn"
