@@ -367,6 +367,21 @@ logic. Part names and HP show under the fighter in the battle embed. See
   `[Ally On Kill] Gain +2 Haste Count`. They fire once per landed hit, not per
   coin, and not for an evaded or zero-damage hit. Attack Weight splash hits fire
   them too, once per splash target. See `docs/ENGINEERING_NOTES.md#ally-reactions`.
+- **Build Points (first part)**: `game/build_points.py` holds every number. A
+  character has a BP pool (30 at the start, more from `/character grantbp`),
+  and its level is just a label on the pool (45 / 63 / 84 / 108). HP (100 to
+  160), Power (6 to 14, 1 BP per point), Speed range (1 to 8, at least 2 wide,
+  priced by its average) and Stagger tier removal (5 / 7 / 12) are paid from the
+  pool. No single stat may use more than 40% of the pool, and Power + Speed or
+  Power + HP at most 60%. Power also caps a skill: Base Power at most
+  floor(2 + 0.4 x Power), Coin Power at most floor(1 + 0.2 x Power); the skill
+  form rejects anything higher (admins are exempt). Only admins change HP,
+  Speed, Power and Stagger. A character that breaks the rules cannot join a
+  battle (an admin can still add it, with a note), `/character recheck` DMs
+  every owner what to fix, and `/character exempt` is for NPCs. Not built yet:
+  status ranks, resistance dials, defense archetypes, Supermove slots and
+  Passive Points, plus the player request and approval flow. See
+  `docs/ENGINEERING_NOTES.md#build-points`.
 - Still missing: Offense/Defense Level (and Level Up/Down), Clash Power
   Down, Plus/Minus Coin Drop/Boost, HP Healing Down, Curse.
 - Charge has no consumption payoff (see above) — smaller, but still open.
@@ -495,7 +510,11 @@ that flag.
 | `create` | New saved character, owned by whoever ran it. |
 | `list` | Lists your own saved characters. |
 | `view` | Owner or admin; `public:True` posts to channel. |
-| `edit` | Owner-or-admin. `speed_min`/`speed_max` must be given together, no implicit flat-speed shortcut anymore. Also where `stagger_thresholds`/`stagger_tiers_enabled` get set, applied at battle-start via `Fighter.from_character()`. |
+| `edit` | Owner-or-admin for name, avatar and resistances. HP, Speed, Power and Stagger are admin-only (they cost Build Points) and a build that breaks the rules is rejected before anything is saved. `speed_min`/`speed_max` must be given together, no implicit flat-speed shortcut anymore. Also where `stagger_thresholds`/`stagger_tiers_enabled` get set, applied at battle-start via `Fighter.from_character()`. |
+| `bp` | Owner-or-admin. Level, BP spent and available, per-stat breakdown, anything breaking the rules, and the last few BP changes. |
+| `grantbp` | Admin. Adds (or removes, with a negative number) BP, logs the reason, and DMs the owner. Warns if the build is now over budget. |
+| `exempt` | Admin. Skips every Build Point check for a character (NPCs and bosses). |
+| `recheck` | Admin. Checks every saved character against the rules and DMs each owner what to fix. |
 | `resistance` | Owner-or-admin. Multi-set via positionally-aligned `resistance_types`/`values`. |
 | `addskill` | Owner-or-admin. Same `AddSkillModal` popup as `/battle addskill`, but teaches the skill to the saved `Character` permanently — it's then picked up automatically next time this character joins a battle, via `Fighter.from_character()`. |
 | `skills` | Owner-or-admin. Lists everything this character permanently knows. |

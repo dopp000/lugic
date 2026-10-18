@@ -52,6 +52,15 @@ class Character:
     # game/custom_statuses.py.
     custom_statuses: dict[str, CustomStatus] = field(default_factory=dict)
 
+    # Build Points (see game/build_points.py). bp_total is the whole pool
+    # this character has earned; what is spent is worked out from the
+    # stats, never stored. bp_log is a plain history of grants/changes
+    # (dicts with amount, reason, by, at) that an admin can read back.
+    # bp_exempt skips every Build Point check (for NPCs and bosses).
+    bp_total: int = 30
+    bp_log: list[dict] = field(default_factory=list)
+    bp_exempt: bool = False
+
     def add_skill(self, skill: Skill):
         self.skills[skill.name.lower()] = skill
 
@@ -82,6 +91,9 @@ class Character:
             "stagger_tiers_enabled": self.stagger_tiers_enabled,
             "skills": {name: s.to_dict() for name, s in self.skills.items()},
             "custom_statuses": {k: c.to_dict() for k, c in self.custom_statuses.items()},
+            "bp_total": self.bp_total,
+            "bp_log": self.bp_log,
+            "bp_exempt": self.bp_exempt,
         }
 
     @classmethod
@@ -186,6 +198,22 @@ def list_characters_by_owner(owner_id: int) -> list[Character]:
         if data.get("owner_id") == owner_id:
             owned.append(Character.from_dict(data))
     return owned
+
+def list_all_characters() -> list[Character]:
+    """Every saved character (same folder scan as above). Used by the admin recheck."""
+    if not os.path.isdir(CHARACTERS_DIR):
+        return []
+    found = []
+    for filename in sorted(os.listdir(CHARACTERS_DIR)):
+        if not filename.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(CHARACTERS_DIR, filename)) as f:
+                found.append(Character.from_dict(json.load(f)))
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return found
+
 
 def list_character_summaries() -> list[tuple[str, int | None]]:
     """(name, owner_id) for every saved character, for autocomplete. Same linear folder scan as list_characters_by_owner."""

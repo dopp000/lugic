@@ -1,3 +1,6 @@
+import copy
+import datetime
+
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -10,7 +13,9 @@ from game.character import (
     delete_character,
     list_characters_by_owner,
     list_character_summaries,
+    list_all_characters,
 )
+from game.build_points import check_build, build_summary, level_for, next_level_at, STARTING_BP
 from game.resistances import ALL_RESISTANCE_TYPES, DAMAGE_TYPES, parse_resistance_multiplier
 from game.emojis import status_emoji, damage_type_emoji, register_custom_status_emoji
 from game.custom_statuses import (
@@ -61,6 +66,14 @@ def build_character_embed(character: Character, owner_name: str) -> discord.Embe
         resist_lines.append(f"{icon} {k.capitalize()}: {v}x")
     embed.add_field(name="Resistances", value="\n".join(resist_lines), inline=False)
 
+    report = check_build(character)
+    build_line = f"Level {report.level}, {report.spent}/{report.total} BP spent"
+    if character.bp_exempt:
+        build_line += " (exempt from Build Point checks)"
+    elif not report.ok:
+        build_line += f"\n⚠ {len(report.all_problems())} thing(s) to fix, see /character bp"
+    embed.add_field(name="Build", value=build_line, inline=False)
+
     if character.custom_statuses:
         embed.add_field(
             name="Custom statuses",
@@ -73,6 +86,24 @@ def build_character_embed(character: Character, owner_name: str) -> discord.Embe
 
     embed.set_footer(text=f"Owner: {owner_name}")
     return embed
+
+
+def _problem_lines(problems: list[str], limit: int = 8) -> str:
+    shown = problems[:limit]
+    text = "\n".join(f"- {p}" for p in shown)
+    if len(problems) > limit:
+        text += f"\n- ...and {len(problems) - limit} more"
+    return text
+
+
+async def dm_owner(bot: commands.Bot, owner_id: int, text: str) -> bool:
+    """Sends the owner a DM. Returns False (never raises) when DMs are closed or the user can't be found."""
+    try:
+        user = bot.get_user(owner_id) or await bot.fetch_user(owner_id)
+        await user.send(text[:1900])
+        return True
+    except (discord.HTTPException, AttributeError):
+        return False
 
 
 def is_admin(interaction: discord.Interaction) -> bool:
@@ -146,7 +177,12 @@ class CharacterCog(commands.GroupCog, name="character"):
             return
 
         avatar_url = avatar.url if avatar else None
-        character = Character(owner_id=interaction.user.id, name=name, avatar_url=avatar_url)
+        # A fresh character starts as a valid Level 1 build: HP 100, Power 6
+        # and a 1-3 Speed range (a flat Speed 10 would break the Speed 1-8 rule).
+        character = Character(
+            owner_id=interaction.user.id, name=name, avatar_url=avatar_url,
+            speed_min=1, speed_max=3, bp_total=STARTING_BP,
+        )
         save_character(character)
 
         embed = discord.Embed(
@@ -155,6 +191,14 @@ class CharacterCog(commands.GroupCog, name="character"):
         )
         if avatar_url:
             embed.set_thumbnail(url=avatar_url)
+        embed.add_field(
+            name="Build Points",
+            value=(
+                f"You start with {STARTING_BP} BP. Stat changes are made by admins: "
+                "ask one to set your HP, Speed, Power and Stagger. See /character bp."
+            ),
+            inline=False,
+        )
         embed.set_footer(text="Use /character view to see stats. You and admins can view them.")
         await interaction.response.send_message(embed=embed)
 
@@ -198,15 +242,15 @@ class CharacterCog(commands.GroupCog, name="character"):
         embed = build_character_embed(character, owner_name)
         await interaction.response.send_message(embed=embed, ephemeral=not public)
 
-    @app_commands.command(name="edit", description="Edit one of your characters (only fill in the fields you want to change)")
+    @app_commands.command(name="edit", description="Edit a character (only fill in what you want to change; HP, Speed, Power and Stagger are admin only)")
     @app_commands.describe(
         name="Character to edit",
         new_name="Rename the character",
         avatar="New avatar image",
-        hp="New max HP, also heals to full",
+        hp="New max HP, also heals to full (admin only, costs Build Points)",
         speed_min="Lowest a skill slot's Speed can roll each round (needs speed_max too)",
         speed_max="Highest a skill slot's Speed can roll each round (needs speed_min too)",
-        power="New Power",
+        power="New Power (admin only, costs Build Points)",
         resistance_types="Resistance(s) to set, comma-separated for several, e.g. 'slash,burn' (needs values too)",
         values="Multiplier for each type above, same order, comma-separated, e.g. '1.25,0.75' (needs resistance_types too)",
         stagger_thresholds="3 HP% values for Tier 1/2/3, comma-separated, descending, e.g. '55,40,25'",
@@ -242,6 +286,17 @@ class CharacterCog(commands.GroupCog, name="character"):
         if (speed_min is None) != (speed_max is None):
             await interaction.response.send_message(
                 "speed_min and speed_max must be set together -- provide both, or neither.",
+                ephemeral=True,
+            )
+            return
+
+        build_fields_used = any(
+            v is not None for v in (hp, speed_min, power, stagger_thresholds, stagger_disabled_tiers)
+        )
+        if build_fields_used and not is_admin(interaction):
+            await interaction.response.send_message(
+                "HP, Speed, Power and Stagger are paid for with Build Points, so only an admin "
+                "can change them. Ask an admin to make the change for you.",
                 ephemeral=True,
             )
             return
@@ -317,6 +372,31 @@ class CharacterCog(commands.GroupCog, name="character"):
                     )
                     return
 
+        # Build Point check on a COPY, before anything real changes: a build
+        # that breaks the rules is turned away and nothing is saved.
+        if build_fields_used and not character.bp_exempt:
+            trial = copy.deepcopy(character)
+            if hp is not None:
+                trial.hp = trial.max_hp = hp
+            if speed_min is not None:
+                trial.speed_min, trial.speed_max = speed_min, speed_max
+            if power is not None:
+                trial.power = power
+            if parsed_disabled_tiers is not None:
+                trial.stagger_tiers_enabled = [
+                    True, 2 not in parsed_disabled_tiers, 3 not in parsed_disabled_tiers,
+                ]
+            trial_report = check_build(trial)
+            if trial_report.problems:
+                await interaction.response.send_message(
+                    f"That build breaks the Build Point rules, so nothing was changed:\n"
+                    f"{_problem_lines(trial_report.problems)}\n"
+                    f"(This build costs {trial_report.spent} of {trial_report.total} BP. "
+                    f"An admin can add BP with /character grantbp.)",
+                    ephemeral=True,
+                )
+                return
+
         changes = []
 
         if new_name is not None and new_name != character.name:
@@ -379,6 +459,11 @@ class CharacterCog(commands.GroupCog, name="character"):
         await interaction.response.send_message(
             f"Updated {character.name}: {', '.join(changes)}.", ephemeral=True
         )
+        if build_fields_used and interaction.user.id != character.owner_id:
+            await dm_owner(
+                self.bot, character.owner_id,
+                f"An admin changed your character **{character.name}**: {', '.join(changes)}.",
+            )
 
     @app_commands.command(
         name="resistance",
@@ -786,6 +871,134 @@ class CharacterCog(commands.GroupCog, name="character"):
         )
         await interaction.followup.send("Sent.", ephemeral=True)
 
+    @app_commands.command(name="bp", description="See a character's level, Build Points and anything that breaks the rules")
+    @app_commands.describe(name="Character to check")
+    async def bp(self, interaction: discord.Interaction, name: str):
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
+            return
+        if not (interaction.user.id == character.owner_id or is_admin(interaction)):
+            await interaction.response.send_message(
+                "Only the owner or an admin can view its Build Points.", ephemeral=True
+            )
+            return
+        report = check_build(character)
+        text = f"**{character.name}**\n{build_summary(report)}"
+        nxt = next_level_at(report.total)
+        text += f"\nBP pool: {report.total}" + (f" (next level at {nxt})" if nxt else " (top level)")
+        if character.bp_exempt:
+            text += "\nThis character is exempt from Build Point checks."
+        elif report.ok:
+            text += "\nEverything is within the rules."
+        else:
+            text += f"\n**To fix:**\n{_problem_lines(report.all_problems(), 12)}"
+        if character.bp_log:
+            recent = character.bp_log[-5:]
+            text += "\n**Recent BP changes:**\n" + "\n".join(
+                f"- {e.get('amount', 0):+d} BP: {e.get('reason') or 'no reason given'}" for e in recent
+            )
+        await interaction.response.send_message(text[:1900], ephemeral=True)
+
+    @app_commands.command(name="grantbp", description="Admin only: give a character Build Points (or take some away)")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(
+        name="Character to change",
+        amount="Build Points to add (use a negative number to remove)",
+        reason="Why, e.g. the scene or event (shown in the history and sent to the owner)",
+    )
+    async def grantbp(self, interaction: discord.Interaction, name: str, amount: int, reason: str | None = None):
+        if not is_admin(interaction):
+            await interaction.response.send_message("Only an admin can change Build Points.", ephemeral=True)
+            return
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
+            return
+        new_total = max(0, character.bp_total + amount)
+        applied = new_total - character.bp_total
+        character.bp_total = new_total
+        character.bp_log.append({
+            "amount": applied,
+            "reason": reason or "",
+            "by": interaction.user.id,
+            "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        })
+        save_character(character)
+        report = check_build(character)
+        msg = (
+            f"{character.name} now has {report.total} BP (Level {report.level}), "
+            f"{report.spent} spent."
+        )
+        owner_text = (
+            f"Your character **{character.name}** {'gained' if applied >= 0 else 'lost'} "
+            f"{abs(applied)} BP" + (f" ({reason})" if reason else "") +
+            f". Now Level {report.level}, {report.spent}/{report.total} BP spent."
+        )
+        if report.problems and not character.bp_exempt:
+            msg += f"\nThe build is now over the rules:\n{_problem_lines(report.problems)}"
+            owner_text += (
+                f"\nYour build now breaks the rules and needs adjusting:\n{_problem_lines(report.problems)}\n"
+                "Ask an admin to change your stats. Until it is fixed this character cannot join battles."
+            )
+        await interaction.response.send_message(msg, ephemeral=True)
+        if interaction.user.id != character.owner_id:
+            await dm_owner(self.bot, character.owner_id, owner_text)
+
+    @app_commands.command(name="exempt", description="Admin only: skip Build Point checks for a character (NPCs, bosses)")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(name="Character to change", exempt="True to skip the checks, false to apply them again")
+    async def exempt(self, interaction: discord.Interaction, name: str, exempt: bool):
+        if not is_admin(interaction):
+            await interaction.response.send_message("Only an admin can do this.", ephemeral=True)
+            return
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
+            return
+        character.bp_exempt = exempt
+        save_character(character)
+        await interaction.response.send_message(
+            f"{character.name} is {'now exempt from' if exempt else 'no longer exempt from'} Build Point checks.",
+            ephemeral=True,
+        )
+
+    @app_commands.command(name="recheck", description="Admin only: check every character against the Build Point rules and tell owners what to fix")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(notify="Send each owner a DM listing what to fix (default: yes)")
+    async def recheck(self, interaction: discord.Interaction, notify: bool = True):
+        if not is_admin(interaction):
+            await interaction.response.send_message("Only an admin can do this.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        flagged = []
+        total = 0
+        for character in list_all_characters():
+            if character.bp_exempt:
+                continue
+            total += 1
+            report = check_build(character)
+            if not report.ok:
+                flagged.append((character, report))
+        if not flagged:
+            await interaction.followup.send(f"Checked {total} characters. All are within the rules.", ephemeral=True)
+            return
+        lines = []
+        for character, report in flagged:
+            sent = None
+            if notify:
+                sent = await dm_owner(
+                    self.bot, character.owner_id,
+                    f"The Build Point rules changed, and your character **{character.name}** "
+                    f"needs adjusting:\n{_problem_lines(report.all_problems(), 10)}\n"
+                    "Ask an admin to update your stats and skills. Until then this character "
+                    "cannot join battles.",
+                )
+            tag = "" if sent is None else (" (owner notified)" if sent else " (could not DM the owner)")
+            lines.append(f"- {character.name}: {len(report.all_problems())} issue(s){tag}")
+        head = f"Checked {total} characters, {len(flagged)} need fixing:\n"
+        await interaction.followup.send((head + "\n".join(lines))[:1900], ephemeral=True)
+
     async def _character_name_autocomplete(self, interaction: discord.Interaction, current: str):
         """Suggests your own saved characters (admins see everyone's). See docs/ENGINEERING_NOTES.md#autocomplete."""
         cur = current.lower()
@@ -798,7 +1011,7 @@ class CharacterCog(commands.GroupCog, name="character"):
 
     for _command in (
         view, edit, resistance, addskill, skills, removeskill, editskill,
-        addstatus, statuses, removestatus, delete, say,
+        addstatus, statuses, removestatus, delete, say, bp, grantbp, exempt,
     ):
         _command.autocomplete("name")(_character_name_autocomplete)
     del _command

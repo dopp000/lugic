@@ -649,10 +649,35 @@ COMMANDS: list[HelpEntry] = [
             "`/character create` makes a saved character (name and optional avatar).\n"
             "`/character list` shows yours. `/character view` shows one's stats, only "
             "to you unless you set `public`.\n"
-            "`/character edit` changes only the fields you fill in: name, avatar, HP, "
-            "Speed range, Power, resistances and Stagger thresholds.\n"
+            "`/character edit` changes only the fields you fill in. Name, avatar and "
+            "resistances are yours to change. HP, Speed range, Power and Stagger cost "
+            "Build Points, so only an admin can change those (see Build Points and levels).\n"
+            "`/character bp` shows a character's level, Build Points and anything to fix.\n"
+            "Admins also have `/character grantbp`, `exempt` and `recheck`.\n"
             "`/character resistance` is a shortcut for setting resistances.\n"
             "`/character delete` removes one for good."
+        ),
+    ),
+    HelpEntry(
+        key="build_points",
+        title="Build Points and levels",
+        summary="The one budget that pays for HP, Power, Speed and Stagger.",
+        body=(
+            "Every character has a pool of **Build Points (BP)**. You start with 30, and "
+            "an admin grants more for scenes and events. Your **level** is just a label "
+            "on your total: Level 2 at 45 BP, 3 at 63, 4 at 84, 5 at 108.\n"
+            "**What costs BP:**\n"
+            "- **HP:** 100 is free, up to 160 (about 1 to 8 BP).\n"
+            "- **Power:** 6 is free, 1 BP per point, up to 14.\n"
+            "- **Speed range:** between 1 and 8, at least 2 wide. The higher the average, the more it costs (up to 16 BP).\n"
+            "- **Stagger:** removing Tier 2 costs 5 BP, Tier 3 costs 7, both 12. Tier 1 can never go.\n"
+            "**Limits that stop one-sided builds:** no single stat can use more than 40% of "
+            "your pool, and Power plus Speed, or Power plus HP, can use at most 60%.\n"
+            "**Power sets how strong your skills can be.** A skill's Base Power can be at "
+            "most 2 + 0.4 x Power, and its Coin Power at most 1 + 0.2 x Power (rounded down). "
+            "At Power 6 that is Base 4 and Coin 2.\n"
+            "If a build breaks these rules it is turned away, and a character that breaks "
+            "them cannot join a battle until an admin fixes it. You get a message when that happens."
         ),
     ),
     HelpEntry(

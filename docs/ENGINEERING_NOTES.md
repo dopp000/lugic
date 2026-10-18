@@ -1953,7 +1953,7 @@ user was killed or Staggered mid-round still costs what it cost, by design.
 <a id="help-commands"></a>
 ## /help Commands page
 
-`COMMANDS` in `game/help_content.py` is the fifth help category (9 entries,
+`COMMANDS` in `game/help_content.py` is the fifth help category (10 entries,
 `commands` key). The command names and descriptions were checked against the
 registered slash commands at the time of writing, but the text is hand-written:
 renaming or adding a command means editing it by hand.
@@ -2027,3 +2027,28 @@ side is now an A/B choice (the value is still the string "A"/"B").
 `decorate_text()` (`game/emojis.py`) adds icons to /help bodies at render time,
 so `game/help_content.py` stays plain text. Its word lists must be extended when
 a new status gets an icon.
+
+<a id="build-points"></a>
+## Build Points (first part)
+
+- `game/build_points.py` is pure rules (no Discord): constants at the top,
+  `check_build(character)` returns a `BuildReport` with `problems` (stats and
+  budget) and `skill_problems` (skills over the Power ceiling). Spent BP is
+  always computed from the stats, never stored; only `bp_total`, `bp_log` and
+  `bp_exempt` are saved on `Character`.
+- Assumptions to confirm: HP uses the wiki step curve (0,1,2,4,4,6,8 BP per 10
+  HP); Power is a flat 1 BP per point (the wiki table is unclear about which
+  Power values its steps are, and 1 BP per point reaches 14 at 8 BP, matching
+  the earlier 20-BP draft); Speed costs interpolate between whole-number
+  averages. If any of these are wrong, change the tables at the top.
+- The 40% / 60% caps use the whole pool (`bp_total`), not what is spent.
+- Enforcement points: `/character edit` (copy of the character is checked first,
+  nothing saved on failure; non-admins cannot touch HP/Speed/Power/Stagger),
+  `AddSkillModal.on_submit` (Power ceiling, admins and `bp_exempt` skip it), and
+  `/battle addfighter character_name` (blocks flagged characters, admins get a
+  note). Characters saved before this patch (flat Speed 10, etc.) are flagged
+  until an admin fixes them; `/character recheck` tells their owners.
+- Owner notices go by DM through `dm_owner`, which swallows closed-DM errors.
+- Next: status ranks and resistance dials, defense archetypes, Supermove slots
+  (BP for the slot, Sanity per use) and Passive Points, then the player
+  request/approval flow that replaces admin-only stat edits.

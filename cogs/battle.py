@@ -19,6 +19,7 @@ from game.recap import RoundRecord, MAX_HISTORY, take_snapshot, build_recap
 from game.skills import Skill, SkillResult, ClashOutcome, resolve_skill, resolve_round_clash, resolve_triggers
 from game.conditions import Trigger, TriggerContext, parse_trigger_text, TriggerParseError
 from game.character import load_character, list_character_summaries
+from game.build_points import check_build, skill_power_problem
 from game.statuses import (
     StatusInstance, decay_after_trigger, apply_status, INFLICTABLE_STATUSES,
     SETTABLE_STATUSES, ONE_TURN_STATUSES, POTENCY_TURN_STATUSES, fragility_bonus,
@@ -365,6 +366,17 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
         if not (1 <= coins <= 4):
             await interaction.response.send_message("Coins must be between 1 and 4.", ephemeral=True)
             return
+
+        # Power is the ceiling on a skill's numbers (game/build_points.py).
+        # Admins are exempt so they can build enemies and bosses freely.
+        if not _is_admin(interaction) and not getattr(self.target_fighter, "bp_exempt", False):
+            power_issue = skill_power_problem(self.target_fighter.power, base_power, coin_power)
+            if power_issue:
+                await interaction.response.send_message(
+                    f"{power_issue} A higher Power stat raises the limit (an admin sets it).",
+                    ephemeral=True,
+                )
+                return
 
         damage_type = damage_type_raw.strip().lower()
         if damage_type not in DAMAGE_TYPES:
@@ -1678,6 +1690,21 @@ class BattleCog(commands.GroupCog, name="battle"):
                 )
                 return
 
+            build_note = ""
+            if not character.bp_exempt:
+                build_report = check_build(character)
+                if not build_report.ok:
+                    issues = "\n".join(f"- {p}" for p in build_report.all_problems()[:6])
+                    if not _is_admin(interaction):
+                        await interaction.response.send_message(
+                            f"{character.name} breaks the Build Point rules and can't join a battle "
+                            f"until it is fixed:\n{issues}\nAsk an admin to adjust the stats "
+                            f"(see /character bp).",
+                            ephemeral=True,
+                        )
+                        return
+                    build_note = f"\nNote: {character.name} breaks the Build Point rules (added anyway because you are an admin)."
+
             fighter = Fighter.from_character(character, side)
             if speed_min is not None:
                 fighter.speed_min = speed_min
@@ -1685,7 +1712,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                 fighter.roll_slot_speeds()
             battle.add_fighter(fighter)
             await interaction.response.send_message(
-                f"Added {fighter.name} to Side {side}.", ephemeral=True
+                f"Added {fighter.name} to Side {side}.{build_note}", ephemeral=True
             )
             await sync_battle_message(self.bot, battle)
             return
