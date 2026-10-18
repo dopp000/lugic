@@ -140,6 +140,43 @@ def skill_rank_problems(ranks: dict, skill) -> list[str]:
     return problems
 
 
+# --- Defense archetypes ------------------------------------------------------
+# A character can own up to 2. A normal Guard / Evade / Counter style skill needs
+# the matching archetype. Some need a minimum Speed (the LOWEST of the range) or
+# the removed Stagger Tier 2.
+DEFENSE_ARCHETYPES = {
+    "guard": 3,
+    "evade": 4,
+    "counter": 5,
+    "clashable_guard": 6,
+    "clashable_counter": 7,
+}
+DEFENSE_MAX = 2
+DEFENSE_MIN_SPEED = 4
+DEFENSE_NEEDS_SPEED = {"evade", "counter", "clashable_counter"}
+DEFENSE_NEEDS_NO_TIER2 = {"clashable_guard", "clashable_counter"}
+# Most specific first: a skill carrying more than one tag counts as the first match.
+_DEFENSE_ORDER = ["clashable_counter", "clashable_guard", "counter", "evade", "guard"]
+
+
+def defense_label(key: str) -> str:
+    return key.replace("_", " ").title()
+
+
+def skill_archetype(skill) -> str | None:
+    for key in _DEFENSE_ORDER:
+        if key in skill.tags:
+            return key
+    return None
+
+
+def skill_defense_problem(owned, skill) -> str | None:
+    key = skill_archetype(skill)
+    if key is None or key in (owned or []):
+        return None
+    return f"{defense_label(key)} is a defense archetype ({DEFENSE_ARCHETYPES[key]} BP) and this character does not own it."
+
+
 # --- Skill Points ------------------------------------------------------------
 # The first trigger line on a skill is free. Every extra line costs this many SP.
 # Supermoves are paid for in BP instead, so they cost no SP.
@@ -312,6 +349,24 @@ def check_build(c) -> BuildReport:
         rank_problems.append(f"{len(owned)} ranked statuses, but a character can own at most {RANK_MAX_STATUSES}.")
     if owned:
         costs["Status ranks"] = sum(RANK_COSTS[v] for v in owned.values() if 1 <= v <= RANK_MAX)
+    owned_def = list(getattr(c, "defense_archetypes", None) or [])
+    def_problems: list[str] = []
+    for key in owned_def:
+        if key not in DEFENSE_ARCHETYPES:
+            def_problems.append(f"'{key}' is not a defense archetype.")
+            continue
+        if key in DEFENSE_NEEDS_SPEED and lo < DEFENSE_MIN_SPEED:
+            def_problems.append(
+                f"{defense_label(key)} needs a lowest Speed of {DEFENSE_MIN_SPEED} or more (it is {lo})."
+            )
+        if key in DEFENSE_NEEDS_NO_TIER2:
+            tiers = getattr(c, "stagger_tiers_enabled", None)
+            if not (tiers and len(tiers) > 1 and not tiers[1]):
+                def_problems.append(f"{defense_label(key)} needs Stagger Tier 2 to be removed.")
+    if len(set(owned_def)) > DEFENSE_MAX:
+        def_problems.append(f"{len(set(owned_def))} defense archetypes, but a character can own at most {DEFENSE_MAX}.")
+    if owned_def:
+        costs["Defense archetypes"] = sum(DEFENSE_ARCHETYPES.get(k, 0) for k in set(owned_def))
     if res_paid or res_refunds:
         costs["Resistances"] = res_paid - min(res_refunds, RESIST_REFUND_CAP)
     physical = sorted(round(float(res.get(k, 1.0)), 2) for k in DAMAGE_TYPES)
@@ -356,6 +411,7 @@ def check_build(c) -> BuildReport:
     p.extend(res_problems)
     p.extend(offdef_problems)
     p.extend(rank_problems)
+    p.extend(def_problems)
 
     if hp < HP_BASE:
         p.append(f"HP {hp} is below the minimum of {HP_BASE}.")

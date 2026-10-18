@@ -386,7 +386,7 @@ logic. Part names and HP show under the fighter in the battle embed. See
   ceiling but cannot hit for more than about 200. Status resistances (Burn,
   Bleed, Tremor, Rupture, Sinking: 0.5x to 2.0x) are priced, with at most 18 BP
   banked from vulnerabilities; Slash/Blunt/Pierce are all 1.0x or one each of
-  0.5 / 1.0 / 1.5. Status ranks (max 2 statuses, Rank 1 to 5) limit which statuses a normal skill may use and how strong (budget for Bleed/Tremor/Poise/Charge, Potency cap for Burn/Sinking/Rupture), old skills grandfathered. Skill Points (granted by admins, start at 0) pay for extra trigger lines: the first line on a skill is free, each extra costs 1 SP, old skills are grandfathered. Offense/Defense Level (0 to 5, 4% damage per step, 0 / 1 / 2 /
+  0.5 / 1.0 / 1.5. Defense archetypes (max 2) gate Guard / Evade / Counter style skills, with a lowest Speed 4 or removed Stagger Tier 2 prerequisite. Status ranks (max 2 statuses, Rank 1 to 5) limit which statuses a normal skill may use and how strong (budget for Bleed/Tremor/Poise/Charge, Potency cap for Burn/Sinking/Rupture), old skills grandfathered. Skill Points (granted by admins, start at 0) pay for extra trigger lines: the first line on a skill is free, each extra costs 1 SP, old skills are grandfathered. Offense/Defense Level (0 to 5, 4% damage per step, 0 / 1 / 2 /
   4 / 4 / 6 BP) change damage dealt and taken. In a clash the higher Level adds the
   Level gap to its Power every round (`/character exempt level:` and `/battle
   setstatus level:` set it for NPCs). Not built yet: status ranks, defense archetypes and Passive
@@ -524,6 +524,7 @@ that flag.
 | `edit` | Owner-or-admin for name, avatar and resistances. HP, Speed, Power, Stagger, resistances and Offense/Defense Level are admin-only (they cost Build Points) and a build that breaks the rules is rejected before anything is saved. `speed_min`/`speed_max` must be given together, no implicit flat-speed shortcut anymore. Also where `stagger_thresholds`/`stagger_tiers_enabled` get set, applied at battle-start via `Fighter.from_character()`. |
 | `bp` | Owner-or-admin. Level, BP spent and available, per-stat breakdown, anything breaking the rules, and the last few BP changes. |
 | `rank` | Admin. Sets a status rank 0 to 5 (Burn, Bleed, Tremor, Rupture, Sinking, Poise, Charge; at most 2 owned; costs 1 / 2 / 4 / 7 / 11 BP). Checked on a copy first, DMs the owner. |
+| `archetype` | Admin. Gives or removes a defense archetype (Guard 3 / Evade 4 / Counter 5 / Clashable Guard 6 / Clashable Counter 7 BP, at most 2, with Speed and Stagger prerequisites). Checked on a copy first, DMs the owner. |
 | `grantsp` | Admin. Adds (or removes) Skill Points like `grantbp`, logs the reason and DMs the owner. |
 | `grantbp` | Admin. Adds (or removes, with a negative number) BP, logs the reason, and DMs the owner. Warns if the build is now over budget. |
 | `exempt` | Admin. Skips every Build Point check for a character (NPCs and bosses). Optional `level` fixes the Level it fights at (0 clears it). |

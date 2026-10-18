@@ -17,7 +17,7 @@ from game.character import (
 )
 from game.build_points import (
     check_build, build_summary, level_for, next_level_at, character_level,
-    OFFDEF_PERCENT_PER_STEP, RANKED_STATUSES, STARTING_BP, skill_points_spent,
+    DEFENSE_ARCHETYPES, OFFDEF_PERCENT_PER_STEP, RANKED_STATUSES, defense_label, STARTING_BP, skill_points_spent,
 )
 from game.resistances import ALL_RESISTANCE_TYPES, DAMAGE_TYPES, parse_resistance_multiplier
 from game.emojis import status_emoji, damage_type_emoji, register_custom_status_emoji
@@ -72,6 +72,8 @@ def build_character_embed(character: Character, owner_name: str) -> discord.Embe
     report = check_build(character)
     level = character_level(character)
     build_line = f"Level {level}, {report.spent}/{report.total} BP spent"
+    if character.defense_archetypes:
+        build_line += "\nDefense: " + ", ".join(defense_label(k) for k in character.defense_archetypes)
     if any(character.status_ranks.values()):
         build_line += "\nStatus ranks: " + ", ".join(f"{k.capitalize()} {v}" for k, v in character.status_ranks.items() if v)
     if character.offense_level or character.defense_level:
@@ -951,6 +953,8 @@ class CharacterCog(commands.GroupCog, name="character"):
             text += "\nEverything is within the rules."
         else:
             text += f"\n**To fix:**\n{_problem_lines(report.all_problems(), 12)}"
+        if character.defense_archetypes:
+            text += "\nDefense archetypes: " + ", ".join(defense_label(k) for k in character.defense_archetypes)
         if character.status_ranks:
             text += "\nStatus ranks: " + ", ".join(f"{k.capitalize()} {v}" for k, v in character.status_ranks.items() if v)
         text += f"\nSkill Points: {skill_points_spent(character)}/{character.sp_total} used (the first trigger line on a skill is free)"
@@ -1062,6 +1066,59 @@ class CharacterCog(commands.GroupCog, name="character"):
             await dm_owner(
                 self.bot, character.owner_id,
                 f"An admin set **{character.name}** to {what}. Now {report.spent}/{report.total} BP spent.",
+            )
+
+    @app_commands.command(name="archetype", description="Admin only: give or take away a defense archetype (Guard, Evade, Counter...)")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.choices(archetype=[app_commands.Choice(name=defense_label(k), value=k) for k in DEFENSE_ARCHETYPES])
+    @app_commands.describe(
+        name="Character to change",
+        archetype="Guard 3 BP, Evade 4, Counter 5, Clashable Guard 6, Clashable Counter 7 (at most 2 owned)",
+        own="True to give it, false to take it away",
+    )
+    async def archetype(
+        self, interaction: discord.Interaction, name: str,
+        archetype: app_commands.Choice[str], own: bool = True,
+    ):
+        if not is_admin(interaction):
+            await interaction.response.send_message(
+                "Defense archetypes are part of the build, so only an admin can change them.", ephemeral=True
+            )
+            return
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
+            return
+
+        def apply(target):
+            owned = [k for k in target.defense_archetypes if k != archetype.value]
+            if own:
+                owned.append(archetype.value)
+            target.defense_archetypes = owned
+
+        if not character.bp_exempt:
+            trial = copy.deepcopy(character)
+            apply(trial)
+            now = check_build(trial).problems
+            before = check_build(character).problems
+            if [p for p in now if p not in before] and len(now) >= len(before):
+                await interaction.response.send_message(
+                    "That would break the Build Point rules, so nothing was changed:\n"
+                    f"{_problem_lines(now)}",
+                    ephemeral=True,
+                )
+                return
+        apply(character)
+        save_character(character)
+        report = check_build(character)
+        what = f"the {archetype.name} archetype" if own else f"no {archetype.name} archetype"
+        await interaction.response.send_message(
+            f"{character.name} now has {what}. {report.spent}/{report.total} BP spent.", ephemeral=True
+        )
+        if interaction.user.id != character.owner_id and not character.bp_exempt:
+            await dm_owner(
+                self.bot, character.owner_id,
+                f"An admin gave **{character.name}** {what}. Now {report.spent}/{report.total} BP spent.",
             )
 
     @app_commands.command(name="grantsp", description="Admin only: give a character Skill Points (or take some away)")

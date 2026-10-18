@@ -2090,6 +2090,15 @@ a new status gets an icon.
   target into the same additive multiplier as Fragile/Protection/Damage Up/Down,
   so the splash loop gets it too. Fixed-damage statuses (Burn and so on) do not use
   it. Admin-only through `/character edit offense_level/defense_level`.
+- Defense archetypes: `Character.defense_archetypes` (list of keys), copied to
+  `Fighter.defense_archetypes`. Prices and prerequisites at `DEFENSE_ARCHETYPES`,
+  `DEFENSE_NEEDS_SPEED`, `DEFENSE_NEEDS_NO_TIER2` in `game/build_points.py`; Speed
+  means the LOWEST of the range. Unlike ranks and Skill Points, prerequisite failures
+  ARE `check_build` problems (a build that drops below one is flagged and blocked from
+  battle). `skill_archetype` picks the most specific tag on a skill; the skill form
+  refuses a new defense skill (or an edit that switches archetype) the fighter does not
+  own, for non-admin non-exempt fighters; older skills are grandfathered. Supermoves
+  cannot be defense skills anyway. A player's one-off battle fighter owns none.
 - Status ranks: `Character.status_ranks` ({"bleed": 3}), copied to `Fighter.status_ranks`.
   Tables at `RANK_COSTS`, `RANK_BUDGETS`, `RANK_POTENCY_CAPS` in `game/build_points.py`.
   `check_build` prices them (a "Status ranks" line) and reports more than 2 owned or

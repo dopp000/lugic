@@ -103,6 +103,7 @@ class Fighter:
     defense_level: int = 0
     # Status ranks copied from the Character, see game/build_points.py.
     status_ranks: dict = field(default_factory=dict)
+    defense_archetypes: list = field(default_factory=list)
     avatar_url: str | None = None
     # Decimal damage multipliers, 1.0 = Normal (see game/resistances.py).
     resistances: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_RESISTANCES))
@@ -217,6 +218,7 @@ class Fighter:
         fighter.offense_level = getattr(character, "offense_level", 0)
         fighter.defense_level = getattr(character, "defense_level", 0)
         fighter.status_ranks = dict(getattr(character, "status_ranks", {}) or {})
+        fighter.defense_archetypes = list(getattr(character, "defense_archetypes", []) or [])
         # If the saved character has its own speed range (set via /character edit), it takes over from the flat speed default that __post_init__... See docs/ENGINEERING_NOTES.md#battle-comment-166.
         if character.speed_min is not None:
             fighter.speed_min = character.speed_min

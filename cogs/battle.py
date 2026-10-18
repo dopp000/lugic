@@ -22,6 +22,7 @@ from game.conditions import Trigger, TriggerContext, parse_trigger_text, Trigger
 from game.character import Character, load_character, list_character_summaries
 from game.build_points import (
     OFFDEF_PERCENT_PER_STEP, SP_PER_EXTRA_LINE, check_build, skill_points_spent, skill_power_problem, skill_rank_problems,
+    skill_archetype, skill_defense_problem,
 )
 from game.npc_tiers import NPC_TIERS, describe as describe_tier
 from game.statuses import (
@@ -530,6 +531,19 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
                         ephemeral=True,
                     )
                     return
+
+        # A Guard / Evade / Counter style skill needs the matching defense archetype.
+        # Skills saved before this rule are grandfathered: only a new skill, or an
+        # edit that switches to a different archetype, is checked.
+        if not is_super and not privileged:
+            owned_def = getattr(self.target_fighter, "defense_archetypes", None) or []
+            def_issue = skill_defense_problem(owned_def, draft)
+            if def_issue and (old_skill is None or skill_archetype(old_skill) != skill_archetype(draft)):
+                await interaction.response.send_message(
+                    f"{def_issue} An admin buys it with /character archetype (see /help, Build Points).",
+                    ephemeral=True,
+                )
+                return
 
         # Extra trigger lines are bought with Skill Points (admins grant them).
         # Skills saved before this rule are grandfathered: only a change that

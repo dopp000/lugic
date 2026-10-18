@@ -76,6 +76,8 @@ class Character:
     # Status ranks 1 to 5 bought with BP, e.g. {"bleed": 3}. A normal skill can only
     # use a status the character owns, up to its rank (game/build_points.py).
     status_ranks: dict = field(default_factory=dict)
+    # Defense archetypes bought with BP (at most 2), e.g. ["guard", "evade"].
+    defense_archetypes: list = field(default_factory=list)
     sp_log: list[dict] = field(default_factory=list)
 
     def add_skill(self, skill: Skill):
@@ -116,6 +118,7 @@ class Character:
             "level_override": self.level_override,
             "sp_total": self.sp_total,
             "status_ranks": self.status_ranks,
+            "defense_archetypes": self.defense_archetypes,
             "sp_log": self.sp_log,
             "supermove_drawbacks": self.supermove_drawbacks,
         }
