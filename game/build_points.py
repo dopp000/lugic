@@ -140,6 +140,57 @@ def skill_rank_problems(ranks: dict, skill) -> list[str]:
     return problems
 
 
+# --- Non-keyword effects (Haste, Fragile, Bind, Protection ...) --------------
+# A normal skill may hand these out, paid from the BP pool: each grant costs
+# ceil(size / 2) BP for its one turn, and the whole kit may spend at most 3 BP.
+# Size is the Potency for Bind and Power Down, otherwise the Count. Percent
+# effects (Fragile, Damage Up/Down, Protection) count at most 10, Paralyze at most 4.
+NONKEYWORD_CAP = 3
+NONKEYWORD_SIZE_CAPS = {"paralyze": 4}
+NONKEYWORD_PERCENT_CAP = 10
+
+
+def nonkeyword_grants(skill) -> list[tuple[str, int]]:
+    """(status, size) for every non-keyword effect a skill hands out, coins and trigger lines both."""
+    from game.statuses import ONE_TURN_STATUSES, POTENCY_TURN_STATUSES
+    raw = []
+    for name, pot, cnt in zip(skill.coin_statuses, skill.coin_status_potencies, skill.coin_status_counts):
+        if name:
+            raw.append(("_".join(str(name).lower().split()), pot, cnt))
+    for t in skill.triggers:
+        if t.effect_type in ("inflict_status", "gain_status") and t.status_name:
+            raw.append((t.status_name, t.effect_value, t.status_count))
+    out = []
+    for name, pot, cnt in raw:
+        if name not in ONE_TURN_STATUSES:
+            continue
+        size = pot if name in POTENCY_TURN_STATUSES else max(pot, cnt)
+        out.append((name, max(0, size)))
+    return out
+
+
+def nonkeyword_cost(status: str, size: int) -> int:
+    from game.statuses import PERCENT_COUNT_STATUSES
+    cap = NONKEYWORD_SIZE_CAPS.get(status, NONKEYWORD_PERCENT_CAP if status in PERCENT_COUNT_STATUSES else None)
+    if cap is not None:
+        size = min(size, cap)
+    return math.ceil(size / 2)
+
+
+def nonkeyword_total(c) -> tuple[int, list[str]]:
+    """BP the whole kit spends on non-keyword effects (Supermoves are priced separately), plus a line per grant."""
+    total = 0
+    lines = []
+    for s in c.skills.values():
+        if "supermove" in s.tags:
+            continue
+        for status, size in nonkeyword_grants(s):
+            cost = nonkeyword_cost(status, size)
+            total += cost
+            lines.append(f"{s.name}: {status.replace('_', ' ').title()} {size} = {cost} BP")
+    return total, lines
+
+
 # --- Defense archetypes ------------------------------------------------------
 # A character can own up to 2. A normal Guard / Evade / Counter style skill needs
 # the matching archetype. Some need a minimum Speed (the LOWEST of the range) or
@@ -281,6 +332,7 @@ class BuildReport:
     problems: list[str] = field(default_factory=list)        # stats and budget
     skill_problems: list[str] = field(default_factory=list)  # skills over the Power ceiling
     supermove_lines: list[str] = field(default_factory=list)  # how each Supermove was priced
+    effect_lines: list[str] = field(default_factory=list)     # each non-keyword effect and its price
 
     @property
     def ok(self) -> bool:
@@ -367,6 +419,14 @@ def check_build(c) -> BuildReport:
         def_problems.append(f"{len(set(owned_def))} defense archetypes, but a character can own at most {DEFENSE_MAX}.")
     if owned_def:
         costs["Defense archetypes"] = sum(DEFENSE_ARCHETYPES.get(k, 0) for k in set(owned_def))
+    nk_total, nk_lines = nonkeyword_total(c)
+    nk_problems: list[str] = []
+    if nk_total:
+        costs["Non-keyword effects"] = nk_total
+    if nk_total > NONKEYWORD_CAP:
+        nk_problems.append(
+            f"Non-keyword effects (Haste, Fragile, Bind and so on) cost {nk_total} BP, but a kit can spend at most {NONKEYWORD_CAP} on them."
+        )
     if res_paid or res_refunds:
         costs["Resistances"] = res_paid - min(res_refunds, RESIST_REFUND_CAP)
     physical = sorted(round(float(res.get(k, 1.0)), 2) for k in DAMAGE_TYPES)
@@ -406,12 +466,14 @@ def check_build(c) -> BuildReport:
     spent = sum(costs.values())
     report = BuildReport(level=level_for(total), total=total, spent=spent, breakdown=costs)
     report.supermove_lines = super_lines
+    report.effect_lines = nk_lines
     p = report.problems
     p.extend(super_problems)
     p.extend(res_problems)
     p.extend(offdef_problems)
     p.extend(rank_problems)
     p.extend(def_problems)
+    p.extend(nk_problems)
 
     if hp < HP_BASE:
         p.append(f"HP {hp} is below the minimum of {HP_BASE}.")
@@ -463,4 +525,5 @@ def build_summary(report: BuildReport) -> str:
     lines = [f"Level {report.level}, {report.spent}/{report.total} BP spent."]
     lines += [f"- {label}: {cost} BP" for label, cost in report.breakdown.items()]
     lines += [f"  - {text}" for text in report.supermove_lines]
+    lines += [f"  - {text}" for text in report.effect_lines]
     return "\n".join(lines)

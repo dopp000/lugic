@@ -2090,6 +2090,17 @@ a new status gets an icon.
   target into the same additive multiplier as Fragile/Protection/Damage Up/Down,
   so the splash loop gets it too. Fixed-damage statuses (Burn and so on) do not use
   it. Admin-only through `/character edit offense_level/defense_level`.
+- Non-keyword effects: `nonkeyword_grants(skill)` finds every one-turn status
+  (`ONE_TURN_STATUSES`) a skill hands out, from its coins and its inflict/gain trigger
+  lines; size is Potency for `POTENCY_TURN_STATUSES`, else max(Potency, Count). Price is
+  `ceil(size / 2)` with sizes capped at 10 (percent statuses) or 4 (Paralyze), taken from
+  the old BP sheet (its Duration is always 1 turn here). `check_build` adds a "Non-keyword
+  effects" cost and a problem above `NONKEYWORD_CAP` (3). Unlike ranks, this is a real BP
+  cost, so older characters with such skills show it in `/character bp` and can be flagged
+  by `/character recheck`. Supermoves are skipped (their price covers them). The skill
+  form runs the same trial-copy check as Supermoves when a skill has such grants. The
+  sheet's "twice per fight" limit is not enforced (the sheet itself says track it by hand),
+  and Reuse Coin is not built because the bot has no such mechanic.
 - Defense archetypes: `Character.defense_archetypes` (list of keys), copied to
   `Fighter.defense_archetypes`. Prices and prerequisites at `DEFENSE_ARCHETYPES`,
   `DEFENSE_NEEDS_SPEED`, `DEFENSE_NEEDS_NO_TIER2` in `game/build_points.py`; Speed

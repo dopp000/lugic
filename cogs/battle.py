@@ -22,7 +22,7 @@ from game.conditions import Trigger, TriggerContext, parse_trigger_text, Trigger
 from game.character import Character, load_character, list_character_summaries
 from game.build_points import (
     OFFDEF_PERCENT_PER_STEP, SP_PER_EXTRA_LINE, check_build, skill_points_spent, skill_power_problem, skill_rank_problems,
-    skill_archetype, skill_defense_problem,
+    skill_archetype, skill_defense_problem, nonkeyword_grants,
 )
 from game.npc_tiers import NPC_TIERS, describe as describe_tier
 from game.statuses import (
@@ -498,7 +498,10 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
         # change the price of a skill, so only they need this check.
         old_skill = getattr(self, "existing_skill", None)
         touches_super = is_super or (old_skill is not None and "supermove" in old_skill.tags)
-        if touches_super and isinstance(self.target_fighter, Character) and not self.target_fighter.bp_exempt:
+        touches_effects = (not is_super and bool(nonkeyword_grants(draft))) or (
+            old_skill is not None and "supermove" not in old_skill.tags and bool(nonkeyword_grants(old_skill))
+        )
+        if (touches_super or touches_effects) and isinstance(self.target_fighter, Character) and not self.target_fighter.bp_exempt:
             before = {p for p in check_build(self.target_fighter).all_problems()}
             trial = copy.deepcopy(self.target_fighter)
             if old_skill is not None:
