@@ -17,7 +17,7 @@ from game.character import (
 )
 from game.build_points import (
     check_build, build_summary, level_for, next_level_at, character_level,
-    OFFDEF_PERCENT_PER_STEP, STARTING_BP, skill_points_spent,
+    OFFDEF_PERCENT_PER_STEP, RANKED_STATUSES, STARTING_BP, skill_points_spent,
 )
 from game.resistances import ALL_RESISTANCE_TYPES, DAMAGE_TYPES, parse_resistance_multiplier
 from game.emojis import status_emoji, damage_type_emoji, register_custom_status_emoji
@@ -72,6 +72,8 @@ def build_character_embed(character: Character, owner_name: str) -> discord.Embe
     report = check_build(character)
     level = character_level(character)
     build_line = f"Level {level}, {report.spent}/{report.total} BP spent"
+    if any(character.status_ranks.values()):
+        build_line += "\nStatus ranks: " + ", ".join(f"{k.capitalize()} {v}" for k, v in character.status_ranks.items() if v)
     if character.offense_level or character.defense_level:
         build_line += (
             f"\nOffense Level {character.offense_level} (+{character.offense_level * OFFDEF_PERCENT_PER_STEP}% damage), "
@@ -949,6 +951,8 @@ class CharacterCog(commands.GroupCog, name="character"):
             text += "\nEverything is within the rules."
         else:
             text += f"\n**To fix:**\n{_problem_lines(report.all_problems(), 12)}"
+        if character.status_ranks:
+            text += "\nStatus ranks: " + ", ".join(f"{k.capitalize()} {v}" for k, v in character.status_ranks.items() if v)
         text += f"\nSkill Points: {skill_points_spent(character)}/{character.sp_total} used (the first trigger line on a skill is free)"
         notes = [
             f"- {k}: {', '.join(t.capitalize() for t in d.get('tiers', []))}" + (f" ({d['note']})" if d.get("note") else "")
@@ -1007,6 +1011,58 @@ class CharacterCog(commands.GroupCog, name="character"):
         await interaction.response.send_message(msg, ephemeral=True)
         if interaction.user.id != character.owner_id:
             await dm_owner(self.bot, character.owner_id, owner_text)
+
+    @app_commands.command(name="rank", description="Admin only: set a character's rank (0 to 5) in a status like Bleed or Burn")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.choices(status=[app_commands.Choice(name=s.capitalize(), value=s) for s in RANKED_STATUSES])
+    @app_commands.describe(
+        name="Character to change",
+        status="Which status",
+        rank="0 removes it. Rank 1 to 5 costs 1 / 2 / 4 / 7 / 11 BP, and a character can own at most 2 statuses",
+    )
+    async def rank(
+        self, interaction: discord.Interaction, name: str,
+        status: app_commands.Choice[str], rank: app_commands.Range[int, 0, 5],
+    ):
+        if not is_admin(interaction):
+            await interaction.response.send_message(
+                "Status ranks are part of the build, so only an admin can change them.", ephemeral=True
+            )
+            return
+        character = load_character(name)
+        if character is None:
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
+            return
+        if not character.bp_exempt:
+            trial = copy.deepcopy(character)
+            if rank:
+                trial.status_ranks[status.value] = rank
+            else:
+                trial.status_ranks.pop(status.value, None)
+            now = check_build(trial).problems
+            before = check_build(character).problems
+            if [p for p in now if p not in before] and len(now) >= len(before):
+                await interaction.response.send_message(
+                    "That would break the Build Point rules, so nothing was changed:\n"
+                    f"{_problem_lines(now)}",
+                    ephemeral=True,
+                )
+                return
+        if rank:
+            character.status_ranks[status.value] = rank
+        else:
+            character.status_ranks.pop(status.value, None)
+        save_character(character)
+        report = check_build(character)
+        what = f"{status.name} rank {rank}" if rank else f"no {status.name} rank"
+        await interaction.response.send_message(
+            f"{character.name} now has {what}. {report.spent}/{report.total} BP spent.", ephemeral=True
+        )
+        if interaction.user.id != character.owner_id and not character.bp_exempt:
+            await dm_owner(
+                self.bot, character.owner_id,
+                f"An admin set **{character.name}** to {what}. Now {report.spent}/{report.total} BP spent.",
+            )
 
     @app_commands.command(name="grantsp", description="Admin only: give a character Skill Points (or take some away)")
     @app_commands.default_permissions(manage_guild=True)

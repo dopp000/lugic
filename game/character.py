@@ -73,6 +73,9 @@ class Character:
     # Skill Points: granted by admins like BP, spent on extra trigger lines
     # (game/build_points.py). Spent is worked out from the skills, never stored.
     sp_total: int = 0
+    # Status ranks 1 to 5 bought with BP, e.g. {"bleed": 3}. A normal skill can only
+    # use a status the character owns, up to its rank (game/build_points.py).
+    status_ranks: dict = field(default_factory=dict)
     sp_log: list[dict] = field(default_factory=list)
 
     def add_skill(self, skill: Skill):
@@ -112,6 +115,7 @@ class Character:
             "defense_level": self.defense_level,
             "level_override": self.level_override,
             "sp_total": self.sp_total,
+            "status_ranks": self.status_ranks,
             "sp_log": self.sp_log,
             "supermove_drawbacks": self.supermove_drawbacks,
         }

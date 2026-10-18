@@ -21,7 +21,7 @@ from game.skills import Skill, SkillResult, ClashOutcome, resolve_skill, resolve
 from game.conditions import Trigger, TriggerContext, parse_trigger_text, TriggerParseError
 from game.character import Character, load_character, list_character_summaries
 from game.build_points import (
-    OFFDEF_PERCENT_PER_STEP, SP_PER_EXTRA_LINE, check_build, skill_points_spent, skill_power_problem,
+    OFFDEF_PERCENT_PER_STEP, SP_PER_EXTRA_LINE, check_build, skill_points_spent, skill_power_problem, skill_rank_problems,
 )
 from game.npc_tiers import NPC_TIERS, describe as describe_tier
 from game.statuses import (
@@ -513,6 +513,23 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
                     ephemeral=True,
                 )
                 return
+
+        # A normal skill can only use the statuses the character has ranks in. Skills
+        # saved before this rule are grandfathered: an edit is only refused if it
+        # has more rank problems than the skill it replaces. Supermoves skip this.
+        if not is_super and not privileged:
+            ranks = getattr(self.target_fighter, "status_ranks", None) or {}
+            rank_issues = skill_rank_problems(ranks, draft)
+            if rank_issues:
+                before_issues = skill_rank_problems(ranks, old_skill) if old_skill is not None else []
+                if len(rank_issues) > len(before_issues):
+                    await interaction.response.send_message(
+                        "This skill goes past the character's status ranks:\n"
+                        + "\n".join(f"- {p}" for p in rank_issues[:6])
+                        + "\nAn admin sets ranks with /character rank (see /help, Build Points).",
+                        ephemeral=True,
+                    )
+                    return
 
         # Extra trigger lines are bought with Skill Points (admins grant them).
         # Skills saved before this rule are grandfathered: only a change that

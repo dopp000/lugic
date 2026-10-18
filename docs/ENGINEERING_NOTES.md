@@ -2090,6 +2090,17 @@ a new status gets an icon.
   target into the same additive multiplier as Fragile/Protection/Damage Up/Down,
   so the splash loop gets it too. Fixed-damage statuses (Burn and so on) do not use
   it. Admin-only through `/character edit offense_level/defense_level`.
+- Status ranks: `Character.status_ranks` ({"bleed": 3}), copied to `Fighter.status_ranks`.
+  Tables at `RANK_COSTS`, `RANK_BUDGETS`, `RANK_POTENCY_CAPS` in `game/build_points.py`.
+  `check_build` prices them (a "Status ranks" line) and reports more than 2 owned or
+  a rank outside 1 to 5. `skill_rank_problems(ranks, skill)` reads every grant from
+  `status_grants` (per-coin statuses plus inflict_status/gain_status trigger lines,
+  conditional ones included) and checks the budget or per-hit cap. It is enforced only
+  in `AddSkillModal.on_submit` for non-Supermove skills of non-admin, non-exempt
+  fighters, and an edit is refused only if it has more problems than the skill it
+  replaces (grandfathering). It is not in `check_build`, so old characters are not
+  flagged. A player's one-off battle fighter has no ranks, so it cannot get ranked
+  statuses on normal skills; admins and exempt NPCs can. Only `/character rank` (admin) sets ranks.
 - Skill Points: `Character.sp_total` / `sp_log`, granted with `/character grantsp`.
   Spent is computed (`skill_points_spent`): `max(0, len(skill.triggers) - 1)` per
   non-Supermove skill. It is NOT part of `check_build` problems, so old characters are

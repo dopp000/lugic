@@ -83,6 +83,63 @@ def character_level(c) -> int:
     return level_for(c.bp_total)
 
 
+# --- Status ranks ------------------------------------------------------------
+# A character can own up to 2 of these statuses at Rank 1 to 5. A normal skill
+# may only use a status the character owns, within what its rank allows.
+RANKED_STATUSES = ["burn", "bleed", "tremor", "rupture", "sinking", "poise", "charge"]
+RANK_MAX = 5
+RANK_MAX_STATUSES = 2
+RANK_COSTS = [0, 1, 2, 4, 7, 11]
+# Bleed / Tremor / Poise / Charge: Potency x Count added up over a whole skill must
+# stay at or under the budget for the rank (index 0 = not owned).
+RANK_BUDGETS = {s: [0, 4, 6, 8, 10, 12] for s in ("bleed", "tremor", "poise", "charge")}
+# Burn / Sinking / Rupture: the most Potency one application may carry.
+RANK_POTENCY_CAPS = {
+    "burn": [0, 1, 2, 3, 4, 4],
+    "sinking": [0, 1, 2, 3, 4, 6],
+    "rupture": [0, 1, 1, 2, 2, 3],
+}
+
+
+def status_grants(skill) -> list[tuple[str, int, int]]:
+    """Every (status, potency, count) a skill hands out, from its coins and its trigger lines."""
+    grants = []
+    for name, pot, cnt in zip(skill.coin_statuses, skill.coin_status_potencies, skill.coin_status_counts):
+        if name:
+            grants.append(("_".join(str(name).lower().split()), pot, cnt))
+    for t in skill.triggers:
+        if t.effect_type in ("inflict_status", "gain_status") and t.status_name:
+            grants.append((t.status_name, t.effect_value, t.status_count))
+    return [g for g in grants if g[0] in RANKED_STATUSES]
+
+
+def skill_rank_problems(ranks: dict, skill) -> list[str]:
+    """What stops `skill` from fitting the status ranks in `ranks` (empty list if it fits)."""
+    problems = []
+    used: dict[str, int] = {}
+    for status, pot, cnt in status_grants(skill):
+        rank = int(ranks.get(status, 0) or 0)
+        label = status.capitalize()
+        if rank <= 0:
+            msg = f"{label} needs a {label} rank, and this character has none."
+            if msg not in problems:
+                problems.append(msg)
+        elif status in RANK_POTENCY_CAPS:
+            cap = RANK_POTENCY_CAPS[status][min(rank, RANK_MAX)]
+            if pot > cap:
+                problems.append(f"{label} Potency {pot} is over the Rank {rank} limit of {cap}.")
+        else:
+            used[status] = used.get(status, 0) + pot * cnt
+    for status, total in used.items():
+        rank = min(int(ranks.get(status, 0)), RANK_MAX)
+        budget = RANK_BUDGETS[status][rank]
+        if total > budget:
+            problems.append(
+                f"{status.capitalize()} Potency x Count adds up to {total}, over the Rank {rank} budget of {budget}."
+            )
+    return problems
+
+
 # --- Skill Points ------------------------------------------------------------
 # The first trigger line on a skill is free. Every extra line costs this many SP.
 # Supermoves are paid for in BP instead, so they cost no SP.
@@ -243,6 +300,18 @@ def check_build(c) -> BuildReport:
             offdef_problems.append(f"{label} {steps} is outside the allowed 0 to {OFFDEF_MAX}.")
         if steps:
             costs[label] = offdef_cost(steps)
+    ranks = getattr(c, "status_ranks", None) or {}
+    rank_problems: list[str] = []
+    owned = {k: int(v) for k, v in ranks.items() if v}
+    for key, value in owned.items():
+        if key not in RANKED_STATUSES:
+            rank_problems.append(f"'{key}' is not a status that can have a rank.")
+        elif not 1 <= value <= RANK_MAX:
+            rank_problems.append(f"{key.capitalize()} rank {value} is outside the allowed 1 to {RANK_MAX}.")
+    if len(owned) > RANK_MAX_STATUSES:
+        rank_problems.append(f"{len(owned)} ranked statuses, but a character can own at most {RANK_MAX_STATUSES}.")
+    if owned:
+        costs["Status ranks"] = sum(RANK_COSTS[v] for v in owned.values() if 1 <= v <= RANK_MAX)
     if res_paid or res_refunds:
         costs["Resistances"] = res_paid - min(res_refunds, RESIST_REFUND_CAP)
     physical = sorted(round(float(res.get(k, 1.0)), 2) for k in DAMAGE_TYPES)
@@ -286,6 +355,7 @@ def check_build(c) -> BuildReport:
     p.extend(super_problems)
     p.extend(res_problems)
     p.extend(offdef_problems)
+    p.extend(rank_problems)
 
     if hp < HP_BASE:
         p.append(f"HP {hp} is below the minimum of {HP_BASE}.")
