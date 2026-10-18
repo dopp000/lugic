@@ -998,9 +998,9 @@ One check against battle state. type is one of CONDITION_TYPES.
     a trigger that is pure timing (e.g. "[Clash Win] Inflict +2 Rupture
     Count" has nothing to check beyond "did Clash Win happen").
     target_status / caster_status -- status_name/min_potency/min_count.
-    caster_status's min_count defaults to 0 (presence-only) unless the
-    phrase gave an explicit threshold ("At 5+ Charge" sets min_potency
-    only, count stays 0).
+    "At 5+ Charge" and "If the target has 5+ Burn" check Count (min_count);
+    adding the word Potency ("At 5+ Charge Potency") checks min_potency
+    instead. Skills saved before this change keep their old min_potency.
     target_hp_pct / caster_sanity -- comparison/value. target_hp_pct has
     no recognized phrase in the parser yet (not in this pass's locked
     condition scope, only reachable by constructing a Condition
@@ -1865,3 +1865,25 @@ One-time conversion run from `Character.from_dict` (game/character.py)
     `help_category_emoji_for_title`) still goes through the normal
     `emoji_tag()`-based helpers in `game/emojis.py`, same as the rest of
     the codebase.
+
+<a id="condition-count-or-potency"></a>
+## At N+ conditions: Count by default
+
+`At N+ X,` and `If the target has N+ X,` now set `min_count` instead of
+`min_potency`. An optional `Potency` or `Count` word after the status name
+picks the basis explicitly (`_threshold_condition`, `_split_basis` in
+`game/conditions.py`). For multi-word custom names the comma form strips the
+trailing basis word only when the rest is a known status. Conditions already
+saved on a skill keep whatever fields they were stored with, so old skills
+still check Potency until re-added. `If the target has any X` is unchanged
+(presence).
+
+<a id="mystatus"></a>
+## /battle mystatus
+
+The battle embed only shows hint tiers, so players had no exact view of their
+own resources. `/battle mystatus [fighter]` is ephemeral. With no argument it
+lists every fighter the caller owns; with a name it needs `_can_manage_fighter`
+(owner or admin). `_mystatus_text` prints HP, Sanity, morale, Shield, Stagger
+tier, every status with Potency and Count (custom ones with their description)
+and `consumed_totals`.

@@ -187,9 +187,9 @@ class Condition:
     a trigger that is pure timing (e.g. "[Clash Win] Inflict +2 Rupture
     Count" has nothing to check beyond "did Clash Win happen").
     target_status / caster_status -- status_name/min_potency/min_count.
-    caster_status's min_count defaults to 0 (presence-only) unless the
-    phrase gave an explicit threshold ("At 5+ Charge" sets min_potency
-    only, count stays 0).
+    "At 5+ Charge" and "If the target has 5+ Burn" check Count (min_count);
+    adding the word Potency ("At 5+ Charge Potency") checks min_potency
+    instead. Skills saved before this change keep their old min_potency.
     target_hp_pct / caster_sanity -- comparison/value. target_hp_pct has
     no recognized phrase in the parser yet (not in this pass's locked
     condition scope, only reachable by constructing a Condition
@@ -446,14 +446,33 @@ _TRAILING_PAREN_RE = re.compile(r"\s*\([^()]*\)\s*$")
 
 _COND_SPEED_FASTER = re.compile(r"if this unit'?s speed is faster than the target'?s,?\s*(.*)", re.IGNORECASE)
 _COND_TARGET_STATUS_ANY = re.compile(r"if (?:the )?target has any ([a-z]+),?\s*(.*)", re.IGNORECASE)
-_COND_TARGET_STATUS_N = re.compile(r"if (?:the )?target has (\d+)\+ ([a-z]+),?\s*(.*)", re.IGNORECASE)
+_COND_TARGET_STATUS_N = re.compile(
+    r"if (?:the )?target has (\d+)\+ ([a-z]+)(?: (potency|count))?,?\s*(.*)", re.IGNORECASE
+)
 _COND_CASTER_SANITY = re.compile(r"if this unit'?s sanity is (\d+)\+,?\s*(.*)", re.IGNORECASE)
 _COND_MORALE = re.compile(
     r"if (this unit|the target) is (low morale|panic(?:ked)?),?\s*(.*)", re.IGNORECASE
 )
-_COND_AT_N_THING = re.compile(r"at (\d+)\+ ([a-z]+),?\s*(.*)", re.IGNORECASE)
+_COND_AT_N_THING = re.compile(r"at (\d+)\+ ([a-z]+)(?: (potency|count))?,?\s*(.*)", re.IGNORECASE)
 # Multi-word (custom) status names need the comma to know where the name stops.
 _COND_AT_N_THING_COMMA = re.compile(r"at (\d+)\+? ([a-z]+(?: [a-z]+)*?),\s*(.*)", re.IGNORECASE)
+
+
+def _threshold_condition(ctype: str, status: str, n: int, basis: str | None) -> "Condition":
+    """'At 5+ Burn' checks Count by default; add 'Potency' to check Potency instead."""
+    if basis and basis.lower() == "potency":
+        return Condition(type=ctype, status_name=status, min_potency=n)
+    return Condition(type=ctype, status_name=status, min_count=n)
+
+
+def _split_basis(thing: str, known) -> tuple[str, str | None]:
+    """'pulsation potency' -> ('pulsation', 'potency'), only when the rest is a known status."""
+    for word in ("potency", "count"):
+        if thing.endswith(" " + word):
+            base = thing[: -len(word) - 1].strip()
+            if "_".join(base.split()) in known:
+                return base, word
+    return thing, None
 
 _EFFECT_BONUS_POWER_PCT = re.compile(r"deal \+(\d+)%\s*damage", re.IGNORECASE)
 _EFFECT_BONUS_POWER = re.compile(r"deal \+(\d+)\s*damage", re.IGNORECASE)
@@ -524,7 +543,7 @@ def _parse_condition_and_effect_text(text: str) -> tuple[Condition, str]:
     m = _COND_TARGET_STATUS_N.match(text)
     if m:
         n, status = int(m.group(1)), m.group(2).strip().lower()
-        return Condition(type="target_status", status_name=status, min_potency=n), m.group(3)
+        return _threshold_condition("target_status", status, n, m.group(3)), m.group(4)
 
     m = _COND_MORALE.match(text)
     if m:
@@ -537,14 +556,22 @@ def _parse_condition_and_effect_text(text: str) -> tuple[Condition, str]:
     if m:
         return Condition(type="caster_sanity", comparison="gte", value=int(m.group(1))), m.group(2)
 
-    m = _COND_AT_N_THING_COMMA.match(text) or _COND_AT_N_THING.match(text)
+    m = _COND_AT_N_THING_COMMA.match(text)
     if m:
-        n, thing = int(m.group(1)), m.group(2).strip().lower()
+        n, thing, rest = int(m.group(1)), m.group(2).strip().lower(), m.group(3)
+        basis = None
+        known = set(SELF_BUFF_STATUSES) | set(TARGET_STATUSES) | set(_active_custom)
+        thing, basis = _split_basis(thing, known)
+    else:
+        m = _COND_AT_N_THING.match(text)
+        if m:
+            n, thing, basis, rest = int(m.group(1)), m.group(2).strip().lower(), m.group(3), m.group(4)
+    if m:
         if thing == "speed":
-            return Condition(type="caster_speed_at_least", value=n), m.group(3)
+            return Condition(type="caster_speed_at_least", value=n), rest
         thing = "_".join(thing.split())
         if thing in SELF_BUFF_STATUSES or thing in TARGET_STATUSES or thing in _active_custom:
-            return Condition(type="caster_status", status_name=thing, min_potency=n), m.group(3)
+            return _threshold_condition("caster_status", thing, n, basis), rest
         raise TriggerParseError(
             text,
             f"'{thing}' isn't a tracked resource yet (only Speed and existing statuses "

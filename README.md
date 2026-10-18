@@ -264,7 +264,7 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   and `/character removestatus` / `/character statuses` manage them. Use
   them in trigger lines: `[Turn Start] Gain +2 Pulsation Count`,
   `Gain Pulsation Potency 2, Count 3`, `Inflict +2 Death Mark Count`,
-  `At 5+ Pulsation, ...` as a condition. Buffs are gained by the owner, debuffs
+  `At 5+ Pulsation, ...` as a condition (checks Count, add the word Potency to check Potency instead: `At 5+ Pulsation Potency, ...`). Buffs are gained by the owner, debuffs
   are inflicted on enemies. A turn-only status is wiped at every turn end.
   Admins can place one with `/battle setstatus custom_status`. They do
   nothing by themselves until a skill spends them, see Consume below.
@@ -276,7 +276,9 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   `[Turn Start] Consume 2 Pulsation: Gain +1 Charge Count`. The payoff is any
   normal effect. If the fighter has less Count than the cost, the trigger
   simply does not fire and nothing is spent. Only Count is spent, Potency
-  stays. Note that the `At N+ X,` condition checks Potency, not Count.
+  stays. `At N+ X,` and `If the target has N+ X,` check Count by default; write
+  `At N+ X Potency,` to check Potency. Skills saved before this change keep
+  their old Potency check until they are re-added.
 - **Permanent Potency and scaling** (the Pulsation style). Two settings when
   making a status with `/character addstatus`: `potency_every` (every N Count
   spent in total this battle adds +1 Potency, 0 = off, Limbus Pulsation is 10)
@@ -376,6 +378,8 @@ still consumed anywhere at battle time or is dead weight from before the
 Skill system existed.
 
 **Skill management is fully built now, not partially.**
+`/battle mystatus` privately shows a fighter's exact statuses, Potency, Count and
+Sanity to its owner (the battle embed only shows hint tiers).
 `/battle skills` lists everything a fighter currently knows, `/battle
 removeskill` removes one by name, and `/battle editskill` opens the same
 popup pre-filled with the skill's current values -- fixing a typo no longer

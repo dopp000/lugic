@@ -57,6 +57,41 @@ def _is_admin(interaction: discord.Interaction) -> bool:
     return False
 
 
+def _mystatus_text(fighter: Fighter) -> str:
+    """Private, exact view of one fighter's own numbers (the battle embed only shows hint tiers). See docs/ENGINEERING_NOTES.md#mystatus."""
+    from game.statuses import morale_state
+
+    lines = [f"**{fighter.name}**  HP {fighter.hp}/{fighter.max_hp}  Sanity {fighter.sanity}"]
+    morale = morale_state(fighter)
+    if morale == "panic":
+        lines.append("Panic: cannot act")
+    elif morale == "low_morale":
+        lines.append("Low Morale")
+    if fighter.shield > 0:
+        lines.append(f"Shield {fighter.shield}")
+    if fighter.current_stagger_tier > 0:
+        lines.append(f"Staggered (Tier {fighter.current_stagger_tier})")
+
+    if not fighter.statuses:
+        lines.append("No statuses right now.")
+    else:
+        for key in sorted(fighter.statuses):
+            st = fighter.statuses[key]
+            cs = fighter.custom_statuses.get(key)
+            line = f"{status_emoji(key)} {cs.name if cs else status_label(key)}: Potency {st.potency}, Count {st.count}"
+            if cs and cs.description:
+                line += f"  ({cs.description})"
+            lines.append(line)
+
+    if fighter.consumed_totals:
+        spent = ", ".join(
+            f"{(fighter.custom_statuses[k].name if k in fighter.custom_statuses else status_label(k))} {n}"
+            for k, n in sorted(fighter.consumed_totals.items())
+        )
+        lines.append(f"Total spent this battle: {spent}")
+    return "\n".join(lines)
+
+
 class SkillConfirmView(discord.ui.View):
     def __init__(
         self, fighter: Fighter, skill: Skill, preview_text: str, timeout: float = 60,
@@ -1871,6 +1906,55 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         # The ONLY response for this interaction -- everything about the skill (name, stats, damage type, statuses, triggers) is now collected in... See docs/ENGINEERING_NOTES.md#battle-comment-1345.
         await interaction.response.send_modal(AddSkillModal(target_fighter))
+
+    @app_commands.command(
+        name="mystatus",
+        description="Privately see the exact statuses and resources on your own fighter",
+    )
+    @app_commands.describe(fighter="Which fighter to look at (leave blank for all the fighters you control)")
+    async def mystatus(self, interaction: discord.Interaction, fighter: str | None = None):
+        battle = self.battles.get(interaction.channel_id)
+        if battle is None:
+            await interaction.response.send_message("No active battle here.", ephemeral=True)
+            return
+
+        if fighter:
+            target = battle.get_fighter(fighter)
+            if target is None:
+                await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+                return
+            if not _can_manage_fighter(interaction, target):
+                await interaction.response.send_message(
+                    "You can only look at the statuses of your own fighter (admins can see anyone's).",
+                    ephemeral=True,
+                )
+                return
+            mine = [target]
+        else:
+            mine = [f for f in battle.fighters if f.owner_id == interaction.user.id]
+            if not mine:
+                await interaction.response.send_message(
+                    "You don't control a fighter in this battle. Pass a fighter name if you're an admin.",
+                    ephemeral=True,
+                )
+                return
+
+        text = "\n\n".join(_mystatus_text(f) for f in mine)
+        if len(text) > 1900:
+            text = text[:1900] + "\n...(truncated)"
+        await interaction.response.send_message(text, ephemeral=True)
+
+    @mystatus.autocomplete("fighter")
+    async def mystatus_fighter_autocomplete(self, interaction: discord.Interaction, current: str):
+        battle = self.battles.get(interaction.channel_id)
+        if battle is None:
+            return []
+        current_lower = current.lower()
+        return [
+            app_commands.Choice(name=f.name, value=f.name)
+            for f in battle.fighters
+            if current_lower in f.name.lower() and _can_manage_fighter(interaction, f)
+        ][:25]
 
     @app_commands.command(name="skills", description="Show every skill a fighter currently knows")
     @app_commands.describe(fighter="Which fighter's skills to show")
