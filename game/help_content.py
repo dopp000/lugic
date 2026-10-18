@@ -596,13 +596,14 @@ COMMANDS: list[HelpEntry] = [
     HelpEntry(
         key="battle_actions",
         title="Declaring and fighting",
-        summary="declare, undeclare, combat, end, mystatus.",
+        summary="declare, undeclare, combat, log, end, mystatus.",
         body=(
             "`/battle declare` locks a skill into one of your slots, aimed at a slot "
             "on an enemy. Whether it Clashes depends on the enemy aiming back at you. "
             "Support skills are aimed at an ally instead.\n"
             "`/battle undeclare` clears one slot so you can change your mind.\n"
             "`/battle combat` resolves the round.\n"
+            "`/battle log` shows the recap and full log of a recent round again.\n"
             "`/battle end` closes the battle.\n"
             "`/battle mystatus` shows you, privately, the exact statuses and numbers "
             "on your own fighter."

@@ -13,6 +13,7 @@ from game.battle import (
 )
 from game.custom_statuses import slugify
 from game.supermoves import describe_profile, supermove_profile
+from game.recap import RoundRecord, MAX_HISTORY, take_snapshot, build_recap
 from game.skills import Skill, SkillResult, ClashOutcome, resolve_skill, resolve_round_clash, resolve_triggers
 from game.conditions import Trigger, TriggerContext, parse_trigger_text, TriggerParseError
 from game.character import load_character, list_character_summaries
@@ -1512,6 +1513,33 @@ def apply_trigger_effects(
     return log
 
 
+def _log_embeds(entries: list[tuple[str, str]], title: str = "Combat Log") -> list[discord.Embed]:
+    """Packs a round's (label, detail) log entries into at most 10 embeds. Shared by the Full Log button and /battle log."""
+    embeds: list[discord.Embed] = []
+    current_lines: list[str] = []
+    current_len = 0
+
+    def flush():
+        if current_lines:
+            name = title if not embeds else f"{title} (cont. {len(embeds) + 1})"
+            embeds.append(discord.Embed(title=name, description="\n".join(current_lines)[:4000], color=0x5865F2))
+
+    for label, detail in entries:
+        block = f"**{label}**\n{detail}"
+        if current_lines and current_len + len(block) > 3800:
+            flush()
+            current_lines = []
+            current_len = 0
+        current_lines.append(block)
+        current_len += len(block)
+    flush()
+
+    if len(embeds) > 10:
+        embeds = embeds[:10]
+        embeds[-1].set_footer(text="Some actions this round were too numerous to include in full.")
+    return embeds
+
+
 class CombatLogView(discord.ui.View):
     """One button, "Full Log" -- anyone can click it to see the FULL breakdown of everything that happened this Combat Phase (every attrition... See docs/ENGINEERING_NOTES.md#battle-combatlogview for the full rationale."""
 
@@ -1525,29 +1553,7 @@ class CombatLogView(discord.ui.View):
             await interaction.response.send_message("Nothing happened this Combat Phase.", ephemeral=True)
             return
 
-        embeds: list[discord.Embed] = []
-        current_lines: list[str] = []
-        current_len = 0
-
-        def flush():
-            if current_lines:
-                title = "Combat Log" if not embeds else f"Combat Log (cont. {len(embeds) + 1})"
-                embeds.append(discord.Embed(title=title, description="\n".join(current_lines)[:4000], color=0x5865F2))
-
-        for label, detail in self.entries:
-            block = f"**{label}**\n{detail}"
-            if current_lines and current_len + len(block) > 3800:
-                flush()
-                current_lines = []
-                current_len = 0
-            current_lines.append(block)
-            current_len += len(block)
-        flush()
-
-        if len(embeds) > 10:
-            embeds = embeds[:10]
-            embeds[-1].set_footer(text="Some actions this round were too numerous to include in full.")
-
+        embeds = _log_embeds(self.entries)
         await interaction.response.send_message(embeds=embeds, ephemeral=True)
 
     async def on_timeout(self):
@@ -2618,6 +2624,7 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         # This whole command can take a while now (animating every attrition round coin-by-coin), so acknowledge the interaction immediately and... See docs/ENGINEERING_NOTES.md#battle-comment-1604.
         await interaction.response.defer()
+        recap_before = take_snapshot(battle)
 
         # Fires [Combat Start] (first round of the battle only) and [Turn Start] (every round) against every living fighter's FULL skill list, not... See docs/ENGINEERING_NOTES.md#battle-comment-1611.
         passive_log = fire_passive_triggers(battle)
@@ -3665,6 +3672,16 @@ class BattleCog(commands.GroupCog, name="battle"):
         if footer_note:
             final_embed.set_footer(text=footer_note)
 
+        recap_text = build_recap(
+            recap_before, battle, battle.round_number, [label for label, _ in full_log_entries]
+        )
+        recap_body = recap_text.split("\n", 1)[1] if "\n" in recap_text else recap_text
+        final_embed.add_field(
+            name=f"Round {battle.round_number} Recap", value=recap_body[:1000], inline=False
+        )
+        battle.history.append(RoundRecord(battle.round_number, recap_text, list(full_log_entries)))
+        del battle.history[:-MAX_HISTORY]
+
         # Whatever [Combat Start] triggers were going to fire this battle already fired above (or didn't, if nobody had one declared) -- this... See docs/ENGINEERING_NOTES.md#battle-comment-2154.
         battle.started = True
 
@@ -3684,6 +3701,41 @@ class BattleCog(commands.GroupCog, name="battle"):
         # Once the whole phase is done, post the updated battle status as a FRESH message in the channel (not just a silent edit of whatever the... See docs/ENGINEERING_NOTES.md#battle-comment-2173.
         status_message = await interaction.channel.send(embed=build_battle_embed(battle))
         battle.message_id = status_message.id
+
+    @app_commands.command(name="log", description="Read an earlier round's recap and full log again (only you see it)")
+    @app_commands.describe(round="Which round (leave blank for the latest)")
+    async def log(self, interaction: discord.Interaction, round: int | None = None):
+        battle = self.battles.get(interaction.channel_id)
+        if battle is None:
+            await interaction.response.send_message("No active battle here.", ephemeral=True)
+            return
+        if not battle.history:
+            await interaction.response.send_message("No round has finished yet.", ephemeral=True)
+            return
+        if round is None:
+            record = battle.history[-1]
+        else:
+            record = next((r for r in battle.history if r.round_number == round), None)
+            if record is None:
+                kept = ", ".join(str(r.round_number) for r in battle.history)
+                await interaction.response.send_message(
+                    f"Round {round} isn't kept. The last {MAX_HISTORY} rounds are: {kept}.", ephemeral=True
+                )
+                return
+        embeds = [discord.Embed(title=f"Round {record.round_number}", description=record.recap[:4000], color=0x5865F2)]
+        embeds += _log_embeds(record.entries, title=f"Round {record.round_number} Log")[:9]
+        await interaction.response.send_message(embeds=embeds, ephemeral=True)
+
+    @log.autocomplete("round")
+    async def log_round_autocomplete(self, interaction: discord.Interaction, current: str):
+        battle = self.battles.get(interaction.channel_id)
+        if battle is None:
+            return []
+        return [
+            app_commands.Choice(name=f"Round {r.round_number}", value=r.round_number)
+            for r in reversed(battle.history)
+            if not current or str(r.round_number).startswith(current.strip())
+        ]
 
     @app_commands.command(name="end", description="End the battle in this channel")
     async def end(self, interaction: discord.Interaction):

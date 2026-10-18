@@ -451,6 +451,9 @@ class Battle:
     battle_type: str = "spar"
     message_id: int | None = None
 
+    # The last few finished rounds (recap + full log), newest last, for /battle log.
+    history: list = field(default_factory=list)
+
     def add_fighter(self, fighter: Fighter):
         self.fighters.append(fighter)
 

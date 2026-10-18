@@ -429,8 +429,19 @@ three. All closed since the last README pass.
 | `setstatus` | Admin-only (`ADMIN_ROLE_ID`) via `_is_admin`, enforced in code; also hidden from the Discord command list by default for anyone without Manage Server (`default_permissions`), though a server whose admin role doesn't carry that permission should re-scope it via Server Settings → Integrations. Sets HP, Sanity, Speed (min+max), resistances, Power, Stagger thresholds/enabled-tiers, one status, whichever fields are passed. Refuses to touch an eliminated fighter at all. |
 | `addpart` / `removepart` / `repairpart` | Admin-only. Parts / Core for a multi-part enemy, see Combat Features. `addpart fighter slot name hp [resistances]` makes a skill slot a body Part; `repairpart` restores HP and un-breaks it. |
 | `mystatus` | Private view of your own fighter's exact statuses and numbers. |
+| `log` | Re-read the recap and full log of a recent round (the last 5 are kept, `round` autocompletes). Only you see it. |
 | `combat` | Resolves the round. See Animated Combat Phase. Also where Turn-End status ticks (Burn/Sinking/Charge) and Elimination checks run, once per round. |
 | `end` | Ends the battle. |
+
+**Round recap and `/battle log`.** Every Combat Phase ends with a "Round N Recap" field on
+the results message: which fights happened, and for each fighter whose numbers changed,
+HP, Sanity, newly gained Stagger, a lost Shield, Parts that broke, statuses gained,
+changed or lost, and who went down. It is built by comparing a snapshot taken when
+`/battle combat` starts against the state after Turn End (`game/recap.py`), so it needs
+no hooks inside the resolution code. One-turn debuffs that expire at Turn End do not
+show up in it. The recap and the Full Log entries of the last 5 rounds are kept on
+`Battle.history`, so `/battle log` still works after the Full Log button times out.
+See `docs/ENGINEERING_NOTES.md#round-recap-and-log`.
 
 **Autocomplete.** Name and number options suggest values as you type: your own fighters
 (`fighter` on declare, undeclare, addskill, removeskill, editskill, removefighter),

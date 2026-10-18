@@ -1963,3 +1963,18 @@ every `name` option, listing the caller's own characters (an admin sees all) via
 `list_character_summaries`. `/character create` is deliberately left out, since
 that name is new. Slash command option VALUES are still validated by each
 command, autocomplete is only a convenience.
+
+<a id="round-recap-and-log"></a>
+## Round recap and /battle log
+
+`take_snapshot` (game/recap.py) copies each fighter's HP, Sanity, Stagger tier,
+Shield, Parts and statuses when `/battle combat` starts, right after the defer.
+Once Turn End ticks and elimination have run, `build_recap` diffs the live
+fighters against it and names the fights from the Full Log entry labels. Diffing
+instead of hooking each hit site means a new damage source shows up in the recap
+for free. The tradeoff is that a one-turn debuff applied and wiped inside the
+same round is invisible. The recap goes on the results embed as a field (1000
+character cap) and, with the Full Log entries, onto `Battle.history` as a
+`RoundRecord`, capped at `MAX_HISTORY` (5) rounds. `_log_embeds` is the shared
+packer for the Full Log button and `/battle log`. History lives with the Battle
+object, so it ends with the battle like everything else.
