@@ -520,7 +520,7 @@ def _check_gainable(status: str, text: str):
     raise TriggerParseError(
         text,
         f"'{status}' isn't a self-buff this character can gain. Built-in: "
-        f"{', '.join(s.capitalize() for s in SELF_BUFF_STATUSES)}. "
+        f"{', '.join(s.replace('_', ' ').title() for s in SELF_BUFF_STATUSES)}. "
         "A custom resource has to be created first (/character addstatus) and be a buff.",
     )
 

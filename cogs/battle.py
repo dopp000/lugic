@@ -1,4 +1,5 @@
 import asyncio
+import difflib
 import random
 import re
 
@@ -13,6 +14,7 @@ from game.battle import (
 )
 from game.custom_statuses import slugify
 from game.supermoves import describe_profile, supermove_profile
+from game.trigger_text import describe_trigger, damage_range, friendly_error_text
 from game.recap import RoundRecord, MAX_HISTORY, take_snapshot, build_recap
 from game.skills import Skill, SkillResult, ClashOutcome, resolve_skill, resolve_round_clash, resolve_triggers
 from game.conditions import Trigger, TriggerContext, parse_trigger_text, TriggerParseError
@@ -197,7 +199,7 @@ class SkillConfirmView(discord.ui.View):
             child.disabled = True
 
 
-def _skill_preview_text(skill: Skill) -> str:
+def _skill_preview_text(skill: Skill, custom_names: dict | None = None) -> str:
     coin_bits = []
     for i in range(skill.coins):
         tag = coin_emoji("base")
@@ -211,13 +213,12 @@ def _skill_preview_text(skill: Skill) -> str:
     )
     if skill.attack_weight > 1:
         text += f"\n  Attack Weight: {attack_weight_icons(skill.attack_weight)} ({skill.attack_weight})"
+    low, avg, high = damage_range(skill)
+    text += f"\n  Expected damage: about {avg} (lowest {low}, highest {high}) before resistances"
     if skill.triggers:
+        names = {k: cs.name for k, cs in (custom_names or {}).items()}
         trigger_lines = "\n".join(
-            f"  Trigger: {t.condition.type} -> "
-            f"{f'consume {t.consume_amount} {status_label(t.consume_status)} then ' if t.consume_status else ''}{t.effect_type}"
-            f"{f' {t.effect_value}' if t.effect_type != 'inflict_status' else f' {t.status_name} {t.effect_value}/{t.status_count}'}"
-            f" ({hint_emoji(t.hint_tier)})"
-            for t in skill.triggers
+            f"  - {describe_trigger(t, names)} ({hint_emoji(t.hint_tier)})" for t in skill.triggers
         )
         text += f"\n{trigger_lines}"
     if skill.tags:
@@ -367,9 +368,11 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
 
         damage_type = damage_type_raw.strip().lower()
         if damage_type not in DAMAGE_TYPES:
+            close = difflib.get_close_matches(damage_type, DAMAGE_TYPES, n=1, cutoff=0.5)
+            guess = f" Did you mean {close[0].capitalize()}?" if close else ""
             await interaction.response.send_message(
                 f"'{damage_type_raw}' isn't a valid damage type. Choose one of: "
-                f"{', '.join(t.capitalize() for t in DAMAGE_TYPES)}.",
+                f"{', '.join(t.capitalize() for t in DAMAGE_TYPES)}.{guess}",
                 ephemeral=True,
             )
             return
@@ -395,14 +398,12 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
             await interaction.response.send_message(status_error, ephemeral=True)
             return
 
+        custom_kinds = {k: cs.kind for k, cs in getattr(self.target_fighter, "custom_statuses", {}).items()}
         try:
-            triggers, flags = parse_trigger_text(
-                self.triggers_input.value or "",
-                {k: cs.kind for k, cs in getattr(self.target_fighter, "custom_statuses", {}).items()},
-            )
+            triggers, flags = parse_trigger_text(self.triggers_input.value or "", custom_kinds)
         except TriggerParseError as e:
             await interaction.response.send_message(
-                f"Trigger line error on `{e.line.strip()}`: {e.reason}",
+                friendly_error_text(self.triggers_input.value or "", e, list(custom_kinds))[:1900],
                 ephemeral=True,
             )
             return
@@ -442,7 +443,9 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
             attack_weight=attack_weight,
         )
 
-        preview_text = self._preview_header(skill) + "\n" + _skill_preview_text(skill)
+        preview_text = self._preview_header(skill) + "\n" + _skill_preview_text(
+            skill, getattr(self.target_fighter, "custom_statuses", None)
+        )
         view = self._build_confirm_view(skill, preview_text)
         await interaction.response.send_message(preview_text, view=view, ephemeral=True)
 
@@ -478,7 +481,7 @@ class EditSkillModal(AddSkillModal):
     def _build_confirm_view(self, skill: Skill, preview_text: str) -> "SkillConfirmView":
         old_preview_text = (
             f"{self.target_fighter.name}'s {self.existing_skill.name} (before)\n"
-            + _skill_preview_text(self.existing_skill)
+            + _skill_preview_text(self.existing_skill, getattr(self.target_fighter, "custom_statuses", None))
         )
         return SkillConfirmView(
             self.target_fighter, skill, preview_text, on_saved=self.on_saved,
@@ -2153,7 +2156,7 @@ class BattleCog(commands.GroupCog, name="battle"):
             )
             return
 
-        blocks = [_skill_preview_text(skill) for skill in target_fighter.skills.values()]
+        blocks = [_skill_preview_text(skill, target_fighter.custom_statuses) for skill in target_fighter.skills.values()]
         text = f"**{target_fighter.name}** knows {len(blocks)} skill(s):\n\n" + "\n\n".join(blocks)
         if len(text) > 1900:
             text = text[:1900] + "\n...(truncated, too many/long skills to show at once)"

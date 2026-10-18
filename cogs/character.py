@@ -466,7 +466,7 @@ class CharacterCog(commands.GroupCog, name="character"):
             )
             return
 
-        blocks = [battle_cog._skill_preview_text(skill) for skill in character.skills.values()]
+        blocks = [battle_cog._skill_preview_text(skill, character.custom_statuses) for skill in character.skills.values()]
         text = f"**{character.name}** knows {len(blocks)} skill(s):\n\n" + "\n\n".join(blocks)
         if len(text) > 1900:
             text = text[:1900] + "\n...(truncated, too many/long skills to show at once)"

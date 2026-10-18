@@ -1989,3 +1989,18 @@ It groups fighters by `owner_id`, one mention per owner. The send uses
 `AllowedMentions(users=True)` and swallows `discord.HTTPException`, a failed ping must never
 break the end of a combat phase. Returns None when a side is wiped out so a finished battle is
 not pinged.
+
+<a id="friendlier-errors-and-previews"></a>
+## Friendlier errors and previews
+
+The parser still raises `TriggerParseError(line, reason)` unchanged. `friendly_error_text`
+(game/trigger_text.py) wraps it for the skill modal: it finds the line number by looking for the
+error text inside the pasted block (effect errors only carry the effect half of a line), then
+adds a suggestion chosen by the reason text: `difflib` against the timing tags and flags, the
+inflictable and gainable statuses plus the character's custom ones, or the `EFFECT_TEMPLATES`
+list with digits replaced by N. The match is on wording of the reason, so if a parser error
+message is reworded the matching phrase in `friendly_error_text` needs the same edit.
+`describe_trigger` turns a parsed Trigger into one plain sentence for the preview and
+`damage_range` gives lowest, expected and highest damage with the same flat-bonus assumption
+as `skill_severity` in game/supermoves.py. The preview takes the owner's custom statuses so
+their display names show instead of keys.

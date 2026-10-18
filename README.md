@@ -433,6 +433,17 @@ three. All closed since the last README pass.
 | `combat` | Resolves the round. See Animated Combat Phase. Also where Turn-End status ticks (Burn/Sinking/Charge) and Elimination checks run, once per round. |
 | `end` | Ends the battle. |
 
+**Friendlier skill errors and previews.** A bad trigger line now says which line it is, what is
+wrong, and the closest valid thing: `[On Hitt]` gets "Did you mean [On Hit]", a misspelled status
+gets the nearest status name, `Deal 3 damage` gets "Closest valid effect: Deal +N damage", and
+a condition without its comma or an unknown condition lists the supported ones (`friendly_error_text`
+in `game/trigger_text.py`). The skill preview used by `/battle addskill`, `editskill`, `/battle skills`
+and `/character skills` now shows an "Expected damage: about X (lowest Y, highest Z)" line and
+writes each trigger in plain words (`Coin 1, On Hit: if the target has 3+ Burn Count -> Deal +3
+damage`) instead of internal names. A wrong damage type gets a "Did you mean" too. The
+expected-damage line is a calculation, not a simulated roll, and counts flat Deal / Coin Power
+bonuses as always firing. See `docs/ENGINEERING_NOTES.md#friendlier-errors-and-previews`.
+
 **Round ping.** After a round resolves and the fresh battle status is posted, the bot sends
 one public message mentioning the owners of every fighter that can act in the new round, with
 their fighters in brackets (`build_round_ping`). Fighters with no linked owner, Staggered,
