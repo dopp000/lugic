@@ -405,6 +405,8 @@ def resolve_round_clash(
     context_a: TriggerContext | None = None,
     context_b: TriggerContext | None = None,
     max_rounds: int = 100,
+    power_bonus_a: int = 0,
+    power_bonus_b: int = 0,
 ) -> ClashOutcome:
     """Resolves a clash via round-by-round coin attrition. See docs/ENGINEERING_NOTES.md#skills-resolve-round-clash for the full rationale."""
     coins_a = skill_a.coins
@@ -426,10 +428,13 @@ def resolve_round_clash(
         result_a = resolve_skill(temp_a, heads_chance_a, context_a)
         result_b = resolve_skill(temp_b, heads_chance_b, context_b)
 
-        if result_a.final_power > result_b.final_power:
+        # Level gap bonus: only the round comparison sees it, never the damage.
+        compare_a = result_a.final_power + power_bonus_a
+        compare_b = result_b.final_power + power_bonus_b
+        if compare_a > compare_b:
             loser = "b"
             coins_b -= 1
-        elif result_b.final_power > result_a.final_power:
+        elif compare_b > compare_a:
             loser = "a"
             coins_a -= 1
         else:

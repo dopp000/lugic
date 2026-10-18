@@ -63,6 +63,13 @@ class Character:
     supermove_drawbacks: dict = field(default_factory=dict)
     bp_log: list[dict] = field(default_factory=list)
     bp_exempt: bool = False
+    # Offense / Defense Level, steps 0 to 5. Each step is 4% more damage dealt
+    # or 4% less damage taken. They cost Build Points (game/build_points.py).
+    offense_level: int = 0
+    defense_level: int = 0
+    # An admin can fix the Level of an exempt NPC here (1 to 10). Normal
+    # characters get their Level from their Build Point pool instead.
+    level_override: int | None = None
 
     def add_skill(self, skill: Skill):
         self.skills[skill.name.lower()] = skill
@@ -97,6 +104,9 @@ class Character:
             "bp_total": self.bp_total,
             "bp_log": self.bp_log,
             "bp_exempt": self.bp_exempt,
+            "offense_level": self.offense_level,
+            "defense_level": self.defense_level,
+            "level_override": self.level_override,
             "supermove_drawbacks": self.supermove_drawbacks,
         }
 

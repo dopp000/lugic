@@ -63,6 +63,26 @@ RESIST_REFUND_CAP = 18
 # yet) or one of each 0.5x, 1.0x and 1.5x in any order.
 PHYSICAL_SETS = ([1.0, 1.0, 1.0], [0.5, 1.0, 1.5])
 
+# --- Offense / Defense Level -------------------------------------------------
+# Each step is 4% more damage dealt (Offense) or 4% less damage taken (Defense).
+OFFDEF_MAX = 5
+OFFDEF_STEP_COSTS = [0, 1, 2, 4, 4, 6]
+OFFDEF_PERCENT_PER_STEP = 4
+LEVEL_OVERRIDE_MAX = 10
+
+
+def offdef_cost(steps: int) -> int:
+    return OFFDEF_STEP_COSTS[max(0, min(int(steps), OFFDEF_MAX))]
+
+
+def character_level(c) -> int:
+    """The Level a character fights at: an admin override if set, else from its BP pool."""
+    override = getattr(c, "level_override", None)
+    if override:
+        return max(1, min(int(override), LEVEL_OVERRIDE_MAX))
+    return level_for(c.bp_total)
+
+
 # --- Caps that stop one-sided builds ---------------------------------------
 SINGLE_STAT_SHARE = 0.40   # no one stat above this share of the pool
 PAIR_SHARE = 0.60          # Power+Speed and Power+HP together, at most this share
@@ -199,6 +219,14 @@ def check_build(c) -> BuildReport:
         res_problems.append(
             f"Vulnerabilities give back {res_refunds} BP, but at most {RESIST_REFUND_CAP} BP can be banked."
         )
+    off = getattr(c, "offense_level", 0)
+    dfn = getattr(c, "defense_level", 0)
+    offdef_problems: list[str] = []
+    for label, steps in (("Offense Level", off), ("Defense Level", dfn)):
+        if not 0 <= steps <= OFFDEF_MAX:
+            offdef_problems.append(f"{label} {steps} is outside the allowed 0 to {OFFDEF_MAX}.")
+        if steps:
+            costs[label] = offdef_cost(steps)
     if res_paid or res_refunds:
         costs["Resistances"] = res_paid - min(res_refunds, RESIST_REFUND_CAP)
     physical = sorted(round(float(res.get(k, 1.0)), 2) for k in DAMAGE_TYPES)
@@ -241,6 +269,7 @@ def check_build(c) -> BuildReport:
     p = report.problems
     p.extend(super_problems)
     p.extend(res_problems)
+    p.extend(offdef_problems)
 
     if hp < HP_BASE:
         p.append(f"HP {hp} is below the minimum of {HP_BASE}.")

@@ -96,6 +96,11 @@ class Fighter:
     speed: int = 10  # legacy flat speed, kept as the default for speed_min/max below
     power: int = 6
     skill_slots: int = 3
+    # Level and damage-percent steps, see game/build_points.py. Level only matters
+    # in a clash: the higher side adds the gap to its Power every round.
+    level: int = 1
+    offense_level: int = 0
+    defense_level: int = 0
     avatar_url: str | None = None
     # Decimal damage multipliers, 1.0 = Normal (see game/resistances.py).
     resistances: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_RESISTANCES))
@@ -205,6 +210,10 @@ class Fighter:
             resistances=dict(character.resistances),
             owner_id=character.owner_id,
         )
+        from game.build_points import character_level
+        fighter.level = character_level(character)
+        fighter.offense_level = getattr(character, "offense_level", 0)
+        fighter.defense_level = getattr(character, "defense_level", 0)
         # If the saved character has its own speed range (set via /character edit), it takes over from the flat speed default that __post_init__... See docs/ENGINEERING_NOTES.md#battle-comment-166.
         if character.speed_min is not None:
             fighter.speed_min = character.speed_min

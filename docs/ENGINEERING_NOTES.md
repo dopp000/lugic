@@ -2078,6 +2078,17 @@ a new status gets an icon.
   creates a new problem (over budget, over the slot or severity limit), even for
   admins. Skills saved before this change keep working (grandfathered): the tag
   and Attack Weight rules only apply when a skill is created or edited.
+- Level and the clash bonus: `Fighter.level` comes from `character_level()`
+  (`level_override` if an admin set one, else `level_for(bp_total)`); `/battle
+  setstatus level:` changes it for one battle. `resolve_round_clash` takes
+  `power_bonus_a/b`, added to `final_power` only in the round comparison (never to
+  damage). The call site in `cogs/battle.py` gives the higher Level `gap` and puts
+  a "Level gap" line at the top of the clash log. Equal Levels get nothing.
+- Offense/Defense Level: `Character.offense_level/defense_level` (0 to 5), priced
+  by `OFFDEF_STEP_COSTS` (0,1,2,4,4,6) only when above 0, not part of the 40% caps.
+  `_damage_mods` adds `+4% x offense` for the attacker and `-4% x defense` for the
+  target into the same additive multiplier as Fragile/Protection/Damage Up/Down,
+  so the splash loop gets it too. Fixed-damage statuses (Burn and so on) do not use
+  it. Admin-only through `/character edit offense_level/defense_level`.
 - Next: base-skill status ranks, defense archetypes, Passive Points, then the player request/approval flow that replaces
-  admin-only stat and Supermove edits. After that: Level clash bonus,
-  Offense/Defense Level, NPC tier presets and Skill Points.
+  admin-only stat and Supermove edits. After that: NPC tier presets and Skill Points.

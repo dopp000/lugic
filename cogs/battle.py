@@ -20,7 +20,7 @@ from game.recap import RoundRecord, MAX_HISTORY, take_snapshot, build_recap
 from game.skills import Skill, SkillResult, ClashOutcome, resolve_skill, resolve_round_clash, resolve_triggers
 from game.conditions import Trigger, TriggerContext, parse_trigger_text, TriggerParseError
 from game.character import Character, load_character, list_character_summaries
-from game.build_points import check_build, skill_power_problem
+from game.build_points import OFFDEF_PERCENT_PER_STEP, check_build, skill_power_problem
 from game.statuses import (
     StatusInstance, decay_after_trigger, apply_status, INFLICTABLE_STATUSES,
     SETTABLE_STATUSES, ONE_TURN_STATUSES, POTENCY_TURN_STATUSES, fragility_bonus,
@@ -998,7 +998,13 @@ def _damage_mods(target: Fighter, attacker: Fighter, damage_type: str) -> tuple[
         parts.append(f"{attacker.name} Damage Up +{round(up * 100)}%")
     if down > 0:
         parts.append(f"{attacker.name} Damage Down -{round(down * 100)}%")
-    return max(0.0, 1 + frag + up - down - prot), parts
+    off = getattr(attacker, "offense_level", 0) * OFFDEF_PERCENT_PER_STEP / 100
+    dfn = getattr(target, "defense_level", 0) * OFFDEF_PERCENT_PER_STEP / 100
+    if off > 0:
+        parts.append(f"{attacker.name} Offense Level +{round(off * 100)}%")
+    if dfn > 0:
+        parts.append(f"{target.name} Defense Level -{round(dfn * 100)}%")
+    return max(0.0, 1 + frag + up - down - prot + off - dfn), parts
 
 
 def apply_incoming_hit(
@@ -1825,6 +1831,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         resistance_input="Resistance(s) to set: 'Type:Value', comma-separated for several, e.g. 'slash:1.25,burn:0.75' (1.0 = Normal, steps of 0.25)",
         stagger_thresholds="3 HP% values for Tier 1/2/3, comma-separated, descending, e.g. '55,40,25'",
         stagger_disabled_tiers="Which Stagger tiers to strip (2 and/or 3, comma-separated; Tier 1 can't be removed), or 'none'",
+        level="This fighter's Level for this battle (1 to 10); the higher Level adds the gap to its clash Power",
     )
     @app_commands.choices(
         status_name=[app_commands.Choice(name=s.replace('_', ' ').title(), value=s) for s in SETTABLE_STATUSES]
@@ -1847,6 +1854,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         resistance_input: str | None = None,
         stagger_thresholds: str | None = None,
         stagger_disabled_tiers: str | None = None,
+        level: app_commands.Range[int, 1, 10] | None = None,
     ):
         if not _is_admin(interaction):
             await interaction.response.send_message(
@@ -2028,6 +2036,10 @@ class BattleCog(commands.GroupCog, name="battle"):
         if power is not None:
             target_fighter.power = power
             changes.append(f"Power -> {power}")
+
+        if level is not None:
+            target_fighter.level = level
+            changes.append(f"Level -> {level}")
 
         for r_type, r_value in resistance_changes:
             target_fighter.resistances[r_type] = r_value
@@ -3088,6 +3100,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                 heads_chance_b=fighter_b.heads_chance(),
                 context_a=context_a,
                 context_b=context_b,
+                power_bonus_a=max(0, fighter_a.level - fighter_b.level),
+                power_bonus_b=max(0, fighter_b.level - fighter_a.level),
             )
             winner = fighter_a if outcome.winner == "a" else fighter_b
             loser = fighter_b if winner is fighter_a else fighter_a
@@ -3229,6 +3243,13 @@ class BattleCog(commands.GroupCog, name="battle"):
 
             # ---- Same full detail text + one-line summary as before, for the Full Log button and locked history ----
             field_value = format_clash_rounds(outcome, fighter_a.name, fighter_b.name)
+            level_gap = fighter_a.level - fighter_b.level
+            if level_gap:
+                higher = fighter_a if level_gap > 0 else fighter_b
+                field_value = (
+                    f"Level gap: {higher.name} (Level {higher.level}) gets +{abs(level_gap)} "
+                    f"Power in every clash round.\n\n" + field_value
+                )
             intercept_holder_entry = (
                 entry_a if entry_a.get("is_clashable_counter_intercept")
                 else entry_b if entry_b.get("is_clashable_counter_intercept")

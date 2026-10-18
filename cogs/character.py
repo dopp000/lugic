@@ -15,7 +15,10 @@ from game.character import (
     list_character_summaries,
     list_all_characters,
 )
-from game.build_points import check_build, build_summary, level_for, next_level_at, STARTING_BP
+from game.build_points import (
+    check_build, build_summary, level_for, next_level_at, character_level,
+    OFFDEF_PERCENT_PER_STEP, STARTING_BP,
+)
 from game.resistances import ALL_RESISTANCE_TYPES, DAMAGE_TYPES, parse_resistance_multiplier
 from game.emojis import status_emoji, damage_type_emoji, register_custom_status_emoji
 from game.custom_statuses import (
@@ -67,7 +70,13 @@ def build_character_embed(character: Character, owner_name: str) -> discord.Embe
     embed.add_field(name="Resistances", value="\n".join(resist_lines), inline=False)
 
     report = check_build(character)
-    build_line = f"Level {report.level}, {report.spent}/{report.total} BP spent"
+    level = character_level(character)
+    build_line = f"Level {level}, {report.spent}/{report.total} BP spent"
+    if character.offense_level or character.defense_level:
+        build_line += (
+            f"\nOffense Level {character.offense_level} (+{character.offense_level * OFFDEF_PERCENT_PER_STEP}% damage), "
+            f"Defense Level {character.defense_level} (-{character.defense_level * OFFDEF_PERCENT_PER_STEP}% damage taken)"
+        )
     if character.bp_exempt:
         build_line += " (exempt from Build Point checks)"
     elif not report.ok:
@@ -255,6 +264,8 @@ class CharacterCog(commands.GroupCog, name="character"):
         values="Multiplier for each type above, same order, comma-separated, e.g. '1.25,0.75' (needs resistance_types too)",
         stagger_thresholds="3 HP% values for Tier 1/2/3, comma-separated, descending, e.g. '55,40,25'",
         stagger_disabled_tiers="Which Stagger tiers to strip (2 and/or 3, comma-separated; Tier 1 can't be removed), or 'none'",
+        offense_level="Offense Level 0 to 5: 4% more damage dealt per step (admin only, costs Build Points)",
+        defense_level="Defense Level 0 to 5: 4% less damage taken per step (admin only, costs Build Points)",
     )
     async def edit(
         self,
@@ -270,6 +281,8 @@ class CharacterCog(commands.GroupCog, name="character"):
         values: str | None = None,
         stagger_thresholds: str | None = None,
         stagger_disabled_tiers: str | None = None,
+        offense_level: app_commands.Range[int, 0, 5] | None = None,
+        defense_level: app_commands.Range[int, 0, 5] | None = None,
     ):
         character = load_character(name)
         if character is None:
@@ -292,11 +305,12 @@ class CharacterCog(commands.GroupCog, name="character"):
 
         build_fields_used = any(
             v is not None
-            for v in (hp, speed_min, power, stagger_thresholds, stagger_disabled_tiers, resistance_types)
+            for v in (hp, speed_min, power, stagger_thresholds, stagger_disabled_tiers, resistance_types,
+                      offense_level, defense_level)
         )
         if build_fields_used and not is_admin(interaction):
             await interaction.response.send_message(
-                "HP, Speed, Power, Stagger and resistances are part of the build, so only an admin "
+                "HP, Speed, Power, Stagger, resistances and Offense/Defense Level are part of the build, so only an admin "
                 "can change them. Ask an admin to make the change for you.",
                 ephemeral=True,
             )
@@ -389,6 +403,10 @@ class CharacterCog(commands.GroupCog, name="character"):
                 ]
             if parsed_resistances:
                 trial.resistances.update(parsed_resistances)
+            if offense_level is not None:
+                trial.offense_level = offense_level
+            if defense_level is not None:
+                trial.defense_level = defense_level
             trial_report = check_build(trial)
             before_problems = check_build(character).problems
             fresh = [p for p in trial_report.problems if p not in before_problems]
@@ -433,6 +451,14 @@ class CharacterCog(commands.GroupCog, name="character"):
         if power is not None:
             character.power = power
             changes.append(f"Power -> {power}")
+
+        if offense_level is not None:
+            character.offense_level = offense_level
+            changes.append(f"Offense Level -> {offense_level} (+{offense_level * OFFDEF_PERCENT_PER_STEP}% damage dealt)")
+
+        if defense_level is not None:
+            character.defense_level = defense_level
+            changes.append(f"Defense Level -> {defense_level} (-{defense_level * OFFDEF_PERCENT_PER_STEP}% damage taken)")
 
         if parsed_resistances:
             character.resistances.update(parsed_resistances)
@@ -1048,8 +1074,12 @@ class CharacterCog(commands.GroupCog, name="character"):
 
     @app_commands.command(name="exempt", description="Admin only: skip Build Point checks for a character (NPCs, bosses)")
     @app_commands.default_permissions(manage_guild=True)
-    @app_commands.describe(name="Character to change", exempt="True to skip the checks, false to apply them again")
-    async def exempt(self, interaction: discord.Interaction, name: str, exempt: bool):
+    @app_commands.describe(
+        name="Character to change",
+        exempt="True to skip the checks, false to apply them again",
+        level="Level this character fights at, 1 to 10 (0 clears it). Level gaps add Power in clashes",
+    )
+    async def exempt(self, interaction: discord.Interaction, name: str, exempt: bool, level: app_commands.Range[int, 0, 10] | None = None):
         if not is_admin(interaction):
             await interaction.response.send_message("Only an admin can do this.", ephemeral=True)
             return
@@ -1058,9 +1088,13 @@ class CharacterCog(commands.GroupCog, name="character"):
             await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
         character.bp_exempt = exempt
+        level_note = ""
+        if level is not None:
+            character.level_override = level or None
+            level_note = f" Level set to {level}." if level else " Level now follows the Build Point pool."
         save_character(character)
         await interaction.response.send_message(
-            f"{character.name} is {'now exempt from' if exempt else 'no longer exempt from'} Build Point checks.",
+            f"{character.name} is {'now exempt from' if exempt else 'no longer exempt from'} Build Point checks.{level_note}",
             ephemeral=True,
         )
 

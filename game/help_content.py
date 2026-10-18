@@ -667,11 +667,11 @@ COMMANDS: list[HelpEntry] = [
     HelpEntry(
         key="build_points",
         title="Build Points and levels",
-        summary="The one budget that pays for HP, Power, Speed and Stagger.",
+        summary="The one budget that pays for HP, Power, Speed, Stagger and more.",
         body=(
             "Every character has a pool of **Build Points (BP)**. You start with 30, and "
-            "an admin grants more for scenes and events. Your **level** is just a label "
-            "on your total: Level 2 at 45 BP, 3 at 63, 4 at 84, 5 at 108.\n"
+            "an admin grants more for scenes and events. Your **level** comes from "
+            "your total: Level 2 at 45 BP, 3 at 63, 4 at 84, 5 at 108.\n"
             "**What costs BP:**\n"
             "- **HP:** 100 is free, up to 160 (about 1 to 8 BP).\n"
             "- **Power:** 6 is free, up to 12. Each step costs more (1, 2, 4, 4, 6, then 8 BP in total).\n"
@@ -684,6 +684,11 @@ COMMANDS: list[HelpEntry] = [
             "- **Supermoves:** up to 3. Low 10 BP, Mid 16, High 22 by damage, plus 1 to 6 for demanding "
             "timings, minus 2 / 4 / 7 for a Minor / Moderate / Severe drawback an admin sets. "
             "They are not limited by Power, but a Supermove cannot hit for more than about 200.\n"
+            "- **Offense Level and Defense Level:** 0 to 5 each. Every step is 4% more damage "
+            "you deal (Offense) or 4% less damage you take (Defense), up to 20%. Steps cost 1, 2, 4, 4, 6 BP in total.\n"
+            "**Level gap in a clash:** the fighter with the higher level adds the gap to its Power in every "
+            "clash round (Level 4 against Level 2 is +2). Equal levels get nothing. It only decides who wins "
+            "a round, it does not add damage.\n"
             "**Limits that stop one-sided builds:** no single stat can use more than 40% of "
             "your pool, and Power plus Speed, or Power plus HP, can use at most 60%.\n"
             "**Power sets how strong your skills can be.** A skill's Base Power can be at "
