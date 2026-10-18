@@ -526,6 +526,11 @@ The Trigger Syntax and Commands text is hand-written, so when a timing,
 condition, effect phrase or slash command is added or renamed it has to be
 updated there too.
 
+Help pages show icons inline: `decorate_text()` in `game/emojis.py` puts a
+status, stat or damage-type icon in front of its first mention in each page
+(skipping anything inside `code`, and any name with no emoji ID yet). Dropdown
+descriptions can't show custom emoji, so they stay plain.
+
 Category buttons (`Skill Tags`, `Damage Math`, `Status Effects`, `Trigger Syntax`, `Commands`) and five of
 the ten skill tags (`Target Fixed`, `Unclashable`, `Indiscriminate`, `Support`, `Supermove`) have no
 custom emoji yet (`HELP_CATEGORY_EMOJI_IDS` / `SKILL_TAG_EMOJI_IDS` in

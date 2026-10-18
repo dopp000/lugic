@@ -359,7 +359,7 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Immobilized",
         summary="You can't act.",
         body=(
-            "You can't declare any skills, and anything you already declared is dropped when combat starts. It is removed after the turn it stops you. If it lands during combat, it carries into next turn."
+            "You can't declare any skills, and anything you already declared is dropped when combat starts. It wears off after the round it stops you. If you get Immobilized during combat, you sit out the next round instead."
         ),
     ),
     HelpEntry(

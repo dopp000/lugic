@@ -2004,3 +2004,15 @@ message is reworded the matching phrase in `friendly_error_text` needs the same 
 `damage_range` gives lowest, expected and highest damage with the same flat-bonus assumption
 as `skill_severity` in game/supermoves.py. The preview takes the owner's custom statuses so
 their display names show instead of keys.
+
+<a id="text-polish"></a>
+## Text polish and inline help icons
+
+Player-facing wording pass: `/battle setstatus` choices show spaced names,
+"Stagger'd" became "Staggered", Clash take-over messages avoid "falling
+through to unopposed", not-found errors point at the autocomplete list, and
+owner-only errors read "Only the owner or an admin can...". `/battle addfighter`
+side is now an A/B choice (the value is still the string "A"/"B").
+`decorate_text()` (`game/emojis.py`) adds icons to /help bodies at render time,
+so `game/help_content.py` stays plain text. Its word lists must be extended when
+a new status gets an icon.

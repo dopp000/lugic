@@ -184,13 +184,13 @@ class CharacterCog(commands.GroupCog, name="character"):
     async def view(self, interaction: discord.Interaction, name: str, public: bool = False):
         character = load_character(name)
         if character is None:
-            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         is_owner = interaction.user.id == character.owner_id
         if not (is_owner or is_admin(interaction)):
             await interaction.response.send_message(
-                "Only this character's owner or an admin can view its stats.", ephemeral=True
+                "Only the owner or an admin can view its stats.", ephemeral=True
             )
             return
 
@@ -229,13 +229,13 @@ class CharacterCog(commands.GroupCog, name="character"):
     ):
         character = load_character(name)
         if character is None:
-            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         is_owner = interaction.user.id == character.owner_id
         if not (is_owner or is_admin(interaction)):
             await interaction.response.send_message(
-                "Only this character's owner or an admin can edit it.", ephemeral=True
+                "Only the owner or an admin can edit it.", ephemeral=True
             )
             return
 
@@ -399,13 +399,13 @@ class CharacterCog(commands.GroupCog, name="character"):
     ):
         character = load_character(name)
         if character is None:
-            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         is_owner = interaction.user.id == character.owner_id
         if not (is_owner or is_admin(interaction)):
             await interaction.response.send_message(
-                "Only this character's owner or an admin can edit it.", ephemeral=True
+                "Only the owner or an admin can edit it.", ephemeral=True
             )
             return
 
@@ -430,13 +430,13 @@ class CharacterCog(commands.GroupCog, name="character"):
     async def addskill(self, interaction: discord.Interaction, name: str):
         character = load_character(name)
         if character is None:
-            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         is_owner = interaction.user.id == character.owner_id
         if not (is_owner or is_admin(interaction)):
             await interaction.response.send_message(
-                "Only this character's owner or an admin can teach it a skill.", ephemeral=True
+                "Only the owner or an admin can teach it a skill.", ephemeral=True
             )
             return
 
@@ -449,13 +449,13 @@ class CharacterCog(commands.GroupCog, name="character"):
     async def skills(self, interaction: discord.Interaction, name: str):
         character = load_character(name)
         if character is None:
-            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         is_owner = interaction.user.id == character.owner_id
         if not (is_owner or is_admin(interaction)):
             await interaction.response.send_message(
-                "Only this character's owner or an admin can view its skills.", ephemeral=True
+                "Only the owner or an admin can view its skills.", ephemeral=True
             )
             return
 
@@ -480,13 +480,13 @@ class CharacterCog(commands.GroupCog, name="character"):
     async def removeskill(self, interaction: discord.Interaction, name: str, skill_name: str):
         character = load_character(name)
         if character is None:
-            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         is_owner = interaction.user.id == character.owner_id
         if not (is_owner or is_admin(interaction)):
             await interaction.response.send_message(
-                "Only this character's owner or an admin can remove one of their skills.",
+                "Only the owner or an admin can remove one of their skills.",
                 ephemeral=True,
             )
             return
@@ -530,13 +530,13 @@ class CharacterCog(commands.GroupCog, name="character"):
     async def editskill(self, interaction: discord.Interaction, name: str, skill_name: str):
         character = load_character(name)
         if character is None:
-            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         is_owner = interaction.user.id == character.owner_id
         if not (is_owner or is_admin(interaction)):
             await interaction.response.send_message(
-                "Only this character's owner or an admin can edit one of their skills.",
+                "Only the owner or an admin can edit one of their skills.",
                 ephemeral=True,
             )
             return
@@ -588,12 +588,12 @@ class CharacterCog(commands.GroupCog, name="character"):
     ):
         character = load_character(name)
         if character is None:
-            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         if not (interaction.user.id == character.owner_id or is_admin(interaction)):
             await interaction.response.send_message(
-                "Only this character's owner or an admin can add a status to it.", ephemeral=True
+                "Only the owner or an admin can add a status to it.", ephemeral=True
             )
             return
 
@@ -665,7 +665,7 @@ class CharacterCog(commands.GroupCog, name="character"):
     async def statuses(self, interaction: discord.Interaction, name: str):
         character = load_character(name)
         if character is None:
-            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
         if not character.custom_statuses:
             await interaction.response.send_message(
@@ -688,11 +688,11 @@ class CharacterCog(commands.GroupCog, name="character"):
     async def removestatus(self, interaction: discord.Interaction, name: str, status_name: str):
         character = load_character(name)
         if character is None:
-            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
         if not (interaction.user.id == character.owner_id or is_admin(interaction)):
             await interaction.response.send_message(
-                "Only this character's owner or an admin can remove a status.", ephemeral=True
+                "Only the owner or an admin can remove a status.", ephemeral=True
             )
             return
         removed = character.custom_statuses.pop(slugify(status_name), None)
@@ -730,13 +730,13 @@ class CharacterCog(commands.GroupCog, name="character"):
     async def delete(self, interaction: discord.Interaction, name: str):
         character = load_character(name)
         if character is None:
-            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         is_owner = interaction.user.id == character.owner_id
         if not (is_owner or is_admin(interaction)):
             await interaction.response.send_message(
-                "Only this character's owner or an admin can delete it.", ephemeral=True
+                "Only the owner or an admin can delete it.", ephemeral=True
             )
             return
 
@@ -751,13 +751,13 @@ class CharacterCog(commands.GroupCog, name="character"):
     async def say(self, interaction: discord.Interaction, name: str, message: str):
         character = load_character(name)
         if character is None:
-            await interaction.response.send_message(f"No character named {name}.", ephemeral=True)
+            await interaction.response.send_message(f"No character named {name}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         is_owner = interaction.user.id == character.owner_id
         if not (is_owner or is_admin(interaction)):
             await interaction.response.send_message(
-                "Only this character's owner or an admin can speak as it.", ephemeral=True
+                "Only the owner or an admin can speak as it.", ephemeral=True
             )
             return
 

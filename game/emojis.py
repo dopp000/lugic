@@ -290,3 +290,64 @@ def skill_tag_emoji(tag_key: str) -> str:
     key = tag_key.lower()
     display_name = display_names.get(key, key.capitalize())
     return emoji_tag(display_name, SKILL_TAG_EMOJI_IDS.get(key))
+
+
+import re as _re
+
+# Words in /help prose that get their icon put in front of the first
+# mention. Longest names first so "Slash Fragility" wins over "Slash".
+_STATUS_WORDS = {
+    "Tremor Burst": "tremor_burst", "Slash Fragility": "slash_fragility",
+    "Pierce Fragility": "pierce_fragility", "Blunt Fragility": "blunt_fragility",
+    "Clashable Counter": "clashable_counter", "Clashable Guard": "clashable_guard",
+    "Low Morale": "low_morale", "Power Down": "power_down", "Power Up": "power_up",
+    "Damage Down": "damage_down", "Damage Up": "damage_up",
+    "Burn": "burn", "Bleed": "bleed", "Tremor": "tremor", "Rupture": "rupture",
+    "Sinking": "sinking", "Poise": "poise", "Charge": "charge", "Bind": "bind",
+    "Fragile": "fragile", "Paralyze": "paralyze", "Poison": "poison",
+    "Immobilized": "immobilized", "Haste": "haste", "Protection": "protection",
+    "Panic": "panic", "Counter": "counter", "Guard": "guard", "Shield": "shield",
+    "Evade": "evasion", "Stagger": "stagger",
+}
+_STAT_WORDS = {"Speed": "speed", "HP": "hp", "Sanity": "sanity"}
+_DAMAGE_WORDS = {"Slash": "slash", "Blunt": "blunt", "Pierce": "pierce"}
+
+
+def _icon_for(word: str) -> str | None:
+    if word in _STATUS_WORDS:
+        return status_emoji(_STATUS_WORDS[word])
+    if word in _STAT_WORDS:
+        return stat_emoji(_STAT_WORDS[word])
+    if word in _DAMAGE_WORDS:
+        return damage_type_emoji(_DAMAGE_WORDS[word])
+    return None
+
+
+_ALL_WORDS = sorted({*_STATUS_WORDS, *_STAT_WORDS, *_DAMAGE_WORDS}, key=len, reverse=True)
+_WORD_RE = _re.compile(r"(?<![\w:])(" + "|".join(_re.escape(w) for w in _ALL_WORDS) + r")(?![\w])")
+
+
+def decorate_text(text: str) -> str:
+    """Puts each status, stat and damage type's icon in front of its FIRST
+    mention in a block of help prose. Text inside `code` is left alone
+    (icons don't render there, and examples must stay copyable). Only
+    real icons are added: a name with no emoji ID yet is skipped, so
+    plain ":Name:" text never clutters a page.
+    """
+    seen: set[str] = set()
+    parts = _re.split(r"(`[^`]*`)", text)
+
+    def sub(m):
+        word = m.group(1)
+        if word in seen:
+            return word
+        icon = _icon_for(word)
+        seen.add(word)
+        if not icon or icon.startswith(":"):
+            return word
+        return f"{icon} {word}"
+
+    out = []
+    for part in parts:
+        out.append(part if part.startswith("`") else _WORD_RE.sub(sub, part))
+    return "".join(out)

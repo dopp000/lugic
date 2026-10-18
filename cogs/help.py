@@ -4,7 +4,7 @@ from discord import app_commands
 
 from game.help_content import HELP_CATEGORIES, HelpEntry
 from game.emojis import (
-    help_category_emoji, skill_tag_emoji,
+    help_category_emoji, skill_tag_emoji, decorate_text,
     HELP_CATEGORY_EMOJI_IDS, SKILL_TAG_EMOJI_IDS, STATUS_EMOJI_IDS, status_emoji,
 )
 
@@ -87,7 +87,7 @@ def help_category_emoji_for_title(title: str) -> str:
 def _entry_embed(category_title: str, category_key: str, entry: HelpEntry) -> discord.Embed:
     icon = _entry_text_icon(category_key, entry.key)
     title = f"{icon} {entry.title}".strip()
-    embed = discord.Embed(title=title, description=entry.body, color=HELP_COLOR)
+    embed = discord.Embed(title=title, description=decorate_text(entry.body), color=HELP_COLOR)
     embed.set_footer(text=f"{category_title} -- Lugic Guidebook")
     return embed
 

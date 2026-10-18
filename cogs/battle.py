@@ -562,7 +562,7 @@ class ClashDeclareView(discord.ui.View):
         await interaction.response.edit_message(
             content=(
                 f"**Locked in.** {self.caster.name}'s Slot {self.slot} ({self.skill.name}) "
-                f"targets {self.target.name}'s Slot {self.target_slot}{extra_note}.{sm_note}"
+                f"targets {self.target.name}'s Slot {self.target_slot}{extra_note}.{sm_note}\n-# Only you can see this. Others see that you declared, not what."
             ),
             view=self,
         )
@@ -615,7 +615,7 @@ class StealApprovalView(discord.ui.View):
             await owner.send(
                 f"{self.stealer.name} has taken over the clash against {self.target.name}'s "
                 f"Slot {self.target_slot} instead of {previous_holder.name}. {previous_holder.name}'s "
-                f"action there will resolve unopposed unless you declare something else."
+                f"action there will hit without a Clash unless you declare something else."
             )
         except discord.Forbidden:
             pass
@@ -995,7 +995,7 @@ def apply_incoming_hit(
     if stagger_multiplier != 1.0 and total_damage > 0:
         boosted = round(total_damage * stagger_multiplier)
         log.append(
-            f"{stagger_tier_emoji(target.current_stagger_tier)} {target.name} is Stagger'd (Tier "
+            f"{stagger_tier_emoji(target.current_stagger_tier)} {target.name} is Staggered (Tier "
             f"{target.current_stagger_tier}): {total_damage} -> {boosted} damage (x{stagger_multiplier})"
         )
         total_damage = boosted
@@ -1618,8 +1618,9 @@ class BattleCog(commands.GroupCog, name="battle"):
         name="addfighter",
         description="Add a fighter to the current battle, from a saved character or as a one-off",
     )
+    @app_commands.choices(side=[app_commands.Choice(name="Side A", value="A"), app_commands.Choice(name="Side B", value="B")])
     @app_commands.describe(
-        side="Which side to join: A or B",
+        side="Which side to join",
         character_name="Load one of your saved /character profiles into this battle (recommended)",
         name="Name for a one-off fighter -- skip this if you used character_name instead",
         hp="Starting HP for a one-off fighter, default 100 (ignored if using character_name)",
@@ -1667,7 +1668,7 @@ class BattleCog(commands.GroupCog, name="battle"):
             character = load_character(character_name)
             if character is None:
                 await interaction.response.send_message(
-                    f"No character named {character_name}.", ephemeral=True
+                    f"No character named {character_name}. Pick a name from the list that shows as you type.", ephemeral=True
                 )
                 return
 
@@ -1726,7 +1727,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         stagger_disabled_tiers="Which Stagger tiers to strip (2 and/or 3, comma-separated; Tier 1 can't be removed), or 'none'",
     )
     @app_commands.choices(
-        status_name=[app_commands.Choice(name=s.capitalize(), value=s) for s in SETTABLE_STATUSES]
+        status_name=[app_commands.Choice(name=s.replace('_', ' ').title(), value=s) for s in SETTABLE_STATUSES]
         + [app_commands.Choice(name="None (clear all statuses)", value="none")]
     )
     async def setstatus(
@@ -1760,7 +1761,7 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         target_fighter = battle.get_fighter(fighter)
         if target_fighter is None:
-            await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            await interaction.response.send_message(f"No fighter named {fighter}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         # A one-way door: once eliminated (see Fighter.eliminated's
@@ -1990,12 +1991,12 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         target_fighter = battle.get_fighter(fighter)
         if target_fighter is None:
-            await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            await interaction.response.send_message(f"No fighter named {fighter}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         if not _can_manage_fighter(interaction, target_fighter):
             await interaction.response.send_message(
-                "Only this fighter's own owner or an admin can add a skill to them.",
+                "Only the owner or an admin can add a skill to them.",
                 ephemeral=True,
             )
             return
@@ -2014,7 +2015,7 @@ class BattleCog(commands.GroupCog, name="battle"):
             return None
         target = battle.get_fighter(fighter)
         if target is None:
-            await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            await interaction.response.send_message(f"No fighter named {fighter}. Pick a name from the list that shows as you type.", ephemeral=True)
             return None
         if not (1 <= slot <= target.skill_slots):
             await interaction.response.send_message(
@@ -2102,7 +2103,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         if fighter:
             target = battle.get_fighter(fighter)
             if target is None:
-                await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+                await interaction.response.send_message(f"No fighter named {fighter}. Pick a name from the list that shows as you type.", ephemeral=True)
                 return
             if not _can_manage_fighter(interaction, target):
                 await interaction.response.send_message(
@@ -2147,7 +2148,7 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         target_fighter = battle.get_fighter(fighter)
         if target_fighter is None:
-            await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            await interaction.response.send_message(f"No fighter named {fighter}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         if not target_fighter.skills:
@@ -2195,12 +2196,12 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         target_fighter = battle.get_fighter(fighter)
         if target_fighter is None:
-            await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            await interaction.response.send_message(f"No fighter named {fighter}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         if not _can_manage_fighter(interaction, target_fighter):
             await interaction.response.send_message(
-                "Only this fighter's own owner or an admin can remove one of their skills.",
+                "Only the owner or an admin can remove one of their skills.",
                 ephemeral=True,
             )
             return
@@ -2231,12 +2232,12 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         target_fighter = battle.get_fighter(fighter)
         if target_fighter is None:
-            await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            await interaction.response.send_message(f"No fighter named {fighter}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         if not _can_manage_fighter(interaction, target_fighter):
             await interaction.response.send_message(
-                "Only this fighter's own owner or an admin can edit one of their skills.",
+                "Only the owner or an admin can edit one of their skills.",
                 ephemeral=True,
             )
             return
@@ -2281,12 +2282,12 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         caster = battle.get_fighter(fighter)
         if caster is None:
-            await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            await interaction.response.send_message(f"No fighter named {fighter}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         if not _can_manage_fighter(interaction, caster):
             await interaction.response.send_message(
-                "Only this fighter's own owner or an admin can declare for them.", ephemeral=True
+                "Only the owner or an admin can declare for them.", ephemeral=True
             )
             return
 
@@ -2303,7 +2304,7 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         if caster.current_stagger_tier > 0:
             await interaction.response.send_message(
-                f"{stagger_action_emoji()} {caster.name} is Stagger'd (Tier {caster.current_stagger_tier}) "
+                f"{stagger_action_emoji()} {caster.name} is Staggered (Tier {caster.current_stagger_tier}) "
                 f"and can't act until it clears.",
                 ephemeral=True,
             )
@@ -2345,7 +2346,7 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         target_fighter = battle.get_fighter(target)
         if target_fighter is None:
-            await interaction.response.send_message(f"No fighter named {target}.", ephemeral=True)
+            await interaction.response.send_message(f"No fighter named {target}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         # [Support] skills are aimed at an ally (or the caster), never an
@@ -2485,8 +2486,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                     await interaction.response.send_message(
                         f"{target_fighter.name}'s Slot {target_slot} is already clashing "
                         f"{partner.name}'s **{partner_action.skill.name}**, which is Target Fixed "
-                        f"and can't be taken over. Falling through to unopposed against "
-                        f"{target_fighter.name} instead.{sm_note}",
+                        f"so no one can take its place. Your attack will hit "
+                        f"{target_fighter.name} without a Clash instead.{sm_note}",
                         ephemeral=True,
                     )
                     await sync_battle_message(self.bot, battle)
@@ -2496,9 +2497,9 @@ class BattleCog(commands.GroupCog, name="battle"):
                     caster.declare_in_slot(slot, skill, target_fighter, target_slot, extra_targets)
                     await interaction.response.send_message(
                         f"{target_fighter.name}'s Slot {target_slot} is already clashing "
-                        f"{partner.name}, and taking it over needs {partner.name}'s owner to "
-                        f"approve, but {partner.name} has no linked owner. Falling through to "
-                        f"unopposed against {target_fighter.name} instead.{sm_note}",
+                        f"{partner.name}, and taking their place needs {partner.name}'s owner to "
+                        f"agree, but {partner.name} has no linked owner. Your attack will hit "
+                        f"{target_fighter.name} without a Clash instead.{sm_note}",
                         ephemeral=True,
                     )
                     await sync_battle_message(self.bot, battle)
@@ -2521,11 +2522,11 @@ class BattleCog(commands.GroupCog, name="battle"):
                     try:
                         dm_message = await owner.send(
                             f"**{caster.name}** (Slot {slot}, {stat_emoji('speed')}{caster_speed}) wants to take "
-                            f"over your **{partner.name}**'s clash against **{target_fighter.name}**'s "
+                            f"your **{partner.name}**'s place in the Clash against **{target_fighter.name}**'s "
                             f"Slot {target_slot}, using **{skill.name}**.\n\n"
                             f"Approve gives it to them (your Slot {partner_slot} is cleared). "
-                            f"Decline keeps your clash as declared, and their action falls through "
-                            f"to unopposed instead.",
+                            f"Decline keeps your clash as declared, and their attack will hit "
+                            f"without a Clash instead.",
                             view=steal_view,
                         )
                         steal_view.message = dm_message
@@ -2537,8 +2538,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                     caster.declare_in_slot(slot, skill, target_fighter, target_slot, extra_targets)
                     await interaction.response.send_message(
                         f"Couldn't DM {partner.name}'s owner to ask for approval (DMs closed or "
-                        f"user not found), so this falls through to unopposed against "
-                        f"{target_fighter.name} instead.{sm_note}",
+                        f"user not found), so your attack will hit "
+                        f"{target_fighter.name} without a Clash instead.{sm_note}",
                         ephemeral=True,
                     )
                     await sync_battle_message(self.bot, battle)
@@ -2547,8 +2548,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                 await interaction.response.send_message(
                     f"{target_fighter.name}'s Slot {target_slot} is already clashing "
                     f"{partner.name}. {partner.name}'s owner has been DMed to ask whether "
-                    f"{caster.name} can take it over instead. Your action locks in either way, "
-                    f"you'll just find out later whether it's a clash or unopposed.{sm_note}",
+                    f"{caster.name} can take their place instead. Your skill is locked in either way, "
+                    f"you'll just find out later whether it's a Clash or a plain hit.{sm_note}",
                     ephemeral=True,
                 )
                 return
@@ -2581,12 +2582,12 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         caster = battle.get_fighter(fighter)
         if caster is None:
-            await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            await interaction.response.send_message(f"No fighter named {fighter}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         if not _can_manage_fighter(interaction, caster):
             await interaction.response.send_message(
-                "Only this fighter's own owner or an admin can undeclare for them.", ephemeral=True
+                "Only the owner or an admin can undeclare for them.", ephemeral=True
             )
             return
 
@@ -2613,12 +2614,12 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         target_fighter = battle.get_fighter(fighter)
         if target_fighter is None:
-            await interaction.response.send_message(f"No fighter named {fighter}.", ephemeral=True)
+            await interaction.response.send_message(f"No fighter named {fighter}. Pick a name from the list that shows as you type.", ephemeral=True)
             return
 
         if not _can_manage_fighter(interaction, target_fighter):
             await interaction.response.send_message(
-                "Only this fighter's own owner or an admin can remove them.", ephemeral=True
+                "Only the owner or an admin can remove them.", ephemeral=True
             )
             return
 
@@ -3488,7 +3489,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                         if splash_stagger_multiplier != 1.0 and splash_total > 0:
                             boosted_splash_total = round(splash_total * splash_stagger_multiplier)
                             splash_log.append(
-                                f"{stagger_tier_emoji(splash_fighter.current_stagger_tier)} {splash_fighter.name} is Stagger'd (Tier "
+                                f"{stagger_tier_emoji(splash_fighter.current_stagger_tier)} {splash_fighter.name} is Staggered (Tier "
                                 f"{splash_fighter.current_stagger_tier}): {splash_total} -> "
                                 f"{boosted_splash_total} damage (x{splash_stagger_multiplier})"
                             )
