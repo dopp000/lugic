@@ -33,17 +33,19 @@ STATUS_EMOJI_IDS: dict[str, int | None] = {
     # they share design (see README) -- rather than needing two uploads.
     "panic": 1544676724862623834,
     "low_morale": 1544676724862623834,
-    # One-turn debuffs: no icons uploaded yet, plain ":Name:" text until filled in.
-    "bind": None,
-    "fragile": None,
-    "slash_fragility": None,
-    "pierce_fragility": None,
-    "blunt_fragility": None,
-    "power_down": None,
-    "damage_down": None,
-    "paralyze": None,
-    "poison": None,
-    "immobilized": None,
+    # Non-Sin debuffs.
+    "bind": 1561188364370055198,
+    "fragile": 1538062954354704384,
+    "slash_fragility": 1561188811093057646,
+    "pierce_fragility": 1561188699285364776,
+    "blunt_fragility": 1561188379540856875,
+    "power_down": 1538063056406323263,
+    "damage_down": 1561189223804047480,
+    "paralyze": 1561189630936875081,
+    "poison": 1561189616995008512,
+    "immobilized": 1561189600481771572,
+    # Damage Up has no status behind it yet, icon uploaded ahead of time.
+    "damage_up": 1561189128106803260,
 }
 
 # Stagger has its own tiered icon set, since real Limbus visually
