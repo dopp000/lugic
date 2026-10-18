@@ -322,6 +322,18 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   caster, and a Consume cost is always paid by the caster. Passives that react
   to allies (`[Ally On Hit]` and friends) are the next patch.
   See `docs/ENGINEERING_NOTES.md#ally-support`.
+- **Ally reaction timings** (second half of `[Ally ...]`): put these on a
+  passive and they fire when one of the owner's allies (same side, not the
+  owner) does or suffers something: `[Ally On Hit]`, `[Ally On Crit]`,
+  `[Ally On Kill]` (the ally defeated an enemy), `[Ally Is Hit]`,
+  `[Ally On Stagger]` (the ally was newly Staggered), `[Ally Turn Start]` and
+  `[Ally Combat Start]` (once per living ally). Effects land on the owner by
+  default. `to the ally` puts a Heal, Gain, Gain Sanity or Remove on the ally
+  who triggered it, and an Inflict goes to the enemy involved. Examples:
+  `[Ally On Hit] Gain +1 Charge Count`, `[Ally Is Hit] Heal 4 HP to the ally`,
+  `[Ally On Kill] Gain +2 Haste Count`. They fire once per landed hit, not per
+  coin, and not for an evaded or zero-damage hit. Attack Weight splash hits do
+  not fire them yet. See `docs/ENGINEERING_NOTES.md#ally-reactions`.
 - Still missing: Offense/Defense Level (and Level Up/Down), Clash Power
   Down, Plus/Minus Coin Drop/Boost, HP Healing Down, Curse.
 - Charge has no consumption payoff (see above) — smaller, but still open.
@@ -567,9 +579,9 @@ Durante, and Backups, none of those fit what this bot is for.
 
 1. **`[Failed ...]` trigger prefix**: fires when a conditional (e.g. a Kill)
    would have activated but didn't. Not present.
-2. **`[Ally ...]` trigger prefix**: support skills and `to the ally` effects
-   are built. Still to do: ally reaction timings (`[Ally On Hit]`, `[Ally On
-   Kill]`, an ally being hit or Staggered, `[Ally Turn Start]`).
+2. **`[Ally ...]` trigger prefix**: done (support skills, `to the ally`
+   effects and ally reaction timings). Still open: reactions to Attack Weight
+   splash hits.
 3. **More non-Sin statuses**: Offense/Defense Level first (several statuses
    depend on it), then Clash Power, Coin Drop/Boost and the matching buffs.
    Bind, Fragile, type Fragility, Power Down, Damage Down, Paralyze, Poison

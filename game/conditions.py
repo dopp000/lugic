@@ -91,6 +91,19 @@ SKILL_LEVEL_TIMINGS = {
     # skill author's own condition (e.g. "[Tremor Burst] If the target
     # has any Tremor,") same as any other timing.
     "tremor burst": "tremor_burst",
+    # [Ally ...] reaction timings. They sit on the OWNER's skills (swept
+    # like [Turn Start]) and fire when an ALLY of the owner (same side,
+    # not the owner) does or suffers the named thing. caster is the
+    # owner, ally on the context is the acting ally, target is the enemy
+    # involved (if any). 'to the ally' on an effect puts it on that ally.
+    # See docs/ENGINEERING_NOTES.md#ally-reactions.
+    "ally on hit": "ally_on_hit",
+    "ally on crit": "ally_on_crit",
+    "ally on kill": "ally_on_kill",
+    "ally is hit": "ally_is_hit",
+    "ally on stagger": "ally_on_stagger",
+    "ally turn start": "ally_turn_start",
+    "ally combat start": "ally_combat_start",
 }
 
 # Per-coin timing tags: need a :CoinN: prefix on the line, fire once per

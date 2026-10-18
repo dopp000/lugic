@@ -1638,6 +1638,30 @@ Hooks:
 - Only `[On Use]` fires on a support skill for now. Coin and other skill
   timings do not, since there is no attack.
 
+<a id="ally-reactions"></a>
+### Ally reaction timings
+
+- Timings `ally_on_hit`, `ally_on_crit`, `ally_on_kill`, `ally_is_hit`,
+  `ally_on_stagger`, `ally_turn_start`, `ally_combat_start` live in
+  `SKILL_LEVEL_TIMINGS` (no coin prefix). They sit on the OWNER's skills and
+  are swept, like `[Turn Start]`, across every skill of every living ally of
+  the acting fighter.
+- Context: `caster` is the owner, `ally` is the acting ally, `target` is the
+  enemy involved (the victim for hit/crit/kill, the attacker for is-hit and
+  stagger, none for the turn/combat start ones). `apply_trigger_effects`
+  gets `target=other, ally=actor`, so Inflict hits the enemy and `to the ally`
+  hits the actor.
+- `fire_ally_reactions(battle, actor, event, other)` does one sweep.
+  `fire_hit_ally_reactions` is called from the two real hit sites in
+  `combat()` (the Clash winner's hit and the unopposed hit, which also covers
+  Counter retaliation) and fires the right set for one landed hit. Nothing
+  fires for an evaded or zero-damage hit. On Stagger needs the target's
+  Stagger tier to have gone from 0 to above 0 on this very hit
+  (`*_stagger_before` is captured before `check_stagger`).
+- Per hit, not per coin. Attack Weight splash hits and Burn/Poison damage do
+  not fire them yet. `_living_allies` excludes the fighter itself, the downed
+  and the eliminated.
+
 <a id="healing"></a>
 ### Healing
 

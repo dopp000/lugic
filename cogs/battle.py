@@ -1060,6 +1060,58 @@ def fire_passive_triggers(battle: Battle) -> list[str]:
             for timing in timings:
                 _, post_hit = resolve_triggers(skill, context, timing)
                 log.extend(apply_trigger_effects(post_hit, fighter, None))
+
+    # [Ally Turn Start] / [Ally Combat Start]: once per living ally of the
+    # owner, with that ally as the context's ally.
+    ally_timings = ["ally_turn_start"] + ([] if battle.started else ["ally_combat_start"])
+    for owner in battle.fighters:
+        if not owner.is_alive():
+            continue
+        for ally_fighter in _living_allies(battle, owner):
+            for skill in owner.skills.values():
+                context = TriggerContext(caster=owner, target=None, battle=battle, ally=ally_fighter)
+                for timing in ally_timings:
+                    _, post_hit = resolve_triggers(skill, context, timing)
+                    log.extend(apply_trigger_effects(post_hit, owner, None, ally=ally_fighter))
+    return log
+
+
+def _living_allies(battle: Battle, fighter: Fighter) -> list[Fighter]:
+    """Everyone on `fighter`'s side other than `fighter`, still in the fight."""
+    return [
+        f for f in battle.fighters
+        if f is not fighter and f.side == fighter.side and f.is_alive() and not f.eliminated
+    ]
+
+
+def fire_ally_reactions(
+    battle: Battle, actor: Fighter, event: str, other: Fighter | None = None,
+) -> list[str]:
+    """Fires one [Ally ...] timing (`event`, e.g. 'ally_on_hit') for every living ally of `actor`, sweeping each of THEIR skills. `actor` is the fighter the event happened to or was done by, `other` is the enemy involved. See docs/ENGINEERING_NOTES.md#ally-reactions."""
+    log: list[str] = []
+    for owner in _living_allies(battle, actor):
+        context = TriggerContext(caster=owner, target=other, battle=battle, ally=actor)
+        for skill in owner.skills.values():
+            _, post_hit = resolve_triggers(skill, context, event)
+            log.extend(apply_trigger_effects(post_hit, owner, other, ally=actor))
+    return log
+
+
+def fire_hit_ally_reactions(
+    battle: Battle, attacker: Fighter, target: Fighter, damage: int, was_crit: bool,
+    stagger_before: int, evaded: bool,
+) -> list[str]:
+    """All the [Ally ...] reactions to one landed attack: the attacker's allies hear On Hit / On Crit / On Kill, the target's allies hear Is Hit / On Stagger (only if this hit newly Staggered them). Nothing fires for an evaded or zero-damage hit."""
+    if evaded or damage <= 0:
+        return []
+    log = fire_ally_reactions(battle, attacker, "ally_on_hit", target)
+    if was_crit:
+        log += fire_ally_reactions(battle, attacker, "ally_on_crit", target)
+    if not target.is_alive():
+        log += fire_ally_reactions(battle, attacker, "ally_on_kill", target)
+    log += fire_ally_reactions(battle, target, "ally_is_hit", attacker)
+    if stagger_before == 0 and target.current_stagger_tier > 0:
+        log += fire_ally_reactions(battle, target, "ally_on_stagger", attacker)
     return log
 
 
@@ -2691,6 +2743,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                     total_damage = reduced
 
             loser.take_damage(total_damage)
+            loser_stagger_before = loser.current_stagger_tier
             loser.check_stagger(battle.round_number)
             stagger_post_hit: list[Trigger] = []
             if loser.current_stagger_tier > 0:
@@ -2708,6 +2761,9 @@ class BattleCog(commands.GroupCog, name="battle"):
             trigger_log += kill_log + tremor_log + bleed_log
             trigger_log += apply_trigger_effects(
                 clash_lose_post_hit + hit_after_clash_lose_post_hit + turn_end_post_hit_loser, loser, winner
+            )
+            trigger_log += fire_hit_ally_reactions(
+                battle, winner, loser, total_damage, winner_was_crit, loser_stagger_before, evaded
             )
             # [On Evade] is the LOSER's own reaction -- they're the one who just got hit by the winner's final toss, see fire_evade_triggers for why... See docs/ENGINEERING_NOTES.md#battle-comment-1904.
             if evaded:
@@ -2957,6 +3013,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                         )
                         status_log += hit_log
                     target.take_damage(total_damage)
+                    target_stagger_before = target.current_stagger_tier
                     target.check_stagger(battle.round_number)
                     stagger_post_hit: list[Trigger] = []
                     if target.current_stagger_tier > 0:
@@ -2982,6 +3039,10 @@ class BattleCog(commands.GroupCog, name="battle"):
                         # [On Evade] is the TARGET's own reaction to this unopposed attack -- doesn't apply to a Counter retaliation, which explicitly bypasses it via skip_evade above. See docs/ENGINEERING_NOTES.md#battle-comment-2075.
                         if evaded:
                             trigger_log += fire_evade_triggers(target, fighter, battle)
+                    trigger_log += fire_hit_ally_reactions(
+                        battle, fighter, target, total_damage, fighter_was_crit,
+                        target_stagger_before, evaded,
+                    )
 
                 # [Attack Weight]: splash the ALREADY-COMPUTED hit onto
                 # any extra enemy slots this skill also reaches (picked
