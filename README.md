@@ -350,8 +350,8 @@ logic. Part names and HP show under the fighter in the battle embed. See
   who triggered it, and an Inflict goes to the enemy involved. Examples:
   `[Ally On Hit] Gain +1 Charge Count`, `[Ally Is Hit] Heal 4 HP to the ally`,
   `[Ally On Kill] Gain +2 Haste Count`. They fire once per landed hit, not per
-  coin, and not for an evaded or zero-damage hit. Attack Weight splash hits do
-  not fire them yet. See `docs/ENGINEERING_NOTES.md#ally-reactions`.
+  coin, and not for an evaded or zero-damage hit. Attack Weight splash hits fire
+  them too, once per splash target. See `docs/ENGINEERING_NOTES.md#ally-reactions`.
 - Still missing: Offense/Defense Level (and Level Up/Down), Clash Power
   Down, Plus/Minus Coin Drop/Boost, HP Healing Down, Curse.
 - Charge has no consumption payoff (see above) — smaller, but still open.

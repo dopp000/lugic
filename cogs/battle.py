@@ -3424,6 +3424,7 @@ class BattleCog(commands.GroupCog, name="battle"):
 
                         splash_shield_absorbed, splash_hp_lost = splash_fighter.take_damage(splash_total)
                         splash_log += splash_fighter.hit_part(splash_slot, splash_total)
+                        splash_stagger_before = splash_fighter.current_stagger_tier
                         splash_fighter.check_stagger(battle.round_number)
                         splash_breakdown = (
                             f" ({splash_shield_absorbed} absorbed by {status_emoji('shield')} Shield, "
@@ -3455,6 +3456,18 @@ class BattleCog(commands.GroupCog, name="battle"):
                             splash_log.extend(
                                 apply_trigger_effects(splash_stagger_post_hit, fighter, splash_fighter)
                             )
+
+                        # [Ally ...] reactions hear a splash hit the same as a
+                        # primary one: its attacker's allies get On Hit / On
+                        # Crit / On Kill, the splash target's allies get Is Hit
+                        # / On Stagger (evaded or zero-damage splashes stay silent).
+                        splash_log.extend(
+                            fire_hit_ally_reactions(
+                                battle, fighter, splash_fighter, splash_total,
+                                any(c.is_crit for c in result.coin_results),
+                                splash_stagger_before, False,
+                            )
+                        )
 
                 # ---- Animate: no attrition rounds for an unopposed attack, straight to the decisive toss ----
                 final_header = live_header

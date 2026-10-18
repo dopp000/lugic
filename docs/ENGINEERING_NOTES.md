@@ -1658,8 +1658,9 @@ Hooks:
   fires for an evaded or zero-damage hit. On Stagger needs the target's
   Stagger tier to have gone from 0 to above 0 on this very hit
   (`*_stagger_before` is captured before `check_stagger`).
-- Per hit, not per coin. Attack Weight splash hits and Burn/Poison damage do
-  not fire them yet. `_living_allies` excludes the fighter itself, the downed
+- Per hit, not per coin. Attack Weight splash hits fire them too (in the splash
+  loop, after the splash target's Stagger check, through the same
+  `fire_hit_ally_reactions`). Burn/Poison damage does not fire them yet. `_living_allies` excludes the fighter itself, the downed
   and the eliminated.
 
 <a id="healing"></a>
