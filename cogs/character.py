@@ -20,7 +20,10 @@ from game.build_points import (
     DEFENSE_ARCHETYPES, OFFDEF_PERCENT_PER_STEP, PP_MAX_GRANT, passive_points_spent, status_pp_cost, RANKED_STATUSES, defense_label, STARTING_BP, skill_points_spent,
 )
 from game.resistances import ALL_RESISTANCE_TYPES, DAMAGE_TYPES, parse_resistance_multiplier
-from game.emojis import status_emoji, damage_type_emoji, register_custom_status_emoji
+from game.emojis import status_emoji, damage_type_emoji, register_custom_status_emoji, stat_emoji
+from game.colors import STATUS_COLORS
+from game.display import budget_bar
+from game.battle import DEFAULT_STAGGER_THRESHOLDS
 from game.conditions import MAX_TAG_LENGTH, MAX_TAGS, norm_tag
 from game.passives import MAX_PASSIVES, followup_problem, parse_passive, tag_warnings
 from game.build_requests import known_tags
@@ -52,43 +55,81 @@ async def resolve_owner_name(guild: discord.Guild | None, owner_id: int) -> str:
     return member.display_name
 
 
+def _resistance_line(key: str, value: float) -> str:
+    icon = damage_type_emoji(key) if key in DAMAGE_TYPES else status_emoji(key)
+    arrow = " ▼" if value < 1 else " ▲" if value > 1 else ""
+    return f"{icon} {key.capitalize()} {value}x{arrow}"
+
+
+def _stagger_line(character: Character) -> str:
+    thresholds = character.stagger_thresholds or DEFAULT_STAGGER_THRESHOLDS
+    enabled = character.stagger_tiers_enabled or [True, True, True]
+    parts = [f"{round(t * 100)}%" if on else "~~off~~" for t, on in zip(thresholds, enabled)]
+    return " / ".join(parts)
+
+
 def build_character_embed(character: Character, owner_name: str) -> discord.Embed:
-    embed = discord.Embed(title=character.name)
+    report = check_build(character)
+    level = character_level(character)
+
+    # The embed takes the color of the highest status rank the character owns, so a Burn
+    # build is red and a Sinking build is teal. No ranks means the usual blue.
+    ranked = [(k, v) for k, v in character.status_ranks.items() if v]
+    top_rank = max(ranked, key=lambda kv: kv[1])[0] if ranked else None
+    color = STATUS_COLORS.get(top_rank, 0x5865F2) if top_rank else 0x5865F2
+
+    embed = discord.Embed(title=character.name, color=color)
     if character.avatar_url:
         embed.set_thumbnail(url=character.avatar_url)
-    embed.add_field(name="HP", value=f"{character.hp}/{character.max_hp}", inline=True)
+
+    # Top line: level and how much of each pool is used, with a bar for Build Points.
+    pools = [f"**Level {level}**", f"BP {report.spent}/{report.total}"]
+    if character.pp_total or character.passives or character.custom_statuses:
+        pools.append(f"PP {passive_points_spent(character)}/{character.pp_total}")
+    if character.sp_total or skill_points_spent(character):
+        pools.append(f"SP {skill_points_spent(character)}/{character.sp_total}")
+    description = "  ·  ".join(pools) + "\n" + budget_bar(report.spent, report.total)
+    if character.bp_exempt:
+        description += "\n-# Exempt from Build Point checks"
+    elif not report.ok:
+        description += f"\n⚠ {len(report.all_problems())} thing(s) to fix, see /character bp"
+    embed.description = description
 
     speed_display = (
         f"{character.speed_min}-{character.speed_max}"
         if character.speed_min is not None
         else str(character.speed)
     )
-    embed.add_field(name="Speed", value=speed_display, inline=True)
+    embed.add_field(name=f"{stat_emoji('hp')} HP", value=f"{character.hp}/{character.max_hp}", inline=True)
+    embed.add_field(name=f"{stat_emoji('speed')} Speed", value=speed_display, inline=True)
     embed.add_field(name="Power", value=str(character.power), inline=True)
 
-    resist_lines = []
-    for k, v in character.resistances.items():
-        icon = damage_type_emoji(k) if k in DAMAGE_TYPES else status_emoji(k)
-        resist_lines.append(f"{icon} {k.capitalize()}: {v}x")
-    embed.add_field(name="Resistances", value="\n".join(resist_lines), inline=False)
+    embed.add_field(
+        name="Offense Level",
+        value=f"{character.offense_level} (+{character.offense_level * OFFDEF_PERCENT_PER_STEP}% damage)" if character.offense_level else "0",
+        inline=True,
+    )
+    embed.add_field(
+        name="Defense Level",
+        value=f"{character.defense_level} (-{character.defense_level * OFFDEF_PERCENT_PER_STEP}% damage taken)" if character.defense_level else "0",
+        inline=True,
+    )
+    embed.add_field(name="Stagger", value=_stagger_line(character), inline=True)
 
-    report = check_build(character)
-    level = character_level(character)
-    build_line = f"Level {level}, {report.spent}/{report.total} BP spent"
+    damage_lines = [_resistance_line(k, v) for k, v in character.resistances.items() if k in DAMAGE_TYPES]
+    status_lines = [_resistance_line(k, v) for k, v in character.resistances.items() if k not in DAMAGE_TYPES]
+    if damage_lines:
+        embed.add_field(name="Damage resistance", value="\n".join(damage_lines), inline=True)
+    if status_lines:
+        embed.add_field(name="Status resistance", value="\n".join(status_lines), inline=True)
+
+    kit = []
     if character.defense_archetypes:
-        build_line += "\nDefense: " + ", ".join(defense_label(k) for k in character.defense_archetypes)
-    if any(character.status_ranks.values()):
-        build_line += "\nStatus ranks: " + ", ".join(f"{k.capitalize()} {v}" for k, v in character.status_ranks.items() if v)
-    if character.offense_level or character.defense_level:
-        build_line += (
-            f"\nOffense Level {character.offense_level} (+{character.offense_level * OFFDEF_PERCENT_PER_STEP}% damage), "
-            f"Defense Level {character.defense_level} (-{character.defense_level * OFFDEF_PERCENT_PER_STEP}% damage taken)"
-        )
-    if character.bp_exempt:
-        build_line += " (exempt from Build Point checks)"
-    elif not report.ok:
-        build_line += f"\n⚠ {len(report.all_problems())} thing(s) to fix, see /character bp"
-    embed.add_field(name="Build", value=build_line, inline=False)
+        kit.append("Defense: " + ", ".join(defense_label(k) for k in character.defense_archetypes))
+    if ranked:
+        kit.append("Ranks: " + ", ".join(f"{status_emoji(k)} {k.capitalize()} {v}" for k, v in ranked))
+    if kit:
+        embed.add_field(name="Kit", value="\n".join(kit), inline=True)
 
     if character.passives:
         embed.add_field(

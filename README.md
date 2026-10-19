@@ -124,7 +124,7 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   fighter, picking the highest-Speed entry if more than one is available
   (tie-break: higher Speed wins). Required extracting the whole Clash
   resolution body out of the animation loop's shared closures
-  (`render`/`animate_faces`/`animate_power`/`animate_damage`) into its own
+  (`render`/`animate_faces`/`animate_damage`/`animate_attrition_round`) into its own
   callable, `resolve_clash_unit(entry_a, entry_b)`, so it can be invoked a
   second time, mid-loop, for a redirected target without duplicating that
   block — the surgery earlier notes on this repo had flagged as too risky
@@ -182,8 +182,8 @@ custom ruleset. Owner-operated project, developed in a GitHub Codespace.
   winner's final toss (pulled from `apply_incoming_hit`'s actual log, not an
   approximation). Each unit locks a permanent one-line summary as it
   finishes. `CombatLogView`'s **Full Log** button shows the full breakdown as
-  ephemeral embeds, chunked if long. Tuning: `COIN_FACE_DELAY` /
-  `COIN_DETAIL_DELAY` near the top of `combat()`.
+  ephemeral embeds, chunked if long. Tuning: `MIN_EDIT_GAP` near the top of
+  `combat()` (the least time between two edits of the combat message).
 - **Proelium Fatale GIF**: any `fatal`-type battle shows the Proelium Fatale
   GIF (`BATTLE_TYPES["fatal"]["image"]`), on creation and every embed sync.
 - **Elimination**: 0 HP sets `Fighter.eliminated`, a permanent one-way flag
@@ -741,8 +741,9 @@ blocked, so it doesn't yet let a skill hit allies.
   declared. `On Evade` works the same way (`fire_evade_triggers`). `Before
   Getting Hit` is different: fires only on the one `[Counter]` skill that
   actually redirected and landed, not a sweep. Deliberate, not a gap.
-- Animated combat reveal pacing (`COIN_FACE_DELAY`/`COIN_DETAIL_DELAY`) is
-  untuned beyond "verified it works"; a busy round can run long.
+- Combat reveal pacing is set by `MIN_EDIT_GAP` (Discord allows about 5 edits
+  per 5 seconds on one message). It was checked in a mocked run, not on a real
+  server, so the feel is untuned; a busy round still takes a while.
 - A Staggered fighter cannot declare (`/battle declare` blocks them), and
   `/battle combat` no longer waits for them (`Fighter.can_act` is false for a
   downed, Staggered or Immobilized fighter, and `Battle.all_declared` skips

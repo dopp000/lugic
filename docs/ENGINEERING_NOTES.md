@@ -2388,3 +2388,14 @@ a new status gets an icon.
   It never blocks: it is added to the `/request passive` confirmation, the skill form preview and the `/charadmin passive`
   reply. NPC fighters have no tags, so a line meant for them will warn.
 - `/request mine` and `/request list` take an optional character name, and `list` can include closed requests.
+
+## Animation and look (patch 18)
+
+The combat message used to be edited about 12 times in 5 seconds (64 edits for one 3-coin clash), well over Discord's limit of roughly 5 edits per 5 seconds on one message, so a real server would throttle it. Now:
+
+- `render()` in `combat()` waits until `MIN_EDIT_GAP` (1.1 seconds) has passed since the last edit. This is the only pacing rule; the older `asyncio.sleep` calls next to it are shorter than the gap and no longer matter.
+- An attrition round is three frames, both sides together: coins rolling, faces, then Power per coin plus who loses a coin (`animate_attrition_round`). The final decisive toss is rolling, faces, then every coin's damage lines in one frame (`animate_faces`, `animate_damage`). `animate_power` and the per-coin reveal are gone. A 3-coin clash went from 64 edits to 18, a 4-fighter round from 211 to 67.
+- Combat embeds take the battle type color (Spar green, Standard yellow, Fatal red). The results embed turns dark red (0x992D22) when someone was eliminated that phase.
+- `game/display.py` draws the bars: `hp_bar` (green above half, yellow above a quarter, red below), `sanity_bar` (-45 to 45, orange from -30 down) and `budget_bar` (red when a pool is overspent). The battle display shows HP and Sanity bars and a Staggered tag, with a blue or orange square on the side names. Unopposed, counter and clash summary lines end with a small HP bar line for the target.
+- `build_character_embed` was rebuilt: level and pools with a BP bar on top, HP/Speed/Power, Offense/Defense Level and Stagger thresholds in rows, resistances split into damage and status (with arrows for resist and weak), and a Kit field. The embed color follows the character's highest status rank (`game/colors.py`).
+- Not checked on a real Discord client: wide rows of emoji squares may wrap on a narrow phone screen. `SEGMENTS` in `game/display.py` sets the bar width.

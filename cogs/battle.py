@@ -6,6 +6,7 @@ import difflib
 import itertools
 import random
 import re
+import time
 
 import discord
 from discord.ext import commands
@@ -28,6 +29,7 @@ from game.build_points import (
     skill_archetype, skill_defense_problem, nonkeyword_grants,
 )
 from game.passives import PASSIVE_ONLY_TIMINGS, tag_warnings
+from game.display import hp_bar, sanity_bar
 from game.build_requests import known_tags
 from game.npc_tiers import NPC_TIERS, describe as describe_tier
 from game.statuses import (
@@ -984,11 +986,14 @@ def build_battle_embed(battle: Battle) -> discord.Embed:
                 ]
                 parts_line = "\n-# Parts: " + ", ".join(bits)
 
+            stagger_tag = f" {stagger_tier_emoji(f.current_stagger_tier)} Staggered" if f.current_stagger_tier else ""
             lines.append(
-                f"**{f.name}**{down_tag} ({stat_emoji('hp')} {f.hp}/{f.max_hp}, "
-                f"{stat_emoji('sanity')} {f.sanity}){tag}\n{slot_line}{parts_line}{hint_line}"
+                f"**{f.name}**{down_tag}{tag}{stagger_tag}\n"
+                f"{stat_emoji('hp')} {hp_bar(f.hp, f.max_hp)} {f.hp}/{f.max_hp}\n"
+                f"{stat_emoji('sanity')} {sanity_bar(f.sanity)} {f.sanity}\n"
+                f"{slot_line}{parts_line}{hint_line}"
             )
-        embed.add_field(name=f"Side {side_name}", value="\n\n".join(lines), inline=False)
+        embed.add_field(name=f"{'🟦' if side_name == 'A' else '🟧'} Side {side_name}", value="\n\n".join(lines), inline=False)
 
     # Eliminated fighters are pulled out of their side's normal roster
     # entirely and listed here instead, across both sides combined --
@@ -3334,12 +3339,17 @@ class BattleCog(commands.GroupCog, name="battle"):
             locked_lines.append("**Passive Triggers**\n" + "\n".join(passive_log))
 
         combat_title = f"Combat Phase, Round {battle.round_number}"
+        # Spar is green, Standard yellow, Fatal red (BATTLE_TYPES), the same as the battle display.
+        combat_color = BATTLE_TYPES.get(battle.battle_type, BATTLE_TYPES["spar"])["color"]
         initial_embed = discord.Embed(
             title=combat_title,
             description="\n\n".join(locked_lines) or "Starting Combat Phase...",
-            color=0x5865F2,
+            color=combat_color,
         )
         combat_message = await interaction.followup.send(embed=initial_embed, wait=True)
+        # Discord allows about 5 edits per 5 seconds on one message, so render() never edits faster than this.
+        MIN_EDIT_GAP = 1.1
+        last_edit_at = [time.monotonic()]
 
         async def render(live_block: str | None):
             """Re-renders the ONE shared combat_message: every locked (finished) line, plus whatever the current unit's live animation looks like right... See docs/ENGINEERING_NOTES.md#battle-battlecog-combat-render for the full rationale."""
@@ -3352,45 +3362,52 @@ class BattleCog(commands.GroupCog, name="battle"):
             description = "\n\n".join(parts) if parts else "Nothing declared this round."
             if len(description) > 4000:
                 description = description[-4000:]
-            embed = discord.Embed(title=combat_title, description=description, color=0x5865F2)
+            embed = discord.Embed(title=combat_title, description=description, color=combat_color)
+            wait = MIN_EDIT_GAP - (time.monotonic() - last_edit_at[0])
+            if wait > 0:
+                await asyncio.sleep(wait)
             await combat_message.edit(embed=embed)
+            last_edit_at[0] = time.monotonic()
 
         # Coin-by-coin animation is pure PRESENTATION over results that are already fully computed the instant resolve_skill/... See docs/ENGINEERING_NOTES.md#battle-comment-1732.
-        COIN_FACE_DELAY = 0.55
-        COIN_DETAIL_DELAY = 0.4
+        def rolling_row(n: int) -> str:
+            return "  " + " ".join([coin_roll_emoji()] * n)
+
+        def face_row(coin_results: list) -> str:
+            return "  " + " ".join(coin_emoji("heads") if c.heads else coin_emoji("tails") for c in coin_results)
+
+        def power_rows(coin_results: list) -> str:
+            return "\n".join(f"  Coin {i}: Power {c.power_after}" for i, c in enumerate(coin_results, start=1))
 
         async def animate_faces(live_header: str, coin_results: list) -> str:
-            """Phase one: reveals each coin's face one at a time, rolling icon first, mirroring a real Limbus clash flipping its coins in sequence. See docs/ENGINEERING_NOTES.md#battle-battlecog-combat-animate-faces for the full rationale."""
-            n = len(coin_results)
-            revealed: list[str] = []
-            for c in coin_results:
-                pending = revealed + [coin_roll_emoji()] * (n - len(revealed))
-                await render(live_header + "\n  " + " ".join(pending))
-                await asyncio.sleep(COIN_FACE_DELAY)
-                revealed.append(coin_emoji("heads") if c.heads else coin_emoji("tails"))
-            face_line = "  " + " ".join(revealed)
+            """Two frames: every coin rolling, then every face showing. Returns the face row."""
+            await render(live_header + "\n" + rolling_row(len(coin_results)))
+            face_line = face_row(coin_results)
             await render(live_header + "\n" + face_line)
-            await asyncio.sleep(0.35)
             return face_line
 
-        async def animate_power(live_header: str, face_line: str, coin_results: list) -> str:
-            """Phase two for an ATTRITION ROUND toss: once every coin's face is showing, reveal each coin's running Power one at a time (this is a... See docs/ENGINEERING_NOTES.md#battle-battlecog-combat-animate-power for the full rationale."""
-            lines = []
-            for i, c in enumerate(coin_results, start=1):
-                lines.append(f"  Coin {i}: Power {c.power_after}")
-                await render(live_header + "\n" + face_line + "\n" + "\n".join(lines))
-                await asyncio.sleep(COIN_DETAIL_DELAY)
-            return "\n".join(lines)
-
         async def animate_damage(live_header: str, face_line: str, coin_results: list, hit_log: list[str]) -> str:
-            """Phase two for the FINAL DECISIVE toss -- "once all the coins break, it goes through the animation again for the damage output one by one... See docs/ENGINEERING_NOTES.md#battle-battlecog-combat-animate-damage for the full rationale."""
+            """One frame with the damage lines of every coin, for the final decisive toss. Returns those lines."""
             lines = []
             for i in range(1, len(coin_results) + 1):
                 coin_lines = [l for l in hit_log if l.startswith(f"Coin {i}:")]
                 lines.extend(coin_lines if coin_lines else [f"Coin {i}: no additional effect"])
-                await render(live_header + "\n" + face_line + "\n" + "\n".join(lines))
-                await asyncio.sleep(COIN_DETAIL_DELAY)
-            return "\n".join(lines)
+            text = "\n".join(lines)
+            await render(live_header + "\n" + face_line + "\n" + text)
+            return text
+
+        async def animate_attrition_round(round_header: str, name_a: str, name_b: str, r, result_line: str) -> str:
+            """Three frames for one attrition round, both sides together: coins rolling, faces, then Power per coin and who loses a coin."""
+            coins_a, coins_b = r.result_a.coin_results, r.result_b.coin_results
+            await render(f"{round_header}\n{name_a}:\n{rolling_row(len(coins_a))}\n{name_b}:\n{rolling_row(len(coins_b))}")
+            faces_a, faces_b = face_row(coins_a), face_row(coins_b)
+            await render(f"{round_header}\n{name_a}:\n{faces_a}\n{name_b}:\n{faces_b}")
+            block = (
+                f"{round_header}\n{name_a}:\n{faces_a}\n{power_rows(coins_a)}"
+                f"\n{name_b}:\n{faces_b}\n{power_rows(coins_b)}\n{result_line}"
+            )
+            await render(block)
+            return block
 
         summary_lines: list[str] = []
         full_log_entries: list[tuple[str, str]] = []
@@ -3562,13 +3579,6 @@ class BattleCog(commands.GroupCog, name="battle"):
                     + f"vs {fighter_b.name} ({r.coins_b_before} coins)"
                 )
 
-                a_face = await animate_faces(f"{round_header}\n{fighter_a.name}:", r.result_a.coin_results)
-                a_power = await animate_power(f"{round_header}\n{fighter_a.name}:", a_face, r.result_a.coin_results)
-                a_block = f"{fighter_a.name}:\n{a_face}\n{a_power}"
-
-                b_face = await animate_faces(f"{round_header}\n{a_block}\n{fighter_b.name}:", r.result_b.coin_results)
-                b_power = await animate_power(f"{round_header}\n{a_block}\n{fighter_b.name}:", b_face, r.result_b.coin_results)
-
                 if r.loser == "a":
                     result_line = f"{fighter_a.name} loses a coin"
                 elif r.loser == "b":
@@ -3576,8 +3586,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                 else:
                     result_line = "Tie, nobody loses a coin"
 
-                full_round_block = f"{round_header}\n{a_block}\n{fighter_b.name}:\n{b_face}\n{b_power}\n{result_line}"
-                await render(full_round_block)
+                await animate_attrition_round(round_header, fighter_a.name, fighter_b.name, r, result_line)
                 await asyncio.sleep(0.6)
 
                 round_summaries.append(
@@ -3639,8 +3648,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                 field_value += "\n" + "\n".join(trigger_log)
 
             summary_line = (
-                f"⚔️ **{winner.name}** beats **{loser.name}** for {total_damage} damage. "
-                f"({loser.name}: {loser.hp}/{loser.max_hp} HP)"
+                f"⚔️ **{winner.name}** beats **{loser.name}** for {total_damage} damage.\n"
+                f"-# {loser.name}: {hp_bar(loser.hp, loser.max_hp)} {loser.hp}/{loser.max_hp} HP"
             )
             summary_lines.append(summary_line)
             full_log_entries.append((f"{fighter_a.name} vs {fighter_b.name}", field_value))
@@ -4181,13 +4190,14 @@ class BattleCog(commands.GroupCog, name="battle"):
                 elif is_counter:
                     summary_line = (
                         f"{status_emoji('counter')} **{fighter.name}**'s Counter redirects and strikes **{target.name}** back "
-                        f"for {total_damage} damage. ({target.name}: {target.hp}/{target.max_hp} HP)"
+                        f"for {total_damage} damage.\n"
+                        f"-# {target.name}: {hp_bar(target.hp, target.max_hp)} {target.hp}/{target.max_hp} HP"
                     )
                     full_log_entries.append((f"{fighter.name}'s Counter -> {target.name}", field_value))
                 else:
                     summary_line = (
-                        f"🗡️ **{fighter.name}** hits **{target.name}** (unopposed) for {total_damage} damage. "
-                        f"({target.name}: {target.hp}/{target.max_hp} HP)"
+                        f"🗡️ **{fighter.name}** hits **{target.name}** (unopposed) for {total_damage} damage.\n"
+                        f"-# {target.name}: {hp_bar(target.hp, target.max_hp)} {target.hp}/{target.max_hp} HP"
                     )
                     if volley_note:
                         summary_line += "\n" + volley_note + "".join("\n" + v for v in volley_summary)
@@ -4260,7 +4270,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         final_embed = discord.Embed(
             title=f"{combat_title}: Results",
             description=final_description or "Nothing declared this round.",
-            color=0x5865F2,
+            color=0x992D22 if newly_eliminated else combat_color,
         )
         if footer_note:
             final_embed.set_footer(text=footer_note)
