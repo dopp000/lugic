@@ -1,6 +1,6 @@
 """
 Player-facing reference content for /help (cogs/help.py). Plain text and
-structure only, no Discord imports -- cogs/help.py turns this into
+structure only, no Discord imports. cogs/help.py turns this into
 embeds and buttons.
 
 Deliberately separate from README.md: the README is written for whoever
@@ -28,23 +28,22 @@ SKILL_TAGS: list[HelpEntry] = [
     HelpEntry(
         key="target_fixed",
         title="Target Fixed",
-        summary="Locks this Clash slot -- no ally can take it over.",
+        summary="No ally can take over this Clash slot.",
         body=(
-            "Normally, if a faster ally's attack is heading for the same enemy slot "
-            "you're already Clashing, they can take your spot over (Clash-steal). "
-            "**Target Fixed** turns that off for this skill: your Clash against that "
-            "slot can't be taken over by an ally, no matter how much faster they are."
+            "When a faster ally aims at the enemy slot you are already Clashing, they can "
+            "take your place (Clash-steal). **Target Fixed** turns that off for this "
+            "skill. Your Clash against that slot cannot be taken over by an ally, however "
+            "fast they are."
         ),
     ),
     HelpEntry(
         key="unclashable",
         title="Unclashable",
-        summary="This attack can never be Clashed -- it always lands unopposed.",
+        summary="This attack can never be Clashed. It lands unopposed.",
         body=(
-            "Even if an enemy declares a matching attack back at you, an "
-            "**Unclashable** skill skips the Clash entirely and resolves as a "
-            "normal unopposed hit. It never turns into a fight of coin tosses, no "
-            "matter what the enemy does."
+            "When an enemy declares a matching attack back at you, an **Unclashable** "
+            "skill skips the Clash and resolves as a normal unopposed hit. It can never "
+            "turn into a fight of coin tosses."
         ),
     ),
     HelpEntry(
@@ -92,12 +91,13 @@ SKILL_TAGS: list[HelpEntry] = [
     HelpEntry(
         key="indiscriminate",
         title="Indiscriminate",
-        summary="Meant to let a skill hit allies too -- not live yet.",
+        summary="Hits a random enemy slot instead of the one you pick.",
         body=(
-            "This tag is recognized and saved on a skill, but it doesn't do anything "
-            "yet: declaring an attack still blocks targeting your own side no matter "
-            "what. Tagging a skill with it now just means it's ready for whenever "
-            "that restriction gets lifted."
+            "When you declare an **Indiscriminate** skill, the bot picks the enemy slot "
+            "at random and ignores the slot you typed. The declare message tells you "
+            "which slot it picked.\n"
+            "As a follow-up attack, it picks another enemy if the main one is already "
+            "down."
         ),
     ),
     HelpEntry(
@@ -119,10 +119,10 @@ SKILL_TAGS: list[HelpEntry] = [
         title="Counter",
         summary="Strikes back at a faster unopposed attack, once per round.",
         body=(
-            "**Counter** isn't tied to one slot -- declare it anywhere and it "
-            "watches every unopposed attack aimed at you. If your Counter skill's "
-            "Speed beats the attacker's, you fully redirect the hit and strike back "
-            "instead, skipping their Evade entirely. Only fires once per round."
+            "**Counter** is not tied to one slot. Declare it anywhere and it watches "
+            "every unopposed attack aimed at you. When your Counter skill's Speed beats "
+            "the attacker's, you redirect the hit and strike back instead, and their "
+            "Evade is skipped. It fires once per round."
         ),
     ),
     HelpEntry(
@@ -130,35 +130,34 @@ SKILL_TAGS: list[HelpEntry] = [
         title="Clashable Counter",
         summary="Like Counter, but it can also be Clashed back.",
         body=(
-            "Works like Counter, but instead of just comparing Speed, it can be "
-            "matched head-on: if the exact enemy you declared it against targets "
-            "your exact slot back, it becomes a real Clash instead of an automatic "
-            "redirect. If nothing matches it, it just sits idle that round -- unlike "
-            "plain Counter, it never grabs some unrelated attack instead."
+            "Works like Counter, but it can also be matched head-on. When the exact enemy "
+            "you declared it against targets your exact slot back, it becomes a real "
+            "Clash instead of an automatic redirect. If nothing matches it, it sits idle "
+            "that round. Unlike plain Counter, it never grabs an unrelated attack."
         ),
     ),
     HelpEntry(
         key="guard",
         title="Guard",
-        summary="Never Clashes -- turns your Power into Shield instead.",
+        summary="Never Clashes. Turns your Power into Shield instead.",
         body=(
-            "A **Guard** skill never enters a Clash, even if an enemy declares a "
-            "matching attack back at you -- it always resolves on its own, turning "
-            "its final Power into **Shield**, an overhead pool that soaks incoming "
-            "HP damage 1:1 before your real HP is touched. Shield clears at the end "
-            "of every round; it never carries over. Fixed to exactly 1 coin."
+            "A **Guard** skill never enters a Clash, even when an enemy declares a "
+            "matching attack back at you. It resolves on its own and turns its final "
+            "Power into **Shield**. Shield soaks incoming HP damage 1:1 before your HP is "
+            "touched. Shield clears at the end of every round and never carries over. "
+            "Fixed to exactly 1 coin."
         ),
     ),
     HelpEntry(
         key="clashable_guard",
         title="Clashable Guard",
-        summary="Guard that can also be Clashed -- winning raises Stagger resistance.",
+        summary="Guard that can be Clashed. Winning raises Stagger thresholds.",
         body=(
-            "Like Guard, but it can be matched head-on by the exact enemy you "
-            "declared it against. Winning that Clash doesn't deal damage -- it "
-            "raises the loser's Stagger thresholds instead, making them harder to "
-            "Stagger. Losing checks your own Evade first, and only then takes "
-            "reduced damage from the winner. Fixed to exactly 1 coin."
+            "Like Guard, but the exact enemy you declared it against can match it "
+            "head-on. Winning that Clash deals no damage and raises the loser's Stagger "
+            "thresholds instead, so they are harder to Stagger. Losing checks your own "
+            "Evade first, then takes reduced damage from the winner. Fixed to exactly 1 "
+            "coin."
         ),
     ),
     HelpEntry(
@@ -166,11 +165,10 @@ SKILL_TAGS: list[HelpEntry] = [
         title="Evade",
         summary="One coin flip to fully dodge one specific incoming attack.",
         body=(
-            "Declared against one exact enemy and slot -- it only ever reacts to "
-            "that exact attacker hitting that exact slot, nothing else. When that "
-            "hit comes in, it's a single coin toss: win and the whole attack is "
-            "dodged completely, lose and nothing is reduced. No partial dodges. "
-            "Fixed to exactly 1 coin, and only usable once per round."
+            "Declared against one exact enemy and slot. It only reacts to that attacker "
+            "hitting that slot. When that hit comes in, a single coin is tossed. Win and "
+            "the whole attack is dodged. Lose and nothing is reduced. There are no "
+            "partial dodges. Fixed to exactly 1 coin, and usable once per round."
         ),
     ),
 ]
@@ -194,12 +192,12 @@ DAMAGE_MATH: list[HelpEntry] = [
         title="Resistance",
         summary="A flat multiplier on the damage you take from a type or status.",
         body=(
-            "Every damage type (Slash/Blunt/Pierce) and status (Burn/Bleed/Tremor/"
-            "Rupture/Sinking) has its own resistance value, written as a "
-            "multiplier: **1.0x is Normal**. Below 1.0 takes less damage, above "
-            "1.0 takes more -- it's a straight multiply, so 0.75x really does mean "
-            "25% less and 1.5x really does mean 50% more. Values move in steps of "
-            "0.25 (0.75, 1.0, 1.25, 1.5...), and 0x is a real, full Immune."
+            "Every damage type (Slash/Blunt/Pierce) and status "
+            "(Burn/Bleed/Tremor/Rupture/Sinking) has a resistance value, written as a "
+            "multiplier. **1.0x is Normal.** Below 1.0 takes less damage and above 1.0 "
+            "takes more. It is a straight multiply, so 0.75x means 25% less damage and "
+            "1.5x means 50% more. Values move in steps of 0.25 (0.75, 1.0, 1.25, 1.5...), "
+            "and 0x is full Immune."
         ),
     ),
     HelpEntry(
@@ -207,11 +205,11 @@ DAMAGE_MATH: list[HelpEntry] = [
         title="Stagger Multiplier",
         summary="A staggered target takes extra damage on the NEXT hit.",
         body=(
-            "Once a fighter crosses a Stagger threshold, the next hit THEY TAKE is "
-            "multiplied: Tier 1 is 1.5x, Tier 2 is 2.0x, Tier 3 is 2.5x. This is "
-            "applied once, to the hit's whole total after every coin (and any "
-            "Rupture bonus) is already added up -- not per coin. The hit that "
-            "causes the Stagger doesn't get a bonus; only the hit after it does."
+            "When a fighter crosses a Stagger threshold, the next hit they take is "
+            "multiplied. Tier 1 is 1.5x, Tier 2 is 2.0x, Tier 3 is 2.5x. The multiplier "
+            "applies once, to the hit's whole total after every coin (and any Rupture "
+            "bonus) is added up, not per coin.\n"
+            "The hit that causes the Stagger gets no bonus. Only the hit after it does."
         ),
     ),
     HelpEntry(
@@ -219,12 +217,12 @@ DAMAGE_MATH: list[HelpEntry] = [
         title="Rupture & Crit",
         summary="Two different bonus-damage sources, one resisted and one not.",
         body=(
-            "**Crit** (from Poise) adds bonus damage to a coin BEFORE resistance "
-            "is applied, so it's still reduced or boosted like any normal damage. "
-            "**Rupture** works differently: its bonus damage (equal to its "
-            "Potency, capped at 10% of the target's max HP) is added AFTER "
-            "resistance, so it always lands at full value no matter what the "
-            "target resists."
+            "Two different sources of bonus damage, one resisted and one not.\n"
+            "**Crit** (from Poise) adds bonus damage to a coin before resistance is "
+            "applied, so it is reduced or boosted like normal damage. **Rupture** adds "
+            "its bonus after resistance: damage equal to its Potency, capped at 10% of "
+            "the target's max HP. It always lands at full value, whatever the target "
+            "resists."
         ),
     ),
     HelpEntry(
@@ -232,14 +230,14 @@ DAMAGE_MATH: list[HelpEntry] = [
         title="Attack Weight Splash",
         summary="One attack hitting several enemies, each with their own math.",
         body=(
-            "Attack Weight automatically picks extra enemy targets (fastest Speed "
-            "first) whenever an attack with Attack Weight above 1 resolves "
-            "unopposed -- Clashes are never affected. Every splash target reuses "
-            "the exact same coin results as the main target (no re-rolled coins, "
-            "no extra Poise spent), but still gets its OWN resistance, Stagger "
-            "check, and Evade roll -- two targets with different resistances can "
-            "end up taking very different final damage from the same attack.\n"
-            "Only a [Supermove] can have Attack Weight above 1 (admins can set it on anything)."
+            "When an attack with Attack Weight above 1 resolves unopposed, it picks extra "
+            "enemy targets (fastest Speed first). Clashes are never affected. Every "
+            "splash target reuses the same coin results as the main target (no re-rolled "
+            "coins, no extra Poise spent), but gets its own resistance, Stagger check and "
+            "Evade roll. Two targets with different resistances can take very different "
+            "damage from the same attack.\n"
+            "Only a [Supermove] can have Attack Weight above 1 (admins can set it on "
+            "anything)."
         ),
     ),
     HelpEntry(
@@ -267,7 +265,7 @@ DAMAGE_MATH: list[HelpEntry] = [
 
 # Top-level /help menu: (category_key, title, blurb shown under the Home
 # embed's category buttons, that category's entries). cogs/help.py reads
-# this list to build the Home view -- add a line here (and a matching
+# this list to build the Home view. Add a line here (and a matching
 # entry list above) to add a whole new category later.
 STATUS_EFFECTS: list[HelpEntry] = [
     HelpEntry(
@@ -283,7 +281,9 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Burn",
         summary="Damage to you at turn end, then it fades.",
         body=(
-            "At the end of the turn you take fixed damage equal to Burn's **Potency**, then its **Count** drops by 1. At 0 Count it is gone. Shield soaks the damage first."
+            "At the end of the turn, take fixed damage by the effect's **Potency**, then "
+            "reduce its **Count** by 1. At 0 Count it is gone. Shield soaks the damage "
+            "first."
         ),
     ),
     HelpEntry(
@@ -291,7 +291,9 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Bleed",
         summary="Hurts you whenever you attack, then it fades.",
         body=(
-            "Each time you use an attack skill, you take fixed damage equal to Bleed's **Potency** for **every coin** in that skill, and its Count drops by 1. Defense skills (Guard, Counter and so on) don't count as attacking."
+            "When using an attack skill, take fixed damage by the effect's **Potency** "
+            "for every coin in that skill, then reduce its **Count** by 1. Defense skills "
+            "(Guard, Counter and so on) don't count as attacking."
         ),
     ),
     HelpEntry(
@@ -299,7 +301,10 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Tremor",
         summary="Tremor Burst makes the target easier to Stagger.",
         body=(
-            "Tremor does nothing alone. When a skill with a **[Tremor Burst]** line hits a target holding Tremor, the target's Stagger thresholds rise by Tremor's **Potency** in percentage points, which means they Stagger sooner. Then Tremor's Count drops by 1."
+            "Tremor does nothing alone. When a skill with a **[Tremor Burst]** line hits "
+            "a target holding Tremor, raise the target's Stagger thresholds by the "
+            "effect's **Potency** in percentage points, so they Stagger sooner. Then "
+            "reduce its **Count** by 1."
         ),
     ),
     HelpEntry(
@@ -307,7 +312,9 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Rupture",
         summary="Hits on you deal extra fixed damage.",
         body=(
-            "Every coin that hits you deals extra fixed damage equal to Rupture's **Potency**, and its Count drops by 1 each time. The extra damage is capped at 10% of your max HP per coin, so a huge stack can't one-shot you."
+            "When hit by a coin, take extra fixed damage by the effect's **Potency**, "
+            "then reduce its **Count** by 1. The extra damage is capped at 10% of your "
+            "max HP per coin, so a huge stack can't one-shot you."
         ),
     ),
     HelpEntry(
@@ -315,7 +322,9 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Sinking",
         summary="Drains your Sanity at turn end.",
         body=(
-            "At the end of the turn you lose Sanity equal to Sinking's **Potency**. It does not fade on its own. Low Sanity makes your coins land tails more often and can lead to Low Morale and Panic."
+            "At the end of the turn, lose Sanity by the effect's **Potency**. It does not "
+            "fade on its own. Low Sanity makes coins land tails more often and can lead "
+            "to Low Morale and Panic."
         ),
     ),
     HelpEntry(
@@ -323,7 +332,9 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Poise",
         summary="Chance to Crit.",
         body=(
-            "Each coin has a **5% Crit chance per Potency** (up to 100%). A Crit adds **20% more damage** to that coin and uses up 1 Count. Poise is something you gain on yourself."
+            "Each coin has a **5% Crit chance per Potency** (up to 100%). A Crit deals "
+            "**20% more damage** and reduces its **Count** by 1. Poise is gained on "
+            "yourself."
         ),
     ),
     HelpEntry(
@@ -331,7 +342,10 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Charge",
         summary="A stored resource you spend with Consume.",
         body=(
-            "Charge does nothing by itself. Skills and passives give it to you, and a **Consume** line spends it for a payoff, for example `Consume 3 Charge: Coin Power +2`. Its Count drops by 1 each turn end, up to a cap of 20."
+            "Charge does nothing by itself. Skills and passives give it to you, and a "
+            "**Consume** line spends it for a payoff, for example `Consume 3 Charge: Coin "
+            "Power +2`. Count goes up to 20. At the end of the turn, reduce its **Count** "
+            "by 1."
         ),
     ),
     HelpEntry(
@@ -339,7 +353,8 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Bind",
         summary="Makes you slower this turn.",
         body=(
-            "Every skill slot loses Speed equal to Bind's **Potency**, down to a minimum of 0. Lasts for the turn, then it's wiped."
+            "Every skill slot loses Speed by the effect's **Potency** for one turn, down "
+            "to a minimum of 0. It is wiped at turn end."
         ),
     ),
     HelpEntry(
@@ -347,7 +362,8 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Power Down",
         summary="Weakens every coin this turn.",
         body=(
-            "Each coin loses Final Power equal to Power Down's **Potency** (never below 0). Lasts for the turn."
+            "Each coin loses Final Power by the effect's **Potency** for one turn, down "
+            "to a minimum of 0."
         ),
     ),
     HelpEntry(
@@ -355,7 +371,9 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Fragile",
         summary="You take more damage this turn.",
         body=(
-            "You take **10% more damage per Count**, up to 10 Count (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All last for the turn and add together."
+            "Take **10% more damage per Count** for one turn, up to 10 Count (+100%). "
+            "**Slash, Pierce and Blunt Fragility** work the same but only against that "
+            "damage type. All add together."
         ),
     ),
     HelpEntry(
@@ -363,7 +381,7 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Damage Down",
         summary="You deal less damage this turn.",
         body=(
-            "Your hits deal **10% less damage per Count**, up to 10 Count. Lasts for the turn."
+            "Deal **10% less damage per Count** for one turn, up to 10 Count."
         ),
     ),
     HelpEntry(
@@ -371,7 +389,8 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Paralyze",
         summary="Your first coins deal nothing this turn.",
         body=(
-            "The **first X coins** of each skill you use have their power fixed to 0, where X is Paralyze's **Count**. Lasts for the turn."
+            "Fix the Power of the **first X coins** of each skill you use to 0 for one "
+            "turn, where X is the effect's **Count**."
         ),
     ),
     HelpEntry(
@@ -379,7 +398,8 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Poison",
         summary="Damage at turn end, then it halves.",
         body=(
-            "At the end of the turn you take fixed damage equal to Poison's **Count**, then the Count is **halved**. It keeps going across turns until it hits 0."
+            "At the end of the turn, take fixed damage by the effect's **Count**, then "
+            "**halve** the Count. It carries over across turns until it reaches 0."
         ),
     ),
     HelpEntry(
@@ -395,7 +415,8 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Power Up",
         summary="Stronger coins this turn.",
         body=(
-            "Each coin gains Final Power equal to Power Up's **Count**. A buff you gain on yourself. Lasts for the turn."
+            "Each coin gains Final Power by the effect's **Count** for one turn. Gained "
+            "on yourself."
         ),
     ),
     HelpEntry(
@@ -403,7 +424,8 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Haste",
         summary="Faster this turn.",
         body=(
-            "Every skill slot gains Speed equal to Haste's **Count**. A buff you gain on yourself. Lasts for the turn."
+            "Every skill slot gains Speed by the effect's **Count** for one turn. Gained "
+            "on yourself."
         ),
     ),
     HelpEntry(
@@ -411,7 +433,8 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Damage Up",
         summary="You deal more damage this turn.",
         body=(
-            "Your hits deal **10% more damage per Count**, up to 10 Count. Lasts for the turn. Damage Up, Damage Down, Fragile and Protection all add together into one number."
+            "Deal **10% more damage per Count** for one turn, up to 10 Count. Damage Up, "
+            "Damage Down, Fragile and Protection add together into one number."
         ),
     ),
     HelpEntry(
@@ -419,7 +442,7 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Protection",
         summary="You take less damage this turn.",
         body=(
-            "You take **10% less damage per Count**, up to 10 Count. Lasts for the turn."
+            "Take **10% less damage per Count** for one turn, up to 10 Count."
         ),
     ),
     HelpEntry(
@@ -830,7 +853,7 @@ COMMANDS: list[HelpEntry] = [
         summary="/character say posts as your character.",
         body=(
             "`/character say` sends your message using the character's name and avatar, "
-            "so it reads like they said it. Handy for roleplay between battle rounds."
+            "so it reads like they said it. Useful for roleplay between battle rounds."
         ),
     ),
     HelpEntry(
@@ -850,7 +873,7 @@ HELP_CATEGORIES: list[tuple[str, str, str, list[HelpEntry]]] = [
     (
         "skill_tags",
         "Skill Tags",
-        "What each [Bracket Tag] on a skill actually does.",
+        "What each [Bracket Tag] on a skill does.",
         SKILL_TAGS,
     ),
     (

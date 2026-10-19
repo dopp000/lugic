@@ -389,8 +389,8 @@ def resolve_pairwise_clash(skill_a: Skill, skill_b: Skill, max_rerolls: int = 50
             rerolls += 1
             if rerolls >= max_rerolls:
                 raise RuntimeError(
-                    f"Clash failed to resolve after {max_rerolls} rerolls, "
-                    "something is almost certainly wrong with the input skills."
+                    f"This Clash did not finish after {max_rerolls} rerolls. "
+                    "Check the two skills involved."
                 )
             continue
 
@@ -450,8 +450,8 @@ def resolve_round_clash(
         round_count += 1
         if round_count > max_rounds:
             raise RuntimeError(
-                f"Clash failed to resolve after {max_rounds} rounds, "
-                "something is almost certainly wrong with the input skills."
+                f"This Clash did not finish after {max_rounds} rounds. "
+                "Check the two skills involved."
             )
 
         before_a, before_b = coins_a, coins_b

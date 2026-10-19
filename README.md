@@ -723,9 +723,9 @@ other unrecognized name would get.
 Counter`, `Guard`, `Clashable Guard`, `Evade`, `Duality`, `Supermove`,
 `Unfocused Volley` (coin 1 hits the main target, other coins pick random living
 enemies; unopposed only). All are enforced, including `Evade` (added when Evade was rebuilt from a status
-into a declared skill — see Combat Features). Note: `Indiscriminate` is
-currently parsed and stored, but `/battle declare` still hard-blocks
-same-side targeting, so it doesn't yet actually let a skill hit allies.
+into a declared skill, see Combat Features). Note: `Indiscriminate` makes
+`/battle declare` pick a random enemy slot, but same-side targeting is still
+blocked, so it doesn't yet let a skill hit allies.
 `[Guard]`/`[Evade]`/`[Clashable Guard]` are enforced to exactly 1 coin at
 `/battle addskill` time.
 

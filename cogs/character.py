@@ -162,7 +162,7 @@ def _parse_resistance_tokens(resistance_types: str, values: str) -> tuple[dict[s
 
     if len(types) != len(value_tokens):
         return {}, (
-            f"Got {len(types)} resistance type(s) but {len(value_tokens)} value(s) -- "
+            f"Got {len(types)} resistance type(s) but {len(value_tokens)} value(s). "
             f"these need to line up 1:1, e.g. resistance_types 'slash,burn' values '1.25,0.75'."
         )
 
@@ -329,7 +329,7 @@ class CharacterCog(commands.GroupCog, name="character"):
 
         if (speed_min is None) != (speed_max is None):
             await interaction.response.send_message(
-                "speed_min and speed_max must be set together -- provide both, or neither.",
+                "speed_min and speed_max must be set together. Provide both, or neither.",
                 ephemeral=True,
             )
             return
@@ -349,7 +349,7 @@ class CharacterCog(commands.GroupCog, name="character"):
 
         if (resistance_types is None) != (values is None):
             await interaction.response.send_message(
-                "resistance_types and values must be set together -- provide both, or neither.",
+                "resistance_types and values must be set together. Provide both, or neither.",
                 ephemeral=True,
             )
             return

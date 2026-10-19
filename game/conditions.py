@@ -1053,8 +1053,8 @@ def _parse_condition_and_effect_text(text: str) -> tuple[Condition, str]:
             return _threshold_condition("caster_status", thing, n, basis), rest
         raise TriggerParseError(
             text,
-            f"'{thing}' isn't a tracked resource yet (only Speed and existing statuses "
-            "are supported conditions this pass, custom Identity resources are queued separately)",
+            f"'{thing}' can't be used in a condition. A condition can check Speed, or a status the "
+            "unit can hold (for example `At 5+ Poise,`).",
         )
 
     return Condition(type="always"), text
@@ -1155,7 +1155,7 @@ def _parse_effect_text(text: str) -> tuple[str, int, str | None, int]:
     if ";" in text:
         raise TriggerParseError(
             text,
-            "this line chains more than one effect with ';' -- each effect needs its own line, "
+            "this line chains more than one effect with ';'. Each effect needs its own line, "
             "repeating the same bracket tag (e.g. two separate ':Coin1: [On Hit] ...' lines)",
         )
 

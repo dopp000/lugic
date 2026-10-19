@@ -42,7 +42,7 @@ def parse_resistance_multiplier(raw: str) -> tuple[float | None, str | None]:
         return None, f"'{raw}' isn't a number."
 
     if value < 0:
-        return None, f"'{raw}' can't be negative -- 0 means immune, not healing."
+        return None, f"'{raw}' can't be negative. 0 means immune, not healing."
 
     steps = value / RESISTANCE_STEP
     if abs(steps - round(steps)) > 1e-6:

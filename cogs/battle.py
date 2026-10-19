@@ -963,9 +963,9 @@ def build_battle_embed(battle: Battle) -> discord.Embed:
             if filled == 0:
                 tag = ""
             elif filled >= f.skill_slots:
-                tag = " -- **DECLARED**"
+                tag = ": **DECLARED**"
             else:
-                tag = f" -- **{filled}/{f.skill_slots} declared**"
+                tag = f": **{filled}/{f.skill_slots} declared**"
             down_tag = " (Down)" if not f.is_alive() else ""
 
             hint_tier = compute_hint_tier(f, battle)
@@ -2056,7 +2056,7 @@ class BattleCog(commands.GroupCog, name="battle"):
     @app_commands.describe(
         side="Which side to join",
         character_name="Load one of your saved /character profiles into this battle (recommended)",
-        name="Name for a one-off fighter -- skip this if you used character_name instead",
+        name="Name for a one-off fighter. Skip this if you used character_name",
         hp="Starting HP for a one-off fighter, default 100 (ignored if using character_name)",
         speed_min="Lowest Speed a skill slot can roll each round (default: flat 10 if omitted)",
         speed_max="Highest Speed a skill slot can roll each round (default: same as speed_min)",
@@ -2721,7 +2721,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         slot="Which of your fighter's own skill slots to use (1-3)",
         skill_name="Which skill they're using",
         target="Which enemy fighter to aim at",
-        target_slot="Which of the target's slots to aim at -- this decides if it Clashes (1-3)",
+        target_slot="Which of the target's slots to aim at. This decides if it Clashes (1-3)",
     )
     async def declare(
         self,
@@ -2864,7 +2864,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         if "indiscriminate" in skill.tags:
             target_slot = random.randint(1, target_fighter.skill_slots)
             indiscriminate_note = (
-                f" ({skill.name} is Indiscriminate -- randomly hits Slot {target_slot})"
+                f" ({skill.name} is Indiscriminate, so it hits Slot {target_slot} at random)"
             )
 
         if not (1 <= target_slot <= target_fighter.skill_slots):
@@ -2977,9 +2977,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                             f"**{caster.name}** (Slot {slot}, {stat_emoji('speed')}{caster_speed}) wants to take "
                             f"your **{partner.name}**'s place in the Clash against **{target_fighter.name}**'s "
                             f"Slot {target_slot}, using **{skill.name}**.\n\n"
-                            f"Approve gives it to them (your Slot {partner_slot} is cleared). "
-                            f"Decline keeps your clash as declared, and their attack will hit "
-                            f"without a Clash instead.",
+                            f"Approve: your Slot {partner_slot} is cleared and they take the Clash.\n"
+                            f"Decline: your Clash stays as declared and their attack hits without a Clash.",
                             view=steal_view,
                         )
                         steal_view.message = dm_message
@@ -3015,12 +3014,11 @@ class BattleCog(commands.GroupCog, name="battle"):
         )
         speed_icon = stat_emoji("speed")
         preview = (
-            f"**{caster.name}**'s Slot {slot} ({speed_icon}{caster_speed}) locks in **{skill.name}** "
-            f"aimed at {target_fighter.name}'s Slot {target_slot}.{indiscriminate_note}{attack_weight_note}\n\n"
-            f"This only becomes a Clash if {target_fighter.name} targets your Slot {slot} back with "
-            f"their Slot {target_slot}. Otherwise it resolves unopposed. You won't know which until "
-            f"combat actually runs.{sm_note}\n\n"
-            f"Confirm to lock it in?"
+            f"**{caster.name}**'s Slot {slot} ({speed_icon}{caster_speed}) uses **{skill.name}** "
+            f"on {target_fighter.name}'s Slot {target_slot}.{indiscriminate_note}{attack_weight_note}\n\n"
+            f"It becomes a Clash if {target_fighter.name}'s Slot {target_slot} targets your Slot {slot} back. "
+            f"Otherwise it hits unopposed. You find out when combat runs.{sm_note}\n\n"
+            f"Lock it in?"
         )
 
         await interaction.response.send_message(preview, view=view, ephemeral=True)
@@ -3641,7 +3639,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                 field_value += "\n" + "\n".join(trigger_log)
 
             summary_line = (
-                f"⚔️ **{winner.name}** beats **{loser.name}** -- {total_damage} damage "
+                f"⚔️ **{winner.name}** beats **{loser.name}** for {total_damage} damage. "
                 f"({loser.name}: {loser.hp}/{loser.max_hp} HP)"
             )
             summary_lines.append(summary_line)
@@ -3667,13 +3665,13 @@ class BattleCog(commands.GroupCog, name="battle"):
                     continue
                 live_header = (
                     f"⚖️ **{fighter_a.name}**'s Guard offsets **{fighter_b.name}**'s Guard "
-                    f"-- both cancel, no effect."
+                    f"Both cancel, no effect."
                 )
                 await render(live_header)
                 await asyncio.sleep(0.5)
                 summary_line = (
-                    f"⚖️ **{fighter_a.name}** and **{fighter_b.name}** Offset each other -- "
-                    f"both Guards cancel, no Shield for either side."
+                    f"⚖️ **{fighter_a.name}** and **{fighter_b.name}** Offset each other. "
+                    f"Both Guards cancel, no Shield for either side."
                 )
                 summary_lines.append(summary_line)
                 full_log_entries.append((f"{fighter_a.name} vs {fighter_b.name} (Offset)", live_header))
@@ -3760,8 +3758,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                     idle_tag = "clashable_guard" if "clashable_guard" in entry["skill"].tags else "clashable_counter"
                     live_header = (
                         f"{status_emoji(idle_tag)} **{fighter.name}** readies "
-                        f"{'Clashable Guard' if idle_tag == 'clashable_guard' else 'Clashable Counter'} -- "
-                        f"nothing to intercept this round."
+                        f"{'Clashable Guard' if idle_tag == 'clashable_guard' else 'Clashable Counter'}. "
+                        f"Nothing to intercept this round."
                     )
                 else:
                     live_header = (
@@ -3964,7 +3962,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                         if splash_fighter is target:
                             splash_log.append(
                                 f"Attack Weight also reaches {splash_fighter.name} Slot {splash_slot}, "
-                                f"but that's the same target already hit above -- no extra effect."
+                                f"but that is the same target already hit above. No extra effect."
                             )
                             continue
 
@@ -4136,7 +4134,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                     field_value = f"{fighter.name} readies Evade against {target.name}'s Slot {entry['target_slot']}."
                 elif is_clashable_defense_idle:
                     idle_name = "Clashable Guard" if "clashable_guard" in entry["skill"].tags else "Clashable Counter"
-                    field_value = f"{fighter.name} readies {idle_name} -- nothing to intercept this round."
+                    field_value = f"{fighter.name} readies {idle_name}. Nothing to intercept this round."
                 elif is_guard:
                     field_value = format_skill_result(result)
                     field_value += (
@@ -4170,25 +4168,25 @@ class BattleCog(commands.GroupCog, name="battle"):
                     idle_tag = "clashable_guard" if "clashable_guard" in entry["skill"].tags else "clashable_counter"
                     idle_name = "Clashable Guard" if idle_tag == "clashable_guard" else "Clashable Counter"
                     summary_line = (
-                        f"{status_emoji(idle_tag)} **{fighter.name}** readies {idle_name} -- "
-                        f"nothing to intercept this round."
+                        f"{status_emoji(idle_tag)} **{fighter.name}** readies {idle_name}. "
+                        f"Nothing to intercept this round."
                     )
                     full_log_entries.append((f"{fighter.name}'s {idle_name}", field_value))
                 elif is_guard:
                     summary_line = (
-                        f"{status_emoji('guard')} **{fighter.name}** raises Guard -- +{shield_gained} Shield "
-                        f"({fighter.shield} total)"
+                        f"{status_emoji('guard')} **{fighter.name}** raises Guard and gains {shield_gained} Shield. "
+                        f"(Shield: {fighter.shield})"
                     )
                     full_log_entries.append((f"{fighter.name}'s Guard", field_value))
                 elif is_counter:
                     summary_line = (
                         f"{status_emoji('counter')} **{fighter.name}**'s Counter redirects and strikes **{target.name}** back "
-                        f"-- {total_damage} damage ({target.name}: {target.hp}/{target.max_hp} HP)"
+                        f"for {total_damage} damage. ({target.name}: {target.hp}/{target.max_hp} HP)"
                     )
                     full_log_entries.append((f"{fighter.name}'s Counter -> {target.name}", field_value))
                 else:
                     summary_line = (
-                        f"🗡️ **{fighter.name}** hits **{target.name}** (unopposed) -- {total_damage} damage "
+                        f"🗡️ **{fighter.name}** hits **{target.name}** (unopposed) for {total_damage} damage. "
                         f"({target.name}: {target.hp}/{target.max_hp} HP)"
                     )
                     if volley_note:
@@ -4211,8 +4209,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                 idle_tag = "clashable_guard" if "clashable_guard" in idle_entry["skill"].tags else "clashable_counter"
                 idle_name = "Clashable Guard" if idle_tag == "clashable_guard" else "Clashable Counter"
                 idle_summary = (
-                    f"{status_emoji(idle_tag)} **{idle_fighter.name}** readies {idle_name} -- "
-                    f"nothing to intercept this round."
+                    f"{status_emoji(idle_tag)} **{idle_fighter.name}** readies {idle_name}. "
+                    f"Nothing to intercept this round."
                 )
                 summary_lines.append(idle_summary)
                 full_log_entries.append((f"{idle_fighter.name}'s {idle_name}", idle_summary))
@@ -4260,7 +4258,7 @@ class BattleCog(commands.GroupCog, name="battle"):
             )
 
         final_embed = discord.Embed(
-            title=f"{combat_title} -- Results",
+            title=f"{combat_title}: Results",
             description=final_description or "Nothing declared this round.",
             color=0x5865F2,
         )

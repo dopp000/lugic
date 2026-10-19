@@ -88,7 +88,7 @@ def _entry_embed(category_title: str, category_key: str, entry: HelpEntry) -> di
     icon = _entry_text_icon(category_key, entry.key)
     title = f"{icon} {entry.title}".strip()
     embed = discord.Embed(title=title, description=decorate_text(entry.body), color=HELP_COLOR)
-    embed.set_footer(text=f"{category_title} -- Lugic Guidebook")
+    embed.set_footer(text=f"Lugic Guidebook: {category_title}")
     return embed
 
 
