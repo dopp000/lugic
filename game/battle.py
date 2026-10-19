@@ -84,6 +84,9 @@ class Part:
     max_hp: int
     resistances: dict[str, float] | None = None  # None = use the fighter's own
     broken: bool = False
+    # The Part's own Stagger, from its HP percent against the fighter's thresholds. 0 = not Staggered.
+    stagger_tier: int = 0
+    stagger_clears_end_of_round: int | None = None
 
 
 @dataclass
@@ -302,9 +305,30 @@ class Fighter:
         return self.resistances
 
     def slot_disabled(self, slot: int) -> bool:
-        """True if this skill slot belongs to a broken Part."""
+        """True if this skill slot belongs to a broken or Staggered Part."""
         part = self.parts.get(slot)
-        return part is not None and part.broken
+        return part is not None and (part.broken or part.stagger_tier > 0)
+
+    def stagger_tier_for_slot(self, slot: int | None) -> int:
+        """The Stagger tier a hit aimed at `slot` meets: the deeper of the fighter's own and that Part's."""
+        part = self.parts.get(slot) if slot is not None else None
+        return max(self.current_stagger_tier, part.stagger_tier if part is not None else 0)
+
+    def check_part_stagger(self, slot: int | None, current_round: int) -> int:
+        """Staggers the Part at `slot` when its HP percent falls under one of the fighter's enabled thresholds (same thresholds and durations as the fighter). Returns the new tier if it just got deeper, else 0."""
+        part = self.parts.get(slot) if slot is not None else None
+        if part is None or part.max_hp <= 0 or self.stagger_immune:
+            return 0
+        pct = part.hp / part.max_hp
+        deepest = 0
+        for i, threshold in enumerate(self.stagger_thresholds):
+            if self.stagger_tiers_enabled[i] and pct <= threshold:
+                deepest = i + 1
+        if deepest > part.stagger_tier:
+            part.stagger_tier = deepest
+            part.stagger_clears_end_of_round = current_round if deepest == 1 else current_round + 1
+            return deepest
+        return 0
 
     def hit_part(self, slot: int | None, amount: int) -> list[str]:
         """Drains the Part at `slot` (if any) by `amount`. A Part at 0 HP breaks and its slot can't be declared until repaired. Returns log lines."""
@@ -397,6 +421,13 @@ class Fighter:
         ):
             self.current_stagger_tier = 0
             self.stagger_clears_end_of_round = None
+        for part in self.parts.values():
+            if (
+                part.stagger_tier > 0 and part.stagger_clears_end_of_round is not None
+                and part.stagger_clears_end_of_round <= ending_round
+            ):
+                part.stagger_tier = 0
+                part.stagger_clears_end_of_round = None
 
     def gain_sanity(self, amount: int):
         self.sanity = min(SANITY_MAX, self.sanity + amount)

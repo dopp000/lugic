@@ -254,8 +254,12 @@ DAMAGE_MATH: list[HelpEntry] = [
             "defeats the enemy.\n"
             "When a Part reaches 0 HP it is **broken**: that slot can't be used "
             "from the next round on, until an admin repairs it. A broken Part keeps "
-            "draining the Core when hit. Part names and HP show under the enemy in "
-            "the battle display."
+            "draining the Core when hit.\n"
+            "Each Part also has its **own Stagger**. When a Part's HP falls under one of "
+            "the enemy's Stagger thresholds it is Staggered: that slot can't act, and hits "
+            "aimed at it do more damage (x1.5, x2, x2.5 by tier) until it recovers. A hit "
+            "meets the deeper of the Part's and the Core's Stagger. Part names, HP and "
+            "Stagger show under the enemy in the battle display."
         ),
     ),
 ]

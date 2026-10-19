@@ -972,7 +972,10 @@ def build_battle_embed(battle: Battle) -> discord.Embed:
             parts_line = ""
             if f.parts:
                 bits = [
-                    f"Slot {n} {p.name} " + ("(broken)" if p.broken else f"{p.hp}/{p.max_hp}")
+                    f"Slot {n} {p.name} " + (
+                        "(broken)" if p.broken
+                        else f"{p.hp}/{p.max_hp}" + (f" Staggered T{p.stagger_tier}" if p.stagger_tier else "")
+                    )
                     for n, p in sorted(f.parts.items())
                 ]
                 parts_line = "\n-# Parts: " + ", ".join(bits)
@@ -1100,10 +1103,8 @@ def apply_incoming_hit(
     per_coin_triggers: list[Trigger] = []
     resist = target.resistances_for_slot(target_slot)
     poise = caster.get_status("poise")
-    stagger_multiplier = (
-        STAGGER_MULTIPLIERS[target.current_stagger_tier - 1]
-        if target.current_stagger_tier > 0 else 1.0
-    )
+    hit_tier = target.stagger_tier_for_slot(target_slot)
+    stagger_multiplier = STAGGER_MULTIPLIERS[hit_tier - 1] if hit_tier > 0 else 1.0
 
     for i, coin in enumerate(result.coin_results):
         if coin_indices is not None and i not in coin_indices:
@@ -1165,8 +1166,8 @@ def apply_incoming_hit(
     if stagger_multiplier != 1.0 and total_damage > 0:
         boosted = round(total_damage * stagger_multiplier)
         log.append(
-            f"{stagger_tier_emoji(target.current_stagger_tier)} {target.name} is Staggered (Tier "
-            f"{target.current_stagger_tier}): {total_damage} -> {boosted} damage (x{stagger_multiplier})"
+            f"{stagger_tier_emoji(hit_tier)} {target.name} is Staggered (Tier "
+            f"{hit_tier}): {total_damage} -> {boosted} damage (x{stagger_multiplier})"
         )
         total_damage = boosted
 
@@ -1599,6 +1600,18 @@ def fire_kill_triggers(
     return log
 
 
+def part_stagger_step(target: Fighter, slot: int | None, round_number: int) -> tuple[bool, list[str]]:
+    """Checks the Part at `slot` for Stagger after a hit. Returns (it just got Staggered or deeper, log lines)."""
+    tier = target.check_part_stagger(slot, round_number)
+    if not tier:
+        return False, []
+    part = target.parts[slot]
+    return True, [
+        f"{stagger_tier_emoji(tier)} {target.name}'s **{part.name}** (Slot {slot}) is Staggered (Tier {tier})! "
+        f"That slot can't act and takes more damage until it recovers."
+    ]
+
+
 def fire_failed_triggers(
     caster: Fighter, target: Fighter, skill: Skill, context: TriggerContext, evaded: bool, damage: int
 ) -> list[str]:
@@ -1833,9 +1846,12 @@ def apply_trigger_effects(
             who.stagger_immune = True
             log.append(f"Trigger: {who.name} cannot be Staggered this turn")
         elif t.effect_type == "remove_stagger":
-            if who.is_alive() and who.current_stagger_tier > 0:
+            if who.is_alive() and (who.current_stagger_tier > 0 or any(p.stagger_tier for p in who.parts.values())):
                 who.current_stagger_tier = 0
                 who.stagger_clears_end_of_round = None
+                for part in who.parts.values():
+                    part.stagger_tier = 0
+                    part.stagger_clears_end_of_round = None
                 log.append(f"Trigger: {who.name} recovers from Stagger")
         elif t.effect_type == "sanity_loss":
             who.lose_sanity(t.effect_value)
@@ -2519,6 +2535,8 @@ class BattleCog(commands.GroupCog, name="battle"):
             return
         part.hp = min(hp, part.max_hp) if hp is not None else part.max_hp
         part.broken = False
+        part.stagger_tier = 0
+        part.stagger_clears_end_of_round = None
         await interaction.response.send_message(
             f"{target.name}'s {part.name} is repaired ({part.hp}/{part.max_hp}).", ephemeral=True
         )
@@ -2753,9 +2771,11 @@ class BattleCog(commands.GroupCog, name="battle"):
 
         if caster.slot_disabled(slot):
             part = caster.parts[slot]
+            why = "is broken and can't act until it is repaired" if part.broken else (
+                f"is Staggered (Tier {part.stagger_tier}) and can't act until it recovers"
+            )
             await interaction.response.send_message(
-                f"{caster.name}'s {part.name} (Slot {slot}) is broken and can't act until it is repaired.",
-                ephemeral=True,
+                f"{caster.name}'s {part.name} (Slot {slot}) {why}.", ephemeral=True,
             )
             return
 
@@ -3502,8 +3522,10 @@ class BattleCog(commands.GroupCog, name="battle"):
             status_log += loser.hit_part(loser_slot, total_damage)
             loser_stagger_before = loser.current_stagger_tier
             loser.check_stagger(battle.round_number)
+            part_staggered, part_lines = part_stagger_step(loser, loser_slot, battle.round_number)
+            status_log += part_lines
             stagger_post_hit: list[Trigger] = []
-            if loser.current_stagger_tier > 0:
+            if loser.current_stagger_tier > 0 or part_staggered:
                 _, stagger_post_hit = resolve_triggers(winner_skill, winner_context, "on_stagger")
             winner_was_crit = any(c.is_crit for c in outcome.winner_final_result.coin_results)
             kill_log = fire_kill_triggers(winner, loser, winner_skill, winner_context, winner_was_crit)
@@ -3848,8 +3870,10 @@ class BattleCog(commands.GroupCog, name="battle"):
                     status_log += target.hit_part(entry["target_slot"], total_damage)
                     target_stagger_before = target.current_stagger_tier
                     target.check_stagger(battle.round_number)
+                    part_staggered, part_lines = part_stagger_step(target, entry["target_slot"], battle.round_number)
+                    status_log += part_lines
                     stagger_post_hit: list[Trigger] = []
-                    if target.current_stagger_tier > 0:
+                    if target.current_stagger_tier > 0 or part_staggered:
                         _, stagger_post_hit = resolve_triggers(adjusted_skill, context, "on_stagger")
                     fighter_was_crit = any(c.is_crit for c in result.coin_results)
                     kill_log = fire_kill_triggers(fighter, target, adjusted_skill, context, fighter_was_crit)
@@ -3954,9 +3978,9 @@ class BattleCog(commands.GroupCog, name="battle"):
                         # a target already staggered when the splash
                         # arrives gets the multiplier; a target the splash
                         # itself newly staggers does not.
+                        splash_hit_tier = splash_fighter.stagger_tier_for_slot(splash_slot)
                         splash_stagger_multiplier = (
-                            STAGGER_MULTIPLIERS[splash_fighter.current_stagger_tier - 1]
-                            if splash_fighter.current_stagger_tier > 0 else 1.0
+                            STAGGER_MULTIPLIERS[splash_hit_tier - 1] if splash_hit_tier > 0 else 1.0
                         )
 
                         splash_total = 0
@@ -4018,8 +4042,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                         if splash_stagger_multiplier != 1.0 and splash_total > 0:
                             boosted_splash_total = round(splash_total * splash_stagger_multiplier)
                             splash_log.append(
-                                f"{stagger_tier_emoji(splash_fighter.current_stagger_tier)} {splash_fighter.name} is Staggered (Tier "
-                                f"{splash_fighter.current_stagger_tier}): {splash_total} -> "
+                                f"{stagger_tier_emoji(splash_hit_tier)} {splash_fighter.name} is Staggered (Tier "
+                                f"{splash_hit_tier}): {splash_total} -> "
                                 f"{boosted_splash_total} damage (x{splash_stagger_multiplier})"
                             )
                             splash_total = boosted_splash_total
@@ -4040,6 +4064,10 @@ class BattleCog(commands.GroupCog, name="battle"):
                         splash_log += splash_fighter.hit_part(splash_slot, splash_total)
                         splash_stagger_before = splash_fighter.current_stagger_tier
                         splash_fighter.check_stagger(battle.round_number)
+                        splash_part_staggered, splash_part_lines = part_stagger_step(
+                            splash_fighter, splash_slot, battle.round_number
+                        )
+                        splash_log.extend(splash_part_lines)
                         splash_breakdown = (
                             f" ({splash_shield_absorbed} absorbed by {status_emoji('shield')} Shield, "
                             f"{splash_hp_lost} to HP)"
@@ -4070,7 +4098,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                         # inflict_status effect lands on the actual
                         # splash target, not the primary one). Own
                         # TriggerContext for the same reason.
-                        if splash_fighter.current_stagger_tier > 0:
+                        if splash_fighter.current_stagger_tier > 0 or splash_part_staggered:
                             splash_stagger_context = TriggerContext(
                                 caster=fighter, target=splash_fighter, battle=battle,
                             )

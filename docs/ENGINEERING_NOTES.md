@@ -2359,3 +2359,19 @@ a new status gets an icon.
   refused). `to the adjacent allies` sets `Trigger.to_adjacent` (plus `to_ally`, so it only works with Heal, Gain,
   Remove, Gain Sanity, Shield and Gain Level); `bind_ally` records the neighbours when the line fires and
   `apply_trigger_effects` turns it into one copy per neighbour, each aimed like a single-ally selector.
+
+<a id="part-stagger-patch-15"></a>
+## Part Stagger
+
+- `Part.stagger_tier` / `stagger_clears_end_of_round`. `Fighter.check_part_stagger(slot, round)` compares the Part's HP
+  percent with the fighter's own `stagger_thresholds` and `stagger_tiers_enabled` (no separate config), honours
+  `stagger_immune`, and returns the new tier only when it got deeper. Durations match the Core: Tier 1 clears at the end
+  of the same round, Tier 2/3 one round later (`clear_expired_stagger` now walks the parts too).
+- `slot_disabled` is true for a broken or Staggered Part, so `/battle declare` and the slot autocomplete skip it. An
+  action already declared still resolves, like a break.
+- `stagger_tier_for_slot(slot)` is the deeper of the Core's tier and the Part's, and is what `apply_incoming_hit` and the
+  splash block use for the damage multiplier. Like the Core, a Part that a hit newly Staggers does not amplify that hit.
+- `part_stagger_step` (cogs/battle.py) runs right after `hit_part` at the three damage sites (unopposed, Clash winner,
+  splash/Volley). A new Part Stagger logs a line and counts as a Stagger for the attacker's `[On Stagger]` line; it does
+  not fire `[Ally On Stagger]` or `[Self On Stagger]`.
+- `Recover from Stagger` and `/battle repairpart` clear Part Stagger as well.

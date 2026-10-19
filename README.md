@@ -211,7 +211,13 @@ fighter's own HP is the shared Core. At 0 HP a Part breaks: `/battle declare`
 refuses that slot until `repairpart`. A broken Part still drains the Core when
 hit. A break lands from the next declaration on, an attack already declared
 that round still resolves. Attack Weight splash hits use the same Part
-logic. Part names and HP show under the fighter in the battle embed. See
+logic. Each Part has its own Stagger: when a hit takes the Part's HP percent under one of
+the fighter's enabled thresholds (same numbers and durations as the Core's, Tier 1 clears at
+round end, Tier 2/3 a round later) the Part is Staggered, its slot is refused by `/battle
+declare`, and hits aimed at it use the deeper of the Part's and the Core's Stagger
+multiplier. A newly Staggered Part fires the attacker's `[On Stagger]` line, but not the
+`[Ally On Stagger]` reactions. `Recover from Stagger` and `repairpart` clear it. Part names, HP and
+Stagger show under the fighter in the battle embed. See
 `docs/ENGINEERING_NOTES.md#parts-and-core`.
 
 ## Status Effects: Current State
@@ -797,8 +803,7 @@ Durante, and Backups, none of those fit what this bot is for.
    customization layer like canon's Panic Type Changing Effects is just
    trigger lines written against the new `If this unit is Low Morale,` and
    `If this unit is Panicked,` conditions.
-6. **Parts / Core**: done, see Combat Features. Still open: Part-specific Stagger,
-   auto-breaking a Part's declared attack mid-round, and storing Parts on a saved NPC character.
+6. **Parts / Core**: done, see Combat Features. Part-specific Stagger is done. Still open: auto-breaking a Part's declared attack mid-round, and storing Parts on a saved NPC character.
 7. **A worked-examples guide**: done, see `docs/WORKED_EXAMPLES.md`. Every
    example in it was run through the parser.
 
