@@ -2344,3 +2344,18 @@ a new status gets an icon.
 - Decided: scope is everything admin-gated that costs points; auto-check then admin decides; review channel plus
   `/request list`.
 - Discord allows 25 subcommands per group and `/character` had reached 26, so the admin build commands moved to `/charadmin`.
+
+<a id="failed-and-adjacent-patch-14"></a>
+## [Failed ...] timings and adjacency
+
+- `Failed Hit` (`failed_hit`) and `Failed Kill` (`failed_kill`) are skill-level timings (also in `_PER_SKILL` for Supermove
+  pricing). `fire_failed_triggers` runs right after `fire_kill_triggers` in the unopposed branch and in the Clash winner
+  branch. `failed_hit` fires when the hit was evaded or `total_damage` is 0, `failed_kill` when damage landed and the
+  target is still alive. Guard, Clashable Guard and Evade skills never fire either. Passives cannot use them, and a
+  clash loser or a splash target does not fire them.
+- Adjacency: `adjacent_allies(caster, battle)` takes the living, non-eliminated units of the caster's side in
+  `battle.fighters` order and returns the neighbour before and after. A downed unit leaves the line, so its neighbours
+  become adjacent. Condition `adjacent_allies` (`If an ally is adjacent,` is 1, `If 2+ allies are adjacent,` is 2, more is
+  refused). `to the adjacent allies` sets `Trigger.to_adjacent` (plus `to_ally`, so it only works with Heal, Gain,
+  Remove, Gain Sanity, Shield and Gain Level); `bind_ally` records the neighbours when the line fires and
+  `apply_trigger_effects` turns it into one copy per neighbour, each aimed like a single-ally selector.

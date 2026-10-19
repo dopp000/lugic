@@ -637,7 +637,8 @@ for a one-off battle fighter, `/character addskill` to teach it permanently
 **Skill-level timings** (no `:CoinN:` prefix): `Turn Start`, `Combat Start`,
 `Turn End`, `Before Use`, `On Use`, `Clash Start`, `Clash Win`, `Clash Lose`,
 `Before Attack`, `On Unopposed Attack`, `Attack End`, `On Evade`, `Before
-Getting Hit`, `On Stagger`, `On Kill`, `On Crit Kill`, `Hit After Clash
+Getting Hit`, `On Stagger`, `On Kill`, `On Crit Kill`, `Failed Hit` (evaded or 0
+damage), `Failed Kill` (landed, target still up), `Hit After Clash
 Lose`, `Tremor Burst`. Check `SKILL_LEVEL_TIMINGS` in `game/conditions.py`
 directly if this list and the code ever drift, the code is the source of truth.
 
@@ -676,7 +677,8 @@ back with `strict=False`, so they keep loading.
 Sanity, Speed (`faster`, `at least N`, `diff`), Morale, ally or enemy target,
 first hit of the round, Weak or Fatal affinity (needs the skill, uses
 fighter-wide resistances), count of negative statuses, target is defending,
-ally rank, `If N+ units on your side have the X tag,`, `If the target has the X
+ally rank, `If an ally is adjacent,` / `If 2+ allies are adjacent,` (neighbours in
+deployment order), `If N+ units on your side have the X tag,`, `If the target has the X
 tag,` and `If N+ allies are defeated,`. The full list with examples is in
 `/help` and `CONDITION_EXAMPLES` in `game/trigger_text.py`.
 
@@ -685,7 +687,7 @@ max HP Shield`, `Gain Offense Level +N`, `Inflict Defense Level -N`, a trailing
 `next turn`, and the ally forms `... to the ally with the lowest HP` /
 `If the ally has the fastest Speed,` (selectors: Speed, HP, HP percent, Max HP,
 Sanity, most or least of a status, earliest or latest deployed; never the
-caster). Survival effects keep a fighter up (HP floor, survive one lethal hit,
+caster), or `to the adjacent allies` for each living neighbour. Survival effects keep a fighter up (HP floor, survive one lethal hit,
 no Stagger this turn, recover from Stagger). Follow-ups name an owned plain
 attack skill and need a per-turn or per-Encounter limit; Assist Defense takes
 the hit for an ally (unopposed attacks only, as a normal hit). Exact wording
@@ -781,8 +783,8 @@ Durante, and Backups, none of those fit what this bot is for.
 
 **Actually on the roadmap, not built yet, rough priority order:**
 
-1. **`[Failed ...]` trigger prefix**: fires when a conditional (e.g. a Kill)
-   would have activated but didn't. Not present.
+1. **`[Failed ...]` trigger prefix**: done as the timings `[Failed Hit]` and
+   `[Failed Kill]`.
 2. **`[Ally ...]` trigger prefix**: done (support skills, `to the ally`
    effects and ally reaction timings, also for Attack Weight splash hits).
 3. **More non-Sin statuses**: Offense/Defense Level and Clash Power exist as

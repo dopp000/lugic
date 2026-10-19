@@ -75,6 +75,8 @@ CONDITION_EXAMPLES = [
     "If 3+ units on your side have the N Corp tag,",
     "If the target has the Dawn Office tag,",
     "If 2+ allies are defeated,",
+    "If an ally is adjacent,",
+    "If 2+ allies are adjacent,",
     "At 10+ Speed,",
     "At 5+ Poise,",
     "If this unit is Low Morale,",
@@ -122,6 +124,8 @@ def _describe_condition(t: Trigger, names) -> str:
         return f"the target has the {c.status_name.title()} tag"
     if c.type == "allies_defeated":
         return f"{c.value}+ of your allies are defeated"
+    if c.type == "adjacent_allies":
+        return "an ally is adjacent" if c.value == 1 else f"{c.value} allies are adjacent"
     if c.type == "ally_rank":
         return f"the ally has the {describe_selector(c.status_name)} (of your allies)"
     if c.type == "target_defending":
@@ -199,7 +203,9 @@ def _describe_effect(t: Trigger, names) -> str:
         text = t.effect_type
     if t.consume_status:
         text = f"spend {t.consume_amount} {_name(t.consume_status, names)}, then {text}"
-    if t.ally_select:
+    if t.to_adjacent:
+        text += " (on each adjacent ally)"
+    elif t.ally_select:
         text += f" (on the ally with the {describe_selector(t.ally_select)})"
     elif t.to_ally:
         text += " (on the ally)"

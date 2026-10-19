@@ -21,7 +21,7 @@ CONDITION_TYPES = [
     "caster_morale", "target_morale", "target_is_ally", "target_is_enemy",
     "caster_hp_pct", "target_sanity", "speed_diff", "target_affinity",
     "target_negative_count", "target_defending", "ally_rank",
-    "side_tag_count", "target_tag", "allies_defeated",
+    "side_tag_count", "target_tag", "allies_defeated", "adjacent_allies",
 ]
 
 MAX_TAGS = 3
@@ -125,6 +125,10 @@ SKILL_LEVEL_TIMINGS = {
     # fighter just defeated.
     "on kill": "on_kill",
     "on crit kill": "on_crit_kill",
+    # Fires on the attacker's skill when the hit failed: the target evaded it or every coin
+    # dealt 0 damage (failed_hit), or it landed but the target is still standing (failed_kill).
+    "failed hit": "failed_hit",
+    "failed kill": "failed_kill",
     # Fires on the ATTACKER's skill, for the LOSER of a Clash
     # specifically -- symmetric to the existing per-coin
     # hit_after_clash_win, but for the side that lost. caster=loser,
@@ -305,6 +309,17 @@ def _selector_metric(fighter, battle, stat: str) -> float:
             return 0
         return st.potency if basis == "potency" else st.count
     return 0
+
+
+def adjacent_allies(caster, battle) -> list:
+    """The living allies standing next to `caster` in deployment order (at most 2). Fighters that are down or gone do not take a place."""
+    if battle is None:
+        return []
+    line = [f for f in battle.fighters if f.side == caster.side and f.is_alive() and not f.eliminated]
+    if caster not in line:
+        return []
+    i = line.index(caster)
+    return [line[j] for j in (i - 1, i + 1) if 0 <= j < len(line)]
 
 
 def select_ally(caster, battle, spec: str):
@@ -510,6 +525,9 @@ def evaluate_condition(condition: Condition, context: TriggerContext, skill=None
         )
         return down >= condition.value
 
+    if condition.type == "adjacent_allies":
+        return len(adjacent_allies(context.caster, context.battle)) >= condition.value
+
     if condition.type == "ally_rank":
         if context.ally is None:
             return False
@@ -592,6 +610,10 @@ class Trigger:
     ally_select: str | None = None
     # Runtime only, never saved: the ally ally_select picked when this line fired.
     selected_ally: object = None
+    # "... to the adjacent allies": lands on each living neighbour in deployment order.
+    to_adjacent: bool = False
+    # Runtime only, never saved: the neighbours found when this line fired.
+    selected_allies: object = None
 
     def to_dict(self) -> dict:
         """Used so a Skill carrying this Trigger can be saved to a
@@ -627,6 +649,7 @@ class Trigger:
             "delayed": self.delayed,
             "on_target": self.on_target,
             "ally_select": self.ally_select,
+            "to_adjacent": self.to_adjacent,
         }
 
     @classmethod
@@ -638,6 +661,8 @@ class Trigger:
 
 def bind_ally(trigger: Trigger, context: "TriggerContext") -> Trigger:
     """For a 'to the ally with the ...' line: a copy that remembers which ally was picked right now. Other lines come back unchanged."""
+    if trigger.to_adjacent:
+        return dataclasses.replace(trigger, selected_allies=adjacent_allies(context.caster, context.battle))
     if not trigger.ally_select:
         return trigger
     return dataclasses.replace(
@@ -767,6 +792,7 @@ _COND_SIDE_TAG = re.compile(
     r"if (\d+)\+ units on your side have the ([a-z0-9' -]+?) tag,?\s*(.*)", re.IGNORECASE
 )
 _COND_TARGET_TAG = re.compile(r"if the target has the ([a-z0-9' -]+?) tag,?\s*(.*)", re.IGNORECASE)
+_COND_ADJACENT = re.compile(r"if (?:an ally is|(\d+)\+ allies are) adjacent,?\s*(.*)", re.IGNORECASE)
 _COND_ALLIES_DEFEATED = re.compile(r"if (\d+)\+ allies are defeated,?\s*(.*)", re.IGNORECASE)
 _COND_ALLY_RANK = re.compile(r"if the ally has the ([a-z%]+(?: [a-z%]+)*?),\s*(.*)", re.IGNORECASE)
 _COND_AT_N_THING = re.compile(r"at (\d+)\+ ([a-z]+)(?: (potency|count))?,?\s*(.*)", re.IGNORECASE)
@@ -808,6 +834,7 @@ _EFFECT_INFLICT_COUNT = re.compile(r"inflict \+(\d+) ([a-z ]+?) count", re.IGNOR
 _EFFECT_INFLICT_BARE = re.compile(r"inflict (\d+) ([a-z ]+)", re.IGNORECASE)
 _EFFECT_GAIN_STATUS = re.compile(r"gain (\d+) ([a-z ]+)", re.IGNORECASE)
 _TO_SELECTED_ALLY_RE = re.compile(r"\s+to the ally with the ([a-z%]+(?: [a-z%]+)*?)\s*$", re.IGNORECASE)
+_TO_ADJACENT_RE = re.compile(r"\s+to (?:the )?adjacent allies?\s*$", re.IGNORECASE)
 _TO_ALLY_RE = re.compile(r"\s+to (?:the |an |that )?ally\s*$", re.IGNORECASE)
 _EFFECT_REMOVE = re.compile(r"remove ([a-z ]+)", re.IGNORECASE)
 _EFFECT_HEAL = re.compile(r"heal (\d+)\s*(%)?(?: max)?\s*(?:hp)?", re.IGNORECASE)
@@ -958,6 +985,13 @@ def _parse_condition_and_effect_text(text: str) -> tuple[Condition, str]:
         if len(tag) > MAX_TAG_LENGTH:
             raise TriggerParseError(text, f"a tag is at most {MAX_TAG_LENGTH} characters")
         return Condition(type="target_tag", status_name=tag), m.group(2)
+
+    m = _COND_ADJACENT.match(text)
+    if m:
+        n = int(m.group(1)) if m.group(1) else 1
+        if not 1 <= n <= 2:
+            raise TriggerParseError(text, "a unit has at most 2 adjacent allies, use 1 or 2")
+        return Condition(type="adjacent_allies", value=n), m.group(2)
 
     m = _COND_ALLIES_DEFEATED.match(text)
     if m:
@@ -1247,9 +1281,14 @@ def _parse_trigger_lines(text: str, strict: bool = True) -> tuple[list[Trigger],
 
         condition, effect_text = _parse_condition_and_effect_text(rest)
         to_ally = False
+        to_adjacent = False
         ally_select = None
         sel = _TO_SELECTED_ALLY_RE.search(effect_text)
-        if sel:
+        if _TO_ADJACENT_RE.search(effect_text):
+            to_ally = True
+            to_adjacent = True
+            effect_text = _TO_ADJACENT_RE.sub("", effect_text)
+        elif sel:
             ally_select = parse_selector(sel.group(1))
             if ally_select is None:
                 raise TriggerParseError(
@@ -1392,7 +1431,7 @@ def _parse_trigger_lines(text: str, strict: bool = True) -> tuple[list[Trigger],
             effect_type == "level_mod" and not on_target
         ):
             raise TriggerParseError(
-                line, "'to the ally' only works with Heal, Gain, Remove, Gain Sanity, Shield and Gain Level effects"
+                line, "'to the ally' (or 'to the adjacent allies') only works with Heal, Gain, Remove, Gain Sanity, Shield and Gain Level effects"
             )
         if effect_type == "followup_attack":
             if timing not in FOLLOWUP_TIMINGS:
@@ -1441,6 +1480,7 @@ def _parse_trigger_lines(text: str, strict: bool = True) -> tuple[list[Trigger],
             delayed=delayed,
             on_target=on_target,
             ally_select=ally_select,
+            to_adjacent=to_adjacent,
         ))
 
     return triggers, flags

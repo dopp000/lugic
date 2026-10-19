@@ -1,6 +1,7 @@
 from dataclasses import replace
 import asyncio
 import copy
+import dataclasses
 import difflib
 import itertools
 import random
@@ -1598,6 +1599,22 @@ def fire_kill_triggers(
     return log
 
 
+def fire_failed_triggers(
+    caster: Fighter, target: Fighter, skill: Skill, context: TriggerContext, evaded: bool, damage: int
+) -> list[str]:
+    """Fires [Failed Hit] when the target evaded or the hit dealt 0 damage, and [Failed Kill] when it landed but the target is still up. Call it AFTER take_damage."""
+    if skill.tags & {"guard", "clashable_guard", "evade"}:
+        return []
+    if evaded or damage <= 0:
+        timing = "failed_hit"
+    elif target.is_alive():
+        timing = "failed_kill"
+    else:
+        return []
+    _, post_hit = resolve_triggers(skill, context, timing)
+    return apply_trigger_effects(post_hit, caster, target)
+
+
 def fire_tremor_burst(caster: Fighter, target: Fighter, skill: Skill, context: TriggerContext) -> list[str]:
     """Fires [Tremor Burst] on the attacker's skill, only if the target
     currently holds Tremor AND the skill's own condition on that line
@@ -1732,7 +1749,17 @@ def apply_trigger_effects(
 ) -> list[str]:
     """Applies the post-hit effects (inflict_status, sanity_gain, gain_status, heal, remove_status) from whichever triggers fired AND actually landed a hit. Dangerous ones (hint_tier 2+) get run through _warn_wrap so they stand out in the fight log. A trigger written with 'to the ally' lands on `ally` (the fighter a [Support] skill was aimed at) instead of the caster, and is skipped if there is no ally. See docs/ENGINEERING_NOTES.md#battle-apply-trigger-effects and #ally-support for the full rationale."""
     log: list[str] = []
+    expanded: list[Trigger] = []
     for t in triggers:
+        if t.to_adjacent:
+            # One copy per neighbour found when the line fired, each aimed like a single-ally selector.
+            for neighbour in (t.selected_allies or []):
+                expanded.append(dataclasses.replace(
+                    t, to_adjacent=False, ally_select="adjacent", selected_ally=neighbour, selected_allies=None,
+                ))
+        else:
+            expanded.append(t)
+    for t in expanded:
         if t.delayed:
             caster.pending_effects.append((t, target, ally))
             continue
@@ -3480,6 +3507,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                 _, stagger_post_hit = resolve_triggers(winner_skill, winner_context, "on_stagger")
             winner_was_crit = any(c.is_crit for c in outcome.winner_final_result.coin_results)
             kill_log = fire_kill_triggers(winner, loser, winner_skill, winner_context, winner_was_crit)
+            kill_log += fire_failed_triggers(winner, loser, winner_skill, winner_context, evaded, total_damage)
             tremor_log = fire_tremor_burst(winner, loser, winner_skill, winner_context)
             bleed_log = apply_bleed_self_damage(winner, winner_skill, battle)
             trigger_log = apply_trigger_effects(
@@ -3825,6 +3853,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                         _, stagger_post_hit = resolve_triggers(adjusted_skill, context, "on_stagger")
                     fighter_was_crit = any(c.is_crit for c in result.coin_results)
                     kill_log = fire_kill_triggers(fighter, target, adjusted_skill, context, fighter_was_crit)
+                    kill_log += fire_failed_triggers(fighter, target, adjusted_skill, context, evaded, total_damage)
                     tremor_log = fire_tremor_burst(fighter, target, adjusted_skill, context)
                     bleed_log = apply_bleed_self_damage(fighter, adjusted_skill, battle)
                     if is_counter:

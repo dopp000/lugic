@@ -120,7 +120,7 @@ _PER_COIN = {
     "heads_attack_end", "tails_attack_end", "on_crit", "on_crit_heads_hit", "on_crit_tails_hit",
 }
 _PER_SKILL = {
-    "before_use", "before_attack", "attack_end", "on_kill", "on_crit_kill",
+    "before_use", "before_attack", "attack_end", "on_kill", "on_crit_kill", "failed_hit", "failed_kill",
     "on_stagger", "tremor_burst", "on_evade", "before_getting_hit",
 }
 _CLASH = {

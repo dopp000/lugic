@@ -475,6 +475,7 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
             "**On Evade**, **Before Getting Hit**: when you dodge or get hit.\n"
             "**On Stagger**, **On Kill**, **On Crit Kill**: after a hit that Staggers, "
             "kills, or crit-kills. **Hit After Clash Lose**: for the side that lost a Clash.\n"
+            "**Failed Hit**: your attack was evaded or dealt 0 damage. **Failed Kill**: it landed but the target is still standing.\n"
             "**Tremor Burst**: cashes in Tremor on the target."
         ),
     ),
@@ -509,7 +510,8 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
             "`If the target is using a Defense Skill,`\n"
             "`If the ally has the fastest Speed,` (for `[Ally ...]` and Support lines)\n"
             "`If 3+ units on your side have the N Corp tag,` (living units, you included) / "
-            "`If the target has the Dawn Office tag,` / `If 2+ allies are defeated,`. "
+            "`If the target has the Dawn Office tag,` / `If 2+ allies are defeated,` / "
+            "`If an ally is adjacent,` / `If 2+ allies are adjacent,` (neighbours in deployment order, living units only). "
             "Tags are set by an admin with `/charadmin tags` and must be spelled the same.\n"
             "`At 10+ Speed,` (your slot speed) or `At 5+ Poise,` (a status you hold)\n"
             "`If this unit is Low Morale,` / `If the target is Panic,`\n"
@@ -589,6 +591,8 @@ TRIGGER_SYNTAX: list[HelpEntry] = [
             "Choices: fastest/slowest Speed, highest/lowest HP, HP percent, Max HP, SP, "
             "most/least Charge (any status), earliest/latest deployment. A tie goes to whoever was "
             "deployed first. As a condition: `If the ally has the fastest Speed,`.\n"
+            "**Neighbours:** `to the adjacent allies` hits each living unit next to you in deployment order "
+            "(up to 2): `[Combat Start] Gain 8 Shield to the adjacent allies`.\n"
             "**Follow-up attack:** `[Ally On Hit] Use Slash Combo as a follow-up attack (once per turn)` "
             "makes you attack the enemy your ally just hit, with your own skill of that name, unopposed, "
             "right after their attack. It needs a once per turn or once per Encounter limit. If that enemy is "
