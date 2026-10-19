@@ -537,6 +537,27 @@ that flag.
 | `delete` | Owner-or-admin. |
 | `say` | Owner-or-admin. Speaks via webhook (name + avatar). |
 
+### `/request` group (`cogs/build_requests.py`)
+
+Players cannot change anything that costs points, so they ask. A request stores one change as data
+(`game/build_requests.py`), is checked on a copy of the character with the normal Build Point rules (so an impossible
+one is turned away at once), and is posted with Approve and Deny buttons in the review channel. Approving checks it
+again against the character as it is now, saves it and DMs the player. Denying asks for an optional reason.
+
+| Command | Notes |
+| --- | --- |
+| `stats` | HP, Speed range, Power, Offense/Defense Level, Stagger tiers to remove, resistances. A reason is required. |
+| `rank` | A status rank 0 to 5. |
+| `archetype` | Take or drop a defense archetype. |
+| `tags` | Up to 3 group tags (no tags clears them). |
+| `passive` | An identity passive with 1 to 3 lines and a suggested PP price. On approval the admin confirms the final price. |
+| `mine` / `cancel` | See your requests and their answers, withdraw an open one. |
+| `channel` | Admin. Sets where new requests are posted (default: the current channel). |
+| `list` / `review` | Admin. Open requests, and re-posting one with its buttons. |
+
+A player can have 3 open requests, and one open request per kind and character. Skills and custom statuses are not
+requests: owners add those themselves and the Build Point checks still apply. Requests are stored in `data/requests.json`.
+
 ### `/charadmin` group (`cogs/character.py`)
 
 The admin-only build commands. They are their own group because Discord allows at most 25 subcommands in one group, and `/character` was already at that limit.

@@ -722,6 +722,9 @@ COMMANDS: list[HelpEntry] = [
             "`/character bp` shows a character's level, Build Points and anything to fix.\n"
             "Admins also have `/charadmin grantbp`, `grantsp`, `grantpp`, `passive`, `removepassive`, `tags`, `rank`, `archetype`, `exempt`, `drawback` and `recheck`.\n"
             "`/character resistance` (admin only) is a shortcut for setting resistances.\n"
+            "Want a build change? Use `/request stats`, `rank`, `archetype`, `tags` or `passive` with a reason. "
+            "The bot checks it first, then an admin approves or denies it and you get a DM. "
+            "`/request mine` shows your requests, `/request cancel` withdraws one.\n"
             "`/character delete` removes one for good."
         ),
     ),

@@ -2322,3 +2322,22 @@ a new status gets an icon.
 - The summary line lists the picks and each extra enemy's damage; the full log has the details.
 - In a Clash the flag does nothing (one opponent). `build_followup_units` treats the flag like Attack Weight above 1 for
   picking another enemy when the main one is down, and a follow-up Volley picks its coins as above.
+
+<a id="player-requests"></a>
+## Player requests
+
+- `game/build_requests.py` is pure: `Request` dataclass, JSON storage in `data/requests.json` (also holds `next_id` and the
+  review channel id), `_apply(character, kind, params)` which mutates a character for one of `KINDS` (stats, rank,
+  archetype, tags, passive), and `try_change` which runs `_apply` on a deepcopy and applies the same "may not add a new
+  Build Point problem unless it fixes as many" rule as `/character edit`. It returns the changed copy, and an approval
+  saves that copy, so what was checked is what is stored.
+- `cogs/build_requests.py` holds the commands and `ReviewButton`, a `discord.ui.DynamicItem` whose `custom_id` is
+  `req:<approve|deny>:<id>`, so the buttons still work after a restart (`bot.add_dynamic_items` in `cog_load`).
+  Passive approvals open `CostModal` to confirm the PP price, denials open `DenyModal`. Closed requests lose their buttons.
+- Checked twice: when filed (so a hopeless request never reaches an admin) and again on approval (the character may have
+  changed since). A failure on approval is shown only to the admin and leaves the request open.
+- Limits: 3 open requests per player, one open request per kind and character. Owners or admins can file; the DM goes to
+  the filer.
+- Decided: scope is everything admin-gated that costs points; auto-check then admin decides; review channel plus
+  `/request list`.
+- Discord allows 25 subcommands per group and `/character` had reached 26, so the admin build commands moved to `/charadmin`.
