@@ -1019,3 +1019,16 @@ live again as soon as the bot restarts.
   up genuinely changes which redirect is correct, since a static pre-pass
   can't know that yet — this is what made the `resolve_clash_unit`
   extraction necessary rather than optional.
+
+## Running the tests
+
+From the repo root:
+
+```
+python -m unittest discover tests
+```
+
+- `tests/test_limits.py` checks the things Discord rejects outright: every slash command description and name, the size of the battle display with many fighters, help text lengths, the bars, character name and file safety, and how often the combat message is edited.
+- `tests/test_scenarios.py` runs each script in `tests/scenarios/` in its own process from an empty temp folder (so nothing is written to `data/`). They cover trigger parsing, passives, statuses and Stagger, follow-ups and Assist Defense, Unfocused Volley, player requests, death reactions, adjacency and `[Failed ...]`, Part Stagger, and the `/help` menus.
+- Run them before pushing a change to `cogs/` or `game/`. A failing scenario prints its last output.
+- `requirements.txt` pins `discord.py` to the version these tests were run against (2.7.1).

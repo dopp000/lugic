@@ -3374,6 +3374,13 @@ class BattleCog(commands.GroupCog, name="battle"):
         MIN_EDIT_GAP = 1.1
         last_edit_at = [time.monotonic()]
 
+        async def pace():
+            """Waits until MIN_EDIT_GAP has passed since the last edit of the combat message."""
+            wait = MIN_EDIT_GAP - (time.monotonic() - last_edit_at[0])
+            if wait > 0:
+                await asyncio.sleep(wait)
+            last_edit_at[0] = time.monotonic()
+
         async def render(live_block: str | None):
             """Re-renders the ONE shared combat_message: every locked (finished) line, plus whatever the current unit's live animation looks like right... See docs/ENGINEERING_NOTES.md#battle-battlecog-combat-render for the full rationale."""
             parts = []
@@ -3386,11 +3393,8 @@ class BattleCog(commands.GroupCog, name="battle"):
             if len(description) > 4000:
                 description = description[-4000:]
             embed = discord.Embed(title=combat_title, description=description, color=combat_color)
-            wait = MIN_EDIT_GAP - (time.monotonic() - last_edit_at[0])
-            if wait > 0:
-                await asyncio.sleep(wait)
+            await pace()
             await combat_message.edit(embed=embed)
-            last_edit_at[0] = time.monotonic()
 
         # Coin-by-coin animation is pure PRESENTATION over results that are already fully computed the instant resolve_skill/... See docs/ENGINEERING_NOTES.md#battle-comment-1732.
         def rolling_row(n: int) -> str:
@@ -4322,6 +4326,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         # Single consolidated "Full Log" button replaces the old
         # per-action CombatRevealView -- see CombatLogView's docstring.
         log_view = CombatLogView(full_log_entries) if full_log_entries else None
+        await pace()
         await combat_message.edit(embed=final_embed, view=log_view)
 
         # Once the whole phase is done, post the updated battle status as a FRESH message in the channel (not just a silent edit of whatever the... See docs/ENGINEERING_NOTES.md#battle-comment-2173.
