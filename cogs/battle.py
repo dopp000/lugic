@@ -1085,7 +1085,7 @@ def _damage_mods(
 
 def apply_incoming_hit(
     attacker_skill: Skill, result: SkillResult, target: Fighter, caster: Fighter,
-    target_slot: int | None = None,
+    target_slot: int | None = None, coin_indices: set[int] | None = None,
 ) -> tuple[int, list[str], list[Trigger]]:
     """Applies each landed coin's damage/status, and collects whichever
     per-coin Triggers (on_hit/heads_hit/tails_hit) fired on that coin.
@@ -1105,6 +1105,8 @@ def apply_incoming_hit(
     )
 
     for i, coin in enumerate(result.coin_results):
+        if coin_indices is not None and i not in coin_indices:
+            continue  # an Unfocused Volley coin that picked another enemy
         per_coin_triggers.extend(coin.fired_triggers)
         raw = coin.damage_dealt + (coin.crit_bonus_damage if coin.is_crit else 0)
         resisted = apply_resistance(raw, resist.get(attacker_skill.damage_type, 1.0))
@@ -1369,7 +1371,7 @@ def fire_ally_reactions(
 
 
 def build_followup_units(battle: Battle) -> list:
-    """Turns every waiting "Use X as a follow-up attack" request into an unopposed ("solo") unit for the combat loop, oldest first. A request is dropped if its owner is down or no longer has the skill (or the skill is a defense or Supermove). If the enemy it was aimed at is already down, a skill with Attack Weight above 1 picks another living enemy instead, anything else is cancelled. A skill with Attack Weight also reaches that many extra enemies, like a declared one."""
+    """Turns every waiting "Use X as a follow-up attack" request into an unopposed ("solo") unit for the combat loop, oldest first. A request is dropped if its owner is down or no longer has the skill (or the skill is a defense or Supermove). If the enemy it was aimed at is already down, a skill with Attack Weight above 1 or the Unfocused Volley tag picks another living enemy instead, anything else is cancelled. A skill with Attack Weight also reaches that many extra enemies, like a declared one."""
     pending = []
     for f in battle.fighters:
         queue, f.followup_queue = f.followup_queue, []
@@ -1389,11 +1391,12 @@ def build_followup_units(battle: Battle) -> list:
         ]
         random.shuffle(others)
         weight = max(1, skill.attack_weight)
+        volley = "unfocused_volley" in skill.tags
         if primary is None:
-            if weight <= 1 or not others:
+            if (weight <= 1 and not volley) or not others:
                 continue
             primary = others.pop(0)
-        extras = [(e, 1) for e in others[: weight - 1]] if weight > 1 else []
+        extras = [(e, 1) for e in others[: weight - 1]] if weight > 1 and not volley else []
         units.append(("solo", {
             "caster": owner, "skill": skill, "target": primary, "slot": 1, "target_slot": 1,
             "extra_targets": extras, "is_followup": True,
@@ -3720,6 +3723,34 @@ class BattleCog(commands.GroupCog, name="battle"):
                 sanity_gain = heads_landed * SANITY_PER_HEADS_UNOPPOSED
                 fighter.gain_sanity(sanity_gain)
 
+                # [Unfocused Volley]: coin 1 hits the main target, every other coin picks a random
+                # living enemy. primary_coins are the coins that stay on `target`, volley_extras is
+                # (enemy, slot, coin indices) for everyone else, handled by the splash block below.
+                volley_extras = None
+                primary_coins = None
+                volley_note = ""
+                if (
+                    "unfocused_volley" in adjusted_skill.tags
+                    and not (is_evade_readying or is_clashable_defense_idle or is_guard)
+                    and len(result.coin_results) > 1
+                ):
+                    pool = [
+                        e for e in battle.fighters
+                        if e.side != fighter.side and e.is_alive() and not e.eliminated
+                    ]
+                    if target not in pool:
+                        pool.append(target)
+                    picks = [target] + [random.choice(pool) for _ in range(len(result.coin_results) - 1)]
+                    primary_coins = {i for i, e in enumerate(picks) if e is target}
+                    groups: dict[int, tuple[Fighter, set[int]]] = {}
+                    for i, e in enumerate(picks):
+                        if e is not target:
+                            groups.setdefault(id(e), (e, set()))[1].add(i)
+                    volley_extras = [(e, 1, idxs) for e, idxs in groups.values()]
+                    volley_note = "🎯 Unfocused Volley: " + ", ".join(
+                        f"coin {i + 1} -> {e.name}" for i, e in enumerate(picks)
+                    )
+
                 if is_evade_readying:
                     # Evade's OWN declared entry never deals damage or
                     # rolls its coin here -- its real win/lose roll only
@@ -3762,7 +3793,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                         total_damage, per_coin_triggers = 0, []
                     else:
                         total_damage, hit_log, per_coin_triggers = apply_incoming_hit(
-                            adjusted_skill, result, target, fighter, entry["target_slot"]
+                            adjusted_skill, result, target, fighter, entry["target_slot"], primary_coins
                         )
                         status_log += hit_log
                     target.take_damage(total_damage)
@@ -3835,9 +3866,13 @@ class BattleCog(commands.GroupCog, name="battle"):
                 # plain damage below, same as any other target with no
                 # defense skill declared. Guard never splashes (it deals
                 # no damage to begin with).
-                splash_log: list[str] = []
+                splash_log: list[str] = [volley_note] if volley_note else []
+                volley_summary: list[str] = []
                 if not is_guard:
-                    for splash_fighter, splash_slot in entry.get("extra_targets", []):
+                    splash_targets = volley_extras if volley_extras is not None else entry.get("extra_targets", [])
+                    for splash in splash_targets:
+                        splash_fighter, splash_slot = splash[0], splash[1]
+                        volley_coins = splash[2] if len(splash) > 2 else None
                         if not splash_fighter.is_alive():
                             continue
 
@@ -3879,6 +3914,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                         splash_total = 0
                         for i, coin in enumerate(result.coin_results):
                             if coin.is_evaded:
+                                continue
+                            if volley_coins is not None and i not in volley_coins:
                                 continue
                             raw_coin = coin.damage_dealt + (coin.crit_bonus_damage if coin.is_crit else 0)
                             resisted_coin = apply_resistance(
@@ -3961,10 +3998,20 @@ class BattleCog(commands.GroupCog, name="battle"):
                             if splash_shield_absorbed > 0 else ""
                         )
                         splash_log.append(
-                            f"⯀ Attack Weight splashes "
+                            f"{'🎯 Unfocused Volley hits' if volley_coins is not None else '⯀ Attack Weight splashes'} "
                             f"{splash_fighter.name} Slot {splash_slot} for {splash_total} damage."
                             f"{splash_breakdown} ({splash_fighter.name}: {splash_fighter.hp}/{splash_fighter.max_hp} HP)"
                         )
+                        if volley_coins is not None:
+                            volley_summary.append(
+                                f"  ↳ **{splash_fighter.name}** takes {splash_total} "
+                                f"({splash_fighter.hp}/{splash_fighter.max_hp} HP)"
+                            )
+                            # The coins' own [On Hit] style lines land on the enemy that coin picked.
+                            volley_triggers = [
+                                t for i in sorted(volley_coins) for t in result.coin_results[i].fired_triggers
+                            ]
+                            splash_log.extend(apply_trigger_effects(volley_triggers, fighter, splash_fighter))
 
                         # [On Stagger] parity: the primary target already
                         # fires this on the attacker's skill via
@@ -4064,6 +4111,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                         f"🗡️ **{fighter.name}** hits **{target.name}** (unopposed) -- {total_damage} damage "
                         f"({target.name}: {target.hp}/{target.max_hp} HP)"
                     )
+                    if volley_note:
+                        summary_line += "\n" + volley_note + "".join("\n" + v for v in volley_summary)
                     full_log_entries.append((f"{fighter.name} -> {target.name} (unopposed)", field_value))
                 summary_lines.append(summary_line)
 

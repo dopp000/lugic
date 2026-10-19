@@ -204,6 +204,7 @@ SKILL_FLAG_TAGS = {
     "target fixed": "target_fixed",
     "indiscriminate": "indiscriminate",
     "unclashable": "unclashable",
+    "unfocused volley": "unfocused_volley",
     "guard": "guard",
     "clashable guard": "clashable_guard",
     "evade": "evade",

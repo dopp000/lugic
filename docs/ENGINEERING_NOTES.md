@@ -2303,3 +2303,22 @@ a new status gets an icon.
   defender and the rest of the pipeline is unchanged, so the defender's resistances, Shield and Evade apply. Other lines
   that fired at that timing (Shield, Gain ...) are applied to the defender. Clashes are never redirected. It adds
   `ally_before_hit` to `PASSIVE_TIMINGS` and to the clash-priced timings in `game/supermoves.py`.
+
+<a id="unfocused-volley-patch-8"></a>
+## Unfocused Volley
+
+- Skill flag `[Unfocused Volley]` (tag `unfocused_volley`, in `SKILL_FLAG_TAGS`, priced like the other flags for Supermoves).
+- It only acts in the unopposed branch of `combat()` (a normal attack, not Guard/Evade/idle Clashable). Right after
+  `resolve_skill`, coin 1 is pinned to the main target and every other coin picks `random.choice` from the living
+  enemies (the main target is always in the pool). `primary_coins` are the coins that stay on the main target;
+  `apply_incoming_hit(..., coin_indices=primary_coins)` skips the rest, so Rupture, Poise decay and coin statuses only
+  happen for coins that really hit that target.
+- Other enemies reuse the Attack Weight splash block: `volley_extras` entries are `(fighter, slot 1, coin indices)` and
+  replace `entry["extra_targets"]` for that attack (Volley wins over Attack Weight). The block runs the usual Evade check
+  once per enemy, damage with that enemy's resistances, Stagger and Fragile/Offense mods, Stagger check and ally reactions.
+  New: the coins' own `fired_triggers` (On Hit, Heads Hit, crit ...) are applied with that enemy as the target. Their
+  conditions were checked against the main target before the picks were known, so a condition like `If the target has
+  3+ Burn` reads the main target's state. Skill-level lines (Attack End, Turn End ...) still hit the main target only.
+- The summary line lists the picks and each extra enemy's damage; the full log has the details.
+- In a Clash the flag does nothing (one opponent). `build_followup_units` treats the flag like Attack Weight above 1 for
+  picking another enemy when the main one is down, and a follow-up Volley picks its coins as above.

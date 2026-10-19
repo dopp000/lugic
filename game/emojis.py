@@ -148,6 +148,7 @@ SKILL_TAG_EMOJI_IDS: dict[str, int | None] = {
     "target_fixed": None,
     "unclashable": None,
     "indiscriminate": None,
+    "unfocused_volley": None,
     "duality": 1561242795472199690,
     "supermove": None,
 }

@@ -101,6 +101,20 @@ SKILL_TAGS: list[HelpEntry] = [
         ),
     ),
     HelpEntry(
+        key="unfocused_volley",
+        title="Unfocused Volley",
+        summary="Every coin picks its own random enemy.",
+        body=(
+            "Put `[Unfocused Volley]` on its own line. When the skill hits an enemy **unopposed**, "
+            "each coin goes against a random living enemy. **Coin 1 always hits the main target.** "
+            "A coin's damage and its `[On Hit]` style lines (On Hit, Heads Hit, Tails Hit, crit) land "
+            "only on the enemy that coin picked, and each enemy is checked for Evade once. "
+            "Attack Weight splash is not used on top of it.\n"
+            "In a Clash it behaves like a normal skill against the one opponent. "
+            "As a follow-up attack it picks other enemies if the main one is already down."
+        ),
+    ),
+    HelpEntry(
         key="counter",
         title="Counter",
         summary="Strikes back at a faster unopposed attack, once per round.",

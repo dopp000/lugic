@@ -109,7 +109,7 @@ SUPERMOVE_ONLY_FLAGS = {"unclashable"}
 
 # Extra BP for the most demanding timing a Supermove uses (only the highest
 # one counts, they do not stack). Anything not listed costs nothing extra.
-SURCHARGE_FLAGS = 1      # [Target Fixed], [Indiscriminate], [Unclashable]
+SURCHARGE_FLAGS = 1      # [Target Fixed], [Indiscriminate], [Unclashable], [Unfocused Volley]
 SURCHARGE_PER_COIN = 2   # coin start, on hit, heads/tails hit, crit, attack end per coin
 SURCHARGE_PER_SKILL = 3  # before use, before attack, attack end, on kill, on stagger ...
 SURCHARGE_CLASH = 4      # clash start/win/lose, hit after clash, unopposed attack, ally reactions
@@ -129,7 +129,7 @@ _CLASH = {
     "ally_on_hit", "ally_on_crit", "ally_on_kill", "ally_is_hit", "ally_on_stagger", "ally_before_hit",
 }
 _TURN = {"turn_start", "turn_end", "combat_start", "ally_turn_start", "ally_combat_start"}
-_SURCHARGE_FLAG_TAGS = {"target_fixed", "indiscriminate", "unclashable"}
+_SURCHARGE_FLAG_TAGS = {"target_fixed", "indiscriminate", "unclashable", "unfocused_volley"}
 
 
 @dataclass
