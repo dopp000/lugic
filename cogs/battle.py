@@ -27,7 +27,8 @@ from game.build_points import (
     OFFDEF_PERCENT_PER_STEP, SP_PER_EXTRA_LINE, check_build, skill_points_spent, skill_power_problem, skill_rank_problems,
     skill_archetype, skill_defense_problem, nonkeyword_grants,
 )
-from game.passives import PASSIVE_ONLY_TIMINGS
+from game.passives import PASSIVE_ONLY_TIMINGS, tag_warnings
+from game.build_requests import known_tags
 from game.npc_tiers import NPC_TIERS, describe as describe_tier
 from game.statuses import (
     StatusInstance, decay_after_trigger, apply_status, INFLICTABLE_STATUSES,
@@ -601,6 +602,9 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
         if is_super:
             drawback = (getattr(self.target_fighter, "supermove_drawbacks", None) or {}).get(skill.name.lower(), {})
             preview_text += f"\nBuild Points: {describe_bp(skill, drawback.get('tiers', []))}"
+        tag_notes = tag_warnings(triggers, known_tags())
+        if tag_notes:
+            preview_text += "\n" + "\n".join(f"Warning: {w}" for w in tag_notes)
         view = self._build_confirm_view(skill, preview_text)
         await interaction.response.send_message(preview_text, view=view, ephemeral=True)
 

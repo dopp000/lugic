@@ -241,6 +241,21 @@ def try_change(character, kind: str, params: dict) -> tuple[str, str | None, "ob
     return ", ".join(changes), None, trial
 
 
+def cost_preview(character, changed) -> str:
+    """One line comparing the budget before and after a change, for the player and the admin."""
+    before, after = check_build(character), check_build(changed)
+    text = f"BP {before.spent}/{before.total} -> {after.spent}/{after.total}"
+    if changed.passives != character.passives:
+        text += f", PP {passive_points_spent(character)} -> {passive_points_spent(changed)}/{changed.pp_total}"
+    return text
+
+
+def known_tags() -> set[str]:
+    """Every group tag any saved character has, normalized."""
+    from game.character import list_all_characters
+    return {norm_tag(t) for c in list_all_characters() for t in c.tags}
+
+
 def describe_request(req: Request) -> str:
     """One short line saying what the request asks for."""
     p = req.params

@@ -2375,3 +2375,16 @@ a new status gets an icon.
   splash/Volley). A new Part Stagger logs a line and counts as a Stagger for the attacker's `[On Stagger]` line; it does
   not fire `[Ally On Stagger]` or `[Self On Stagger]`.
 - `Recover from Stagger` and `/battle repairpart` clear Part Stagger as well.
+
+<a id="request-extras-patch-16"></a>
+## Request previews and tag warnings
+
+- `cost_preview(character, changed)` (game/build_requests.py) prints BP spent before and after from `check_build`, and PP
+  when the passive list changed. It is shown when a request is filed and as the "Budget" field on an open review
+  message, recomputed each time the message is built, so it follows the character as it is now. If the request no
+  longer works, the field is "Right now" with the reason.
+- `tag_warnings(triggers, known_tags)` (game/passives.py) warns for each `side_tag_count` / `target_tag` condition whose
+  tag no saved character has, with a `difflib` suggestion. `known_tags()` collects tags from every saved character.
+  It never blocks: it is added to the `/request passive` confirmation, the skill form preview and the `/charadmin passive`
+  reply. NPC fighters have no tags, so a line meant for them will warn.
+- `/request mine` and `/request list` take an optional character name, and `list` can include closed requests.

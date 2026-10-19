@@ -17,10 +17,11 @@ from game.build_points import (
 )
 from game.character import list_character_summaries, load_character, save_character
 from game.build_requests import (
-    KIND_LABELS, KINDS, MAX_OPEN_PER_PLAYER, REASON_MAX, Request, create_request, describe_request,
+    KIND_LABELS, KINDS, MAX_OPEN_PER_PLAYER, cost_preview, known_tags, REASON_MAX, Request, create_request, describe_request,
     get_request, get_review_channel, has_open_duplicate, list_requests, open_count, save_request,
     set_review_channel, try_change,
 )
+from game.passives import parse_passive, tag_warnings
 from cogs.character import _parse_resistance_tokens, dm_owner, is_admin
 
 COLOR_OPEN = 0xF1C40F
@@ -40,6 +41,14 @@ def request_embed(req: Request) -> discord.Embed:
     embed.add_field(name="Status", value=req.status.capitalize(), inline=True)
     if req.reason:
         embed.add_field(name="Why", value=req.reason[:900], inline=False)
+    if req.status == "open":
+        current = load_character(req.character)
+        if current is not None:
+            _, error, changed = try_change(current, req.kind, req.params)
+            if changed is not None:
+                embed.add_field(name="Budget", value=cost_preview(current, changed), inline=False)
+            elif error:
+                embed.add_field(name="Right now", value=error[:900], inline=False)
     if req.decided_by:
         note = f": {req.decision_note}" if req.decision_note else ""
         embed.add_field(name="Decided by", value=f"<@{req.decided_by}>{note}"[:900], inline=False)
@@ -207,10 +216,15 @@ class RequestCog(commands.GroupCog, name="request"):
                 ephemeral=True,
             )
             return
-        summary, error, _ = try_change(character, kind, params)
+        summary, error, changed = try_change(character, kind, params)
         if error:
             await interaction.response.send_message(f"That request would not work, so it was not sent:\n{error}"[:1900], ephemeral=True)
             return
+        extra = [cost_preview(character, changed)]
+        if kind == "passive":
+            kinds = {k: cs.kind for k, cs in character.custom_statuses.items()}
+            parsed, _err = parse_passive(params["lines"], kinds)
+            extra += tag_warnings(parsed, known_tags())
         req = create_request(interaction.user.id, character.name, kind, params, reason)
 
         posted = False
@@ -227,7 +241,9 @@ class RequestCog(commands.GroupCog, name="request"):
         tail = "An admin will answer it, and you get a DM." if posted else (
             "No review channel is set up yet, so an admin has to find it with /request list."
         )
-        await interaction.response.send_message(f"Sent request #{req.id}: {summary}. {tail}", ephemeral=True)
+        await interaction.response.send_message(
+            f"Sent request #{req.id}: {summary}. {tail}\n" + "\n".join(extra), ephemeral=True
+        )
 
     @app_commands.command(name="stats", description="Ask for a stat change (HP, Speed, Power, Offense/Defense, Stagger, resistances)")
     @app_commands.describe(
@@ -336,10 +352,14 @@ class RequestCog(commands.GroupCog, name="request"):
     # ---- the player's own ---------------------------------------------
 
     @app_commands.command(name="mine", description="See your requests and how they were answered")
-    async def mine(self, interaction: discord.Interaction):
-        mine = list_requests(owner_id=interaction.user.id)[-15:]
+    @app_commands.describe(name="Only requests for this character")
+    async def mine(self, interaction: discord.Interaction, name: str | None = None):
+        mine = list_requests(owner_id=interaction.user.id)
+        if name:
+            mine = [r for r in mine if r.character.lower() == name.lower()]
+        mine = mine[-15:]
         if not mine:
-            await interaction.response.send_message("You have not asked for anything yet.", ephemeral=True)
+            await interaction.response.send_message("No requests to show.", ephemeral=True)
             return
         lines = []
         for r in reversed(mine):
@@ -392,16 +412,19 @@ class RequestCog(commands.GroupCog, name="request"):
 
     @app_commands.command(name="list", description="Admin only: show the open requests")
     @app_commands.default_permissions(manage_guild=True)
-    async def list_open(self, interaction: discord.Interaction):
+    @app_commands.describe(name="Only requests for this character", include_closed="Also show answered requests")
+    async def list_open(self, interaction: discord.Interaction, name: str | None = None, include_closed: bool = False):
         if not is_admin(interaction):
             await interaction.response.send_message("Only an admin can see every request.", ephemeral=True)
             return
-        open_ones = list_requests(status="open")
+        open_ones = list_requests(status=None if include_closed else "open")
+        if name:
+            open_ones = [r for r in open_ones if r.character.lower() == name.lower()]
         if not open_ones:
-            await interaction.response.send_message("No open requests.", ephemeral=True)
+            await interaction.response.send_message("No matching requests.", ephemeral=True)
             return
         lines = [
-            f"#{r.id} <@{r.owner_id}> {r.character}, {KIND_LABELS[r.kind].lower()}: {describe_request(r).splitlines()[0]}"
+            f"#{r.id} {r.status} <@{r.owner_id}> {r.character}, {KIND_LABELS[r.kind].lower()}: {describe_request(r).splitlines()[0]}"
             for r in open_ones[:20]
         ]
         extra = f"\n...and {len(open_ones) - 20} more" if len(open_ones) > 20 else ""
@@ -432,7 +455,7 @@ class RequestCog(commands.GroupCog, name="request"):
         )
         return [app_commands.Choice(name=n[:100], value=n) for n in names][:25]
 
-    for _command in (stats, rank, archetype, tags, passive):
+    for _command in (stats, rank, archetype, tags, passive, mine, list_open):
         _command.autocomplete("name")(_name_autocomplete)
     del _command
 

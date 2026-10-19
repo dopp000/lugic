@@ -76,3 +76,21 @@ def followup_problem(character, parsed) -> str | None:
         if owned.tags & {"guard", "evade", "counter", "clashable_guard", "clashable_counter", "supermove"}:
             return f"`{owned.name}` is a defense skill or a Supermove, a follow-up attack has to be a normal attack."
     return None
+
+
+def tag_warnings(triggers, known_tags) -> list[str]:
+    """Lines about tag conditions that name a tag nobody has. `known_tags` is a set of normalized tags (see norm_tag) from every saved character. A typo never matches and gives no error, so this is how a player finds out."""
+    import difflib
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for t in triggers:
+        c = t.condition
+        if c.type not in ("side_tag_count", "target_tag") or c.status_name in seen:
+            continue
+        seen.add(c.status_name)
+        if c.status_name in known_tags:
+            continue
+        close = difflib.get_close_matches(c.status_name, sorted(known_tags), n=1, cutoff=0.6)
+        hint = f" Did you mean `{close[0]}`?" if close else ""
+        warnings.append(f"No character has the tag `{c.status_name}`, so that line will never fire.{hint}")
+    return warnings

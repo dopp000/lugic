@@ -557,11 +557,13 @@ again against the character as it is now, saves it and DMs the player. Denying a
 | `archetype` | Take or drop a defense archetype. |
 | `tags` | Up to 3 group tags (no tags clears them). |
 | `passive` | An identity passive with 1 to 3 lines and a suggested PP price. On approval the admin confirms the final price. |
-| `mine` / `cancel` | See your requests and their answers, withdraw an open one. |
+| `mine` / `cancel` | See your requests and their answers (optionally for one character), withdraw an open one. |
 | `channel` | Admin. Sets where new requests are posted (default: the current channel). |
-| `list` / `review` | Admin. Open requests, and re-posting one with its buttons. |
+| `list` / `review` | Admin. Open requests (filter by character, or include answered ones), and re-posting one with its buttons. |
 
-A player can have 3 open requests, and one open request per kind and character. Skills and custom statuses are not
+Filing a request shows the budget before and after (`BP 16/30 -> 18/30`, plus PP for a passive), the review message shows the same,
+and a passive that counts a tag nobody has gets a warning with a "did you mean" hint. The same warning shows in the skill form
+and after `/charadmin passive`. A player can have 3 open requests, and one open request per kind and character. Skills and custom statuses are not
 requests: owners add those themselves and the Build Point checks still apply. Requests are stored in `data/requests.json`.
 
 ### `/charadmin` group (`cogs/character.py`)

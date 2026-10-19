@@ -22,7 +22,8 @@ from game.build_points import (
 from game.resistances import ALL_RESISTANCE_TYPES, DAMAGE_TYPES, parse_resistance_multiplier
 from game.emojis import status_emoji, damage_type_emoji, register_custom_status_emoji
 from game.conditions import MAX_TAG_LENGTH, MAX_TAGS, norm_tag
-from game.passives import MAX_PASSIVES, followup_problem, parse_passive
+from game.passives import MAX_PASSIVES, followup_problem, parse_passive, tag_warnings
+from game.build_requests import known_tags
 from game.custom_statuses import (
     CustomStatus, KINDS, LIFETIMES, MAX_CUSTOM_STATUSES_PER_CHARACTER, slugify, validate_name,
 )
@@ -1295,8 +1296,10 @@ class CharacterAdminCog(commands.GroupCog, name="charadmin"):
             return
         character.passives.append(entry)
         save_character(character)
+        notes = tag_warnings(parsed, known_tags() | {norm_tag(t) for t in character.tags})
         await interaction.response.send_message(
-            f"{character.name} now has the {kind.name} **{title}** ({cost} PP). {used}/{character.pp_total} PP used.",
+            f"{character.name} now has the {kind.name} **{title}** ({cost} PP). {used}/{character.pp_total} PP used."
+            + "".join(f"\nWarning: {w}" for w in notes),
             ephemeral=True,
         )
         if interaction.user.id != character.owner_id:
