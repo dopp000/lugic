@@ -425,7 +425,7 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
         if any(t.timing in PASSIVE_ONLY_TIMINGS for t in triggers):
             await interaction.response.send_message(
                 "Self Is Hit, Self On Stagger, Self On Kill and Self On Death are only for passives, an admin sets those "
-                "with /character passive. They would never fire on a skill.",
+                "with /charadmin passive. They would never fire on a skill.",
                 ephemeral=True,
             )
             return
@@ -524,8 +524,8 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
                 await interaction.response.send_message(
                     f"{self.target_fighter.name} cannot take this skill:\n"
                     + "\n".join(f"- {p}" for p in fresh[:6])
-                    + "\nGrant more Build Points with /character grantbp, set a drawback first with "
-                    "/character drawback, or change the skill.",
+                    + "\nGrant more Build Points with /charadmin grantbp, set a drawback first with "
+                    "/charadmin drawback, or change the skill.",
                     ephemeral=True,
                 )
                 return
@@ -542,7 +542,7 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
                     await interaction.response.send_message(
                         "This skill goes past the character's status ranks:\n"
                         + "\n".join(f"- {p}" for p in rank_issues[:6])
-                        + "\nAn admin sets ranks with /character rank (see /help, Build Points).",
+                        + "\nAn admin sets ranks with /charadmin rank (see /help, Build Points).",
                         ephemeral=True,
                     )
                     return
@@ -555,7 +555,7 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
             def_issue = skill_defense_problem(owned_def, draft)
             if def_issue and (old_skill is None or skill_archetype(old_skill) != skill_archetype(draft)):
                 await interaction.response.send_message(
-                    f"{def_issue} An admin buys it with /character archetype (see /help, Build Points).",
+                    f"{def_issue} An admin buys it with /charadmin archetype (see /help, Build Points).",
                     ephemeral=True,
                 )
                 return
@@ -575,7 +575,7 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
                     f"This skill has {len(draft.triggers)} trigger lines. The first line is free and each "
                     f"extra line costs {SP_PER_EXTRA_LINE} Skill Point. {self.target_fighter.name} would use "
                     f"{used_after} but has {self.target_fighter.sp_total}. An admin can grant more with "
-                    "/character grantsp, or remove a trigger line.",
+                    "/charadmin grantsp, or remove a trigger line.",
                     ephemeral=True,
                 )
                 return

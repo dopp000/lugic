@@ -2065,7 +2065,7 @@ a new status gets an icon.
   `AddSkillModal.on_submit` (Power ceiling, admins and `bp_exempt` skip it), and
   `/battle addfighter character_name` (blocks flagged characters, admins get a
   note). Characters saved before this patch (flat Speed 10, etc.) are flagged
-  until an admin fixes them; `/character recheck` tells their owners.
+  until an admin fixes them; `/charadmin recheck` tells their owners.
 - Owner notices go by DM through `dm_owner`, which swallows closed-DM errors.
 - Supermove slots: the Sanity cost per use stays (`game/supermoves.py`, top);
   owning the slot costs BP (same file, bottom section). `supermove_bp(skill,
@@ -2107,7 +2107,7 @@ a new status gets an icon.
   `self_on_kill`, in `PASSIVE_ONLY_TIMINGS`) fire from `fire_self_reactions`, called by
   `fire_hit_ally_reactions`; they sweep passives only, and the skill form refuses them.
   `parse_passive` limits lines to `PASSIVE_TIMINGS` (what the engine actually fires). PP:
-  `pp_total`/`pp_log`, `/character grantpp` (max 2 per call, reason required); spent =
+  `pp_total`/`pp_log`, `/charadmin grantpp` (max 2 per call, reason required); spent =
   passive costs + `status_pp` (unique statuses created after this rule: 1 PP, +1 keeps
   Potency, +1 potency_every; older ones are free). Over `pp_total` is a `check_build`
   problem. Passive and support passives behave the same (Support is a label). Per-hit
@@ -2120,7 +2120,7 @@ a new status gets an icon.
   the old BP sheet (its Duration is always 1 turn here). `check_build` adds a "Non-keyword
   effects" cost and a problem above `NONKEYWORD_CAP` (3). Unlike ranks, this is a real BP
   cost, so older characters with such skills show it in `/character bp` and can be flagged
-  by `/character recheck`. Supermoves are skipped (their price covers them). The skill
+  by `/charadmin recheck`. Supermoves are skipped (their price covers them). The skill
   form runs the same trial-copy check as Supermoves when a skill has such grants. The
   sheet's "twice per fight" limit is not enforced (the sheet itself says track it by hand),
   and Reuse Coin is not built because the bot has no such mechanic.
@@ -2143,8 +2143,8 @@ a new status gets an icon.
   fighters, and an edit is refused only if it has more problems than the skill it
   replaces (grandfathering). It is not in `check_build`, so old characters are not
   flagged. A player's one-off battle fighter has no ranks, so it cannot get ranked
-  statuses on normal skills; admins and exempt NPCs can. Only `/character rank` (admin) sets ranks.
-- Skill Points: `Character.sp_total` / `sp_log`, granted with `/character grantsp`.
+  statuses on normal skills; admins and exempt NPCs can. Only `/charadmin rank` (admin) sets ranks.
+- Skill Points: `Character.sp_total` / `sp_log`, granted with `/charadmin grantsp`.
   Spent is computed (`skill_points_spent`): `max(0, len(skill.triggers) - 1)` per
   non-Supermove skill. It is NOT part of `check_build` problems, so old characters are
   not flagged; `AddSkillModal.on_submit` only refuses a change that raises the SP used
@@ -2271,7 +2271,7 @@ a new status gets an icon.
 ## Group tags
 
 - `Character.tags` (up to `MAX_TAGS` = 3 strings of at most `MAX_TAG_LENGTH` = 30), set by an admin with
-  `/character tags`, saved in the character JSON (old files load with none). `Fighter.from_character` copies them
+  `/charadmin tags`, saved in the character JSON (old files load with none). `Fighter.from_character` copies them
   lowercased with spaces collapsed (`norm_tag`). NPCs from `/battle addnpc` have no tags.
 - Conditions: `side_tag_count` (`If N+ units on your side have the X tag,`, counts living, non eliminated units on the
   caster's side, the caster included), `target_tag` (`If the target has the X tag,`), `allies_defeated`
@@ -2284,7 +2284,7 @@ a new status gets an icon.
 
 - `Use <skill> as a follow-up attack` (`followup_attack`, `status_name` = lowercased skill name). Parser rules: only at
   `FOLLOWUP_TIMINGS` (reactions that have an enemy), must carry `(once per turn)` or `(once per Encounter)` so two
-  passives cannot chain forever, no `next turn` or Consume. `/character passive` also checks the character owns that
+  passives cannot chain forever, no `next turn` or Consume. `/charadmin passive` also checks the character owns that
   skill and it is a normal attack (no defense tag, no Supermove). Skills on `/battle addskill` are not checked
   (a missing skill is simply skipped at runtime).
 - At runtime `apply_trigger_effects` only appends `(order, name, target)` to `Fighter.followup_queue`. The combat loop

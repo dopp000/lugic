@@ -371,7 +371,7 @@ logic. Part names and HP show under the fighter in the battle embed. See
   coin, and not for an evaded or zero-damage hit. Attack Weight splash hits fire
   them too, once per splash target. See `docs/ENGINEERING_NOTES.md#ally-reactions`.
 - **Build Points (first part)**: `game/build_points.py` holds every number. A
-  character has a BP pool (30 at the start, more from `/character grantbp`),
+  character has a BP pool (30 at the start, more from `/charadmin grantbp`),
   and its level is just a label on the pool (45 / 63 / 84 / 108). HP (100 to
   160), Power (6 to 12, 0 / 1 / 2 / 4 / 4 / 6 / 8 BP per step), Speed range (1 to 8, at least 2 wide,
   priced by its average) and Stagger tier removal (5 / 7 / 12) are paid from the
@@ -380,10 +380,10 @@ logic. Part names and HP show under the fighter in the battle embed. See
   floor(2 + 0.4 x Power), Coin Power at most floor(1 + 0.2 x Power); the skill
   form rejects anything higher (admins are exempt). Only admins change HP,
   Speed, Power and Stagger. A character that breaks the rules cannot join a
-  battle (an admin can still add it, with a note), `/character recheck` DMs
-  every owner what to fix, and `/character exempt` is for NPCs. Supermoves
+  battle (an admin can still add it, with a note), `/charadmin recheck` DMs
+  every owner what to fix, and `/charadmin exempt` is for NPCs. Supermoves
   (up to 3) cost BP too: Low 10 / Mid 16 / High 22 by damage, plus 1 to 6 for
-  demanding timings, minus an admin-set drawback (`/character drawback`). Only
+  demanding timings, minus an admin-set drawback (`/charadmin drawback`). Only
   a Supermove can use the strongest tags (Turn Start, Clash Win, Unclashable
   and so on), only admins add Supermoves for now, and they skip the Power
   ceiling but cannot hit for more than about 200. Status resistances (Burn,
@@ -391,7 +391,7 @@ logic. Part names and HP show under the fighter in the battle embed. See
   banked from vulnerabilities; Slash/Blunt/Pierce are all 1.0x or one each of
   0.5 / 1.0 / 1.5. Passive Points (admin-granted, max 2 per event) pay for identity passives (always-on rules kept off the skill list, reacting at Turn/Combat Start, On Evade, Ally reactions and the passive-only Self Is Hit / Self On Stagger / Self On Kill / Self On Death, and shaping every skill they use at Before Use / On Use / Clash Start / Before Attack, which is how a passive adds Deal +10% damage) and for new unique statuses (1 to 3 PP). Non-keyword effects (Haste, Fragile, Bind, Protection, Damage Up/Down, Power Up/Down, Paralyze) on normal skills cost ceil(size / 2) BP each, at most 3 BP per kit, paid from the pool and shown in `/character bp`. Defense archetypes (max 2) gate Guard / Evade / Counter style skills, with a lowest Speed 4 or removed Stagger Tier 2 prerequisite. Status ranks (max 2 statuses, Rank 1 to 5) limit which statuses a normal skill may use and how strong (budget for Bleed/Tremor/Poise/Charge, Potency cap for Burn/Sinking/Rupture), old skills grandfathered. Skill Points (granted by admins, start at 0) pay for extra trigger lines: the first line on a skill is free, each extra costs 1 SP, old skills are grandfathered. Offense/Defense Level (0 to 5, 4% damage per step, 0 / 1 / 2 /
   4 / 4 / 6 BP) change damage dealt and taken. In a clash the higher Level adds the
-  Level gap to its Power every round (`/character exempt level:` and `/battle
+  Level gap to its Power every round (`/charadmin exempt level:` and `/battle
   setstatus level:` set it for NPCs). Not built yet: the player request and
   approval flow (every build change is admin-only for now). See
   `docs/ENGINEERING_NOTES.md#build-points`.
@@ -412,7 +412,7 @@ field once set), a single flat Power value, resistances (comma-separated
 multi-set: `resistance_types:slash,burn values:1.25,0.75`, covers the 3
 damage types + 5 status types, 1.0 = Normal, see Combat Features), avatar,
 and `say` (webhook RP). No Sanity field: intentional, Sanity always starts at
-0 per battle. Up to 3 group tags per character (`/character tags`, admin
+0 per battle. Up to 3 group tags per character (`/charadmin tags`, admin
 only) that passive conditions can count. No self-buff starting values.
 
 **Persistent Stagger config now exists**: `Character.stagger_thresholds` /
@@ -529,6 +529,20 @@ that flag.
 | `view` | Owner or admin; `public:True` posts to channel. |
 | `edit` | Owner-or-admin for name, avatar and resistances. HP, Speed, Power, Stagger, resistances and Offense/Defense Level are admin-only (they cost Build Points) and a build that breaks the rules is rejected before anything is saved. `speed_min`/`speed_max` must be given together, no implicit flat-speed shortcut anymore. Also where `stagger_thresholds`/`stagger_tiers_enabled` get set, applied at battle-start via `Fighter.from_character()`. |
 | `bp` | Owner-or-admin. Level, BP spent and available, per-stat breakdown, anything breaking the rules, and the last few BP changes. |
+| `resistance` | Owner-or-admin. Multi-set via positionally-aligned `resistance_types`/`values`. |
+| `addskill` | Owner-or-admin. Same `AddSkillModal` popup as `/battle addskill`, but teaches the skill to the saved `Character` permanently, and it's then picked up automatically next time this character joins a battle, via `Fighter.from_character()`. |
+| `skills` | Owner-or-admin. Lists everything this character permanently knows. |
+| `removeskill` | Owner-or-admin. Removes one named skill from the character's permanent skill list. `skill_name` autocompletes from this character's own known skills. |
+| `editskill` | Owner-or-admin. Same `EditSkillModal` popup as `/battle editskill`, pre-filled with the skill's current values, but saves to the permanent `Character` (via the same `on_saved=save_character` wiring `addskill` already uses). `skill_name` autocompletes the same way as `removeskill`. |
+| `delete` | Owner-or-admin. |
+| `say` | Owner-or-admin. Speaks via webhook (name + avatar). |
+
+### `/charadmin` group (`cogs/character.py`)
+
+The admin-only build commands. They are their own group because Discord allows at most 25 subcommands in one group, and `/character` was already at that limit.
+
+| Command | Notes |
+| --- | --- |
 | `rank` | Admin. Sets a status rank 0 to 5 (Burn, Bleed, Tremor, Rupture, Sinking, Poise, Charge; at most 2 owned; costs 1 / 2 / 4 / 7 / 11 BP). Checked on a copy first, DMs the owner. |
 | `archetype` | Admin. Gives or removes a defense archetype (Guard 3 / Evade 4 / Counter 5 / Clashable Guard 6 / Clashable Counter 7 BP, at most 2, with Speed and Stagger prerequisites). Checked on a copy first, DMs the owner. |
 | `grantpp` | Admin. Gives Passive Points for a GM-approved moment (max 2 per grant, reason required), logs it and DMs the owner. |
@@ -539,13 +553,6 @@ that flag.
 | `grantbp` | Admin. Adds (or removes, with a negative number) BP, logs the reason, and DMs the owner. Warns if the build is now over budget. |
 | `exempt` | Admin. Skips every Build Point check for a character (NPCs and bosses). Optional `level` fixes the Level it fights at (0 clears it). |
 | `recheck` | Admin. Checks every saved character against the rules and DMs each owner what to fix. |
-| `resistance` | Owner-or-admin. Multi-set via positionally-aligned `resistance_types`/`values`. |
-| `addskill` | Owner-or-admin. Same `AddSkillModal` popup as `/battle addskill`, but teaches the skill to the saved `Character` permanently — it's then picked up automatically next time this character joins a battle, via `Fighter.from_character()`. |
-| `skills` | Owner-or-admin. Lists everything this character permanently knows. |
-| `removeskill` | Owner-or-admin. Removes one named skill from the character's permanent skill list. `skill_name` autocompletes from this character's own known skills. |
-| `editskill` | Owner-or-admin. Same `EditSkillModal` popup as `/battle editskill`, pre-filled with the skill's current values, but saves to the permanent `Character` (via the same `on_saved=save_character` wiring `addskill` already uses). `skill_name` autocompletes the same way as `removeskill`. |
-| `delete` | Owner-or-admin. |
-| `say` | Owner-or-admin. Speaks via webhook (name + avatar). |
 
 ### `/roll`
 

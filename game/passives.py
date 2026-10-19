@@ -60,3 +60,19 @@ def build_passive_skill(passive: dict, custom_kinds: dict[str, str] | None = Non
         name=passive.get("name", "Passive"), base_power=0, coin_power=0, coins=1,
         triggers=triggers, tags={"passive"},
     )
+
+
+def followup_problem(character, parsed) -> str | None:
+    """None when every follow-up line in `parsed` names a normal attack the character owns, else a message saying what is wrong."""
+    for t in parsed:
+        if t.effect_type != "followup_attack":
+            continue
+        owned = character.skills.get(t.status_name)
+        if owned is None:
+            return (
+                f"{character.name} has no skill called `{t.status_name}` to use as a follow-up attack. "
+                "Add it first (the name has to match)."
+            )
+        if owned.tags & {"guard", "evade", "counter", "clashable_guard", "clashable_counter", "supermove"}:
+            return f"`{owned.name}` is a defense skill or a Supermove, a follow-up attack has to be a normal attack."
+    return None

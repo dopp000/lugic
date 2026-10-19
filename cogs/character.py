@@ -22,7 +22,7 @@ from game.build_points import (
 from game.resistances import ALL_RESISTANCE_TYPES, DAMAGE_TYPES, parse_resistance_multiplier
 from game.emojis import status_emoji, damage_type_emoji, register_custom_status_emoji
 from game.conditions import MAX_TAG_LENGTH, MAX_TAGS, norm_tag
-from game.passives import MAX_PASSIVES, parse_passive
+from game.passives import MAX_PASSIVES, followup_problem, parse_passive
 from game.custom_statuses import (
     CustomStatus, KINDS, LIFETIMES, MAX_CUSTOM_STATUSES_PER_CHARACTER, slugify, validate_name,
 )
@@ -179,6 +179,17 @@ def _parse_resistance_tokens(resistance_types: str, values: str) -> tuple[dict[s
         parsed[t] = value
 
     return parsed, None
+
+
+async def _character_name_autocomplete(interaction: discord.Interaction, current: str):
+    """Suggests your own saved characters (admins see everyone's). See docs/ENGINEERING_NOTES.md#autocomplete."""
+    cur = current.lower()
+    see_all = is_admin(interaction)
+    names = sorted(
+        name for name, owner in list_character_summaries()
+        if cur in name.lower() and (see_all or owner == interaction.user.id)
+    )
+    return [app_commands.Choice(name=n[:100], value=n) for n in names][:25]
 
 
 class CharacterCog(commands.GroupCog, name="character"):
@@ -436,7 +447,7 @@ class CharacterCog(commands.GroupCog, name="character"):
                     f"That build breaks the Build Point rules, so nothing was changed:\n"
                     f"{_problem_lines(trial_report.problems)}\n"
                     f"(This build costs {trial_report.spent} of {trial_report.total} BP. "
-                    f"An admin can add BP with /character grantbp.)",
+                    f"An admin can add BP with /charadmin grantbp.)",
                     ephemeral=True,
                 )
                 return
@@ -784,7 +795,7 @@ class CharacterCog(commands.GroupCog, name="character"):
                     f"A unique status costs Passive Points (1, +1 if it keeps Potency, +1 if it gains Potency "
                     f"from Count). This one costs {pp_cost}, and {character.name} has "
                     f"{character.pp_total - passive_points_spent(character)} left. An admin gives them with "
-                    "/character grantpp, only for GM-approved moments.",
+                    "/charadmin grantpp, only for GM-approved moments.",
                     ephemeral=True,
                 )
                 return
@@ -1011,6 +1022,20 @@ class CharacterCog(commands.GroupCog, name="character"):
                 f"- {e.get('amount', 0):+d} BP: {e.get('reason') or 'no reason given'}" for e in recent
             )
         await interaction.response.send_message(text[:1900], ephemeral=True)
+
+    for _command in (
+        view, edit, resistance, addskill, skills, removeskill, editskill,
+        addstatus, statuses, removestatus, delete, say, bp,
+    ):
+        _command.autocomplete("name")(_character_name_autocomplete)
+    del _command
+
+
+class CharacterAdminCog(commands.GroupCog, name="charadmin"):
+    """Admin-only build commands. They live in their own group because Discord allows at most 25 subcommands per group."""
+
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
 
     @app_commands.command(name="grantbp", description="Admin only: give a character Build Points (or take some away)")
     @app_commands.default_permissions(manage_guild=True)
@@ -1253,23 +1278,10 @@ class CharacterCog(commands.GroupCog, name="character"):
         if error:
             await interaction.response.send_message(error[:1900], ephemeral=True)
             return
-        for t in parsed:
-            if t.effect_type != "followup_attack":
-                continue
-            owned = character.skills.get(t.status_name)
-            if owned is None:
-                await interaction.response.send_message(
-                    f"{character.name} has no skill called `{t.status_name}` to use as a follow-up attack. "
-                    "Add it first (the name has to match).",
-                    ephemeral=True,
-                )
-                return
-            if owned.tags & {"guard", "evade", "counter", "clashable_guard", "clashable_counter", "supermove"}:
-                await interaction.response.send_message(
-                    f"`{owned.name}` is a defense skill or a Supermove, a follow-up attack has to be a normal attack.",
-                    ephemeral=True,
-                )
-                return
+        problem = followup_problem(character, parsed)
+        if problem:
+            await interaction.response.send_message(problem, ephemeral=True)
+            return
         entry = {"name": title, "kind": kind.value, "lines": lines, "cost": cost, "note": (note or "").strip()}
         trial = copy.deepcopy(character)
         trial.passives.append(entry)
@@ -1277,7 +1289,7 @@ class CharacterCog(commands.GroupCog, name="character"):
         if used > character.pp_total:
             await interaction.response.send_message(
                 f"{character.name} has {character.pp_total} Passive Points and this would use {used}. "
-                "Grant more with /character grantpp (GM-approved moments only).",
+                "Grant more with /charadmin grantpp (GM-approved moments only).",
                 ephemeral=True,
             )
             return
@@ -1526,20 +1538,8 @@ class CharacterCog(commands.GroupCog, name="character"):
         head = f"Checked {total} characters, {len(flagged)} need fixing:\n"
         await interaction.followup.send((head + "\n".join(lines))[:1900], ephemeral=True)
 
-    async def _character_name_autocomplete(self, interaction: discord.Interaction, current: str):
-        """Suggests your own saved characters (admins see everyone's). See docs/ENGINEERING_NOTES.md#autocomplete."""
-        cur = current.lower()
-        see_all = is_admin(interaction)
-        names = sorted(
-            name for name, owner in list_character_summaries()
-            if cur in name.lower() and (see_all or owner == interaction.user.id)
-        )
-        return [app_commands.Choice(name=n[:100], value=n) for n in names][:25]
-
     for _command in (
-        view, edit, resistance, addskill, skills, removeskill, editskill,
-        addstatus, statuses, removestatus, delete, say, bp, grantbp, exempt, drawback,
-        rank, archetype, grantsp, grantpp, passive, removepassive, tags,
+        grantbp, rank, archetype, grantpp, passive, removepassive, tags, grantsp, drawback, exempt,
     ):
         _command.autocomplete("name")(_character_name_autocomplete)
     del _command
@@ -1547,3 +1547,4 @@ class CharacterCog(commands.GroupCog, name="character"):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(CharacterCog(bot))
+    await bot.add_cog(CharacterAdminCog(bot))
