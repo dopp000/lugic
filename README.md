@@ -769,10 +769,8 @@ Durante, and Backups, none of those fit what this bot is for.
    `If this unit is Panicked,` conditions.
 6. **Parts / Core**: done, see Combat Features. Still open: Part-specific Stagger,
    auto-breaking a Part's declared attack mid-round, and storing Parts on a saved NPC character.
-7. **A worked-examples guide**: converting a real Limbus kit passive into
-   this bot's Trigger syntax. The Trigger Syntax section documents the
-   grammar; there's no "here's a real passive → here's the Trigger lines"
-   guide yet. Worth writing once there's a backlog of real characters.
+7. **A worked-examples guide**: done, see `docs/WORKED_EXAMPLES.md`. Every
+   example in it was run through the parser.
 
 **Confirmed already true, not a gap:** Sanity can never be set nonzero at
 battle start through any normal command: `Fighter.sanity` defaults to 0 and
