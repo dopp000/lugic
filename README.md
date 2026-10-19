@@ -392,25 +392,28 @@ logic. Part names and HP show under the fighter in the battle embed. See
   0.5 / 1.0 / 1.5. Passive Points (admin-granted, max 2 per event) pay for identity passives (always-on rules kept off the skill list, reacting at Turn/Combat Start, On Evade, Ally reactions and the passive-only Self Is Hit / Self On Stagger / Self On Kill / Self On Death, and shaping every skill they use at Before Use / On Use / Clash Start / Before Attack, which is how a passive adds Deal +10% damage) and for new unique statuses (1 to 3 PP). Non-keyword effects (Haste, Fragile, Bind, Protection, Damage Up/Down, Power Up/Down, Paralyze) on normal skills cost ceil(size / 2) BP each, at most 3 BP per kit, paid from the pool and shown in `/character bp`. Defense archetypes (max 2) gate Guard / Evade / Counter style skills, with a lowest Speed 4 or removed Stagger Tier 2 prerequisite. Status ranks (max 2 statuses, Rank 1 to 5) limit which statuses a normal skill may use and how strong (budget for Bleed/Tremor/Poise/Charge, Potency cap for Burn/Sinking/Rupture), old skills grandfathered. Skill Points (granted by admins, start at 0) pay for extra trigger lines: the first line on a skill is free, each extra costs 1 SP, old skills are grandfathered. Offense/Defense Level (0 to 5, 4% damage per step, 0 / 1 / 2 /
   4 / 4 / 6 BP) change damage dealt and taken. In a clash the higher Level adds the
   Level gap to its Power every round (`/character exempt level:` and `/battle
-  setstatus level:` set it for NPCs). Not built yet: status ranks, defense archetypes and Passive
-  Points, plus the player request and approval flow. See
+  setstatus level:` set it for NPCs). Not built yet: the player request and
+  approval flow (every build change is admin-only for now). See
   `docs/ENGINEERING_NOTES.md#build-points`.
-- Still missing: Level Up/Down statuses, Clash Power
-  Down, Plus/Minus Coin Drop/Boost, HP Healing Down, Curse.
-- Charge has no consumption payoff (see above) — smaller, but still open.
+- Still missing as real statuses: Clash Power Down, Plus/Minus Coin
+  Drop/Boost, HP Healing Down, Curse. Offense/Defense Level Up/Down and
+  Clash Power already exist as one-turn trigger effects (see Trigger Syntax),
+  just not as statuses with their own icon.
 - No turn-based expiry independent of triggering (a status that should wear
   off after N turns even if its trigger never fires isn't modeled — every
   status here only ever decays by actually being triggered).
 
 ## Character System: Current State
 
-`/character create/edit/resistance/view/list/delete/say` covers a **stat
-sheet only**: HP, Speed (flat or min/max range, replacing the old flat-speed
+`/character create/edit/resistance/view/list/delete/say` covers the **stat
+sheet** (the Build Point rules around it are in Character Creation &
+Progression below): HP, Speed (flat or min/max range, replacing the old flat-speed
 field once set), a single flat Power value, resistances (comma-separated
 multi-set: `resistance_types:slash,burn values:1.25,0.75`, covers the 3
 damage types + 5 status types, 1.0 = Normal, see Combat Features), avatar,
 and `say` (webhook RP). No Sanity field: intentional, Sanity always starts at
-0 per battle. No Trait/faction tags, no self-buff starting values.
+0 per battle. Up to 3 group tags per character (`/character tags`, admin
+only) that passive conditions can count. No self-buff starting values.
 
 **Persistent Stagger config now exists**: `Character.stagger_thresholds` /
 `stagger_tiers_enabled` (both `None` by default, meaning "use `Fighter`'s
@@ -607,10 +610,16 @@ for a one-off battle fighter, `/character addskill` to teach it permanently
 `Turn End`, `Before Use`, `On Use`, `Clash Start`, `Clash Win`, `Clash Lose`,
 `Before Attack`, `On Unopposed Attack`, `Attack End`, `On Evade`, `Before
 Getting Hit`, `On Stagger`, `On Kill`, `On Crit Kill`, `Hit After Clash
-Lose`, `Tremor Burst`. The last four (`On Kill`/`On Crit Kill`/`Hit After
-Clash Lose`/`Tremor Burst`) were added after the last README pass — check
-`SKILL_LEVEL_TIMINGS` in `game/conditions.py` directly if this list and the
-code ever drift, the code is the source of truth.
+Lose`, `Tremor Burst`. Check `SKILL_LEVEL_TIMINGS` in `game/conditions.py`
+directly if this list and the code ever drift, the code is the source of truth.
+
+**Reaction timings** (skill-level, swept over the owner's skills and
+passives): `Ally On Hit`, `Ally On Crit`, `Ally On Kill`, `Ally Is Hit`, `Ally On
+Stagger`, `Ally Turn Start`, `Ally Combat Start`, `Ally Before Getting Hit` (fires
+before an unopposed attack on an ally, used with Assist Defense). Passive-only:
+`Self Is Hit`, `Self On Stagger`, `Self On Kill`, `Self On Death` (fires when a landed
+hit kills the owner, with the killer as the target; not for Burn, Poison or
+Bleed deaths).
 
 **Per-coin timings** (need `:CoinN:` prefix): `Coin Start`, `On Hit`, `Heads
 Hit`, `Tails Hit`, `Hit After Clash Win`, `Current Coin Attack End`, `Heads
@@ -626,12 +635,32 @@ plus `Coin Start` for the two flat ones. At any other timing they never did
 anything, so the parser now refuses the line and says where it does work. A
 percent is not its own multiplier: it joins the same additive pile as Damage
 Up and Offense Level (`_damage_mods`). The only trailing notes understood are
-`(Hint N)`, `(once per turn)` / `(N times per turn)` and `(max N)` on a scaled
-line. Any other bracket note, such as `(50% chance)` or `(once per
-Encounter)`, is refused, because the old parser dropped it silently and the
-player believed it was enforced. `(30% chance)` is enforced: `pay_cost` rolls it each time the line would
-fire, and a miss spends nothing. Passives saved before this check are read
+`(Hint N)`, `(once per turn)` / `(N times per turn)`, `(once per Encounter)` /
+`(N times per Encounter)` (resets each battle), `(N% chance)` (1 to 99) and
+`(max N)` / `(max N%)` on a scaled line. Any other bracket note is refused,
+because the old parser dropped it silently and the player believed it was
+enforced. `pay_cost` checks the limits and rolls the chance each time the line
+would fire; a miss spends nothing. Passives saved before these checks are read
 back with `strict=False`, so they keep loading.
+
+**Conditions** (`evaluate_condition`): target or caster status, HP percent,
+Sanity, Speed (`faster`, `at least N`, `diff`), Morale, ally or enemy target,
+first hit of the round, Weak or Fatal affinity (needs the skill, uses
+fighter-wide resistances), count of negative statuses, target is defending,
+ally rank, `If N+ units on your side have the X tag,`, `If the target has the X
+tag,` and `If N+ allies are defeated,`. The full list with examples is in
+`/help` and `CONDITION_EXAMPLES` in `game/trigger_text.py`.
+
+**More effects:** `Clash Power +N`, `Final Power +N`, `Gain N Shield`, `Gain N%
+max HP Shield`, `Gain Offense Level +N`, `Inflict Defense Level -N`, a trailing
+`next turn`, and the ally forms `... to the ally with the lowest HP` /
+`If the ally has the fastest Speed,` (selectors: Speed, HP, HP percent, Max HP,
+Sanity, most or least of a status, earliest or latest deployed; never the
+caster). Survival effects keep a fighter up (HP floor, survive one lethal hit,
+no Stagger this turn, recover from Stagger). Follow-ups name an owned plain
+attack skill and need a per-turn or per-Encounter limit; Assist Defense takes
+the hit for an ally (unopposed attacks only, as a normal hit). Exact wording
+for each is in `/help` and `docs/ENGINEERING_NOTES.md`.
 
 `UNSUPPORTED_TIMINGS` is currently empty: every recognized timing has real
 dispatch. New timing names without wired dispatch should go here with a
@@ -652,8 +681,9 @@ other unrecognized name would get.
 
 **Skill-flag tags** (`SKILL_FLAG_TAGS`, own line, never `:CoinN:`-prefixed):
 `Target Fixed`, `Unclashable`, `Indiscriminate`, `Counter`, `Clashable
-Counter`, `Guard`, `Clashable Guard`, `Evade`. All eight are enforced,
-including the newest, `Evade` (added when Evade was rebuilt from a status
+Counter`, `Guard`, `Clashable Guard`, `Evade`, `Duality`, `Supermove`,
+`Unfocused Volley` (coin 1 hits the main target, other coins pick random living
+enemies; unopposed only). All are enforced, including `Evade` (added when Evade was rebuilt from a status
 into a declared skill — see Combat Features). Note: `Indiscriminate` is
 currently parsed and stored, but `/battle declare` still hard-blocks
 same-side targeting, so it doesn't yet actually let a skill hit allies.
@@ -727,10 +757,10 @@ Durante, and Backups, none of those fit what this bot is for.
 2. **`[Ally ...]` trigger prefix**: done (support skills, `to the ally`
    effects and ally reaction timings). Still open: reactions to Attack Weight
    splash hits.
-3. **More non-Sin statuses**: Offense/Defense Level first (several statuses
-   depend on it), then Clash Power, Coin Drop/Boost and the matching buffs.
-   Bind, Fragile, type Fragility, Power Down, Damage Down, Paralyze, Poison
-   and Immobilized are done.
+3. **More non-Sin statuses**: Offense/Defense Level and Clash Power exist as
+   one-turn trigger effects. Still open: Clash Power Down, Coin Drop/Boost,
+   HP Healing Down and Curse as real statuses. Bind, Fragile, type Fragility,
+   Power Down, Damage Down, Paralyze, Poison and Immobilized are done.
 4. **Charge's consumption payoff**: done. Charge can be spent with a
    `Consume` trigger, see Status Effects above.
 5. **Panic / Low Morale**: done, see Status Effects above. Still open: a
@@ -763,22 +793,45 @@ icons).
 
 ## Character Creation & Progression (Level 1)
 
-Design notes for the leveling system: a Level 1 character is an MHA
-hero-university student with no hero license yet. None of this is enforced
-by the bot as commands/validation right now; it's the target ruleset
-`/character create`/`edit` should eventually check against.
+A Level 1 character is an MHA hero-university student with no hero license
+yet. The rules below are enforced by the bot (`game/build_points.py`,
+`game/supermoves.py`; `/character view` shows the budget). Only admins change
+anything that costs points for now; the player request flow is not built.
 
-**Two separate Build Point pools**: Stat Points and Skill Points, spent
-independently. Stat Points cover HP, Speed range (max 8 wide), and Stagger
-(both threshold placement and whether all 3 tiers are kept).
+**Three pools.** Build Points (BP, start 30) pay for stats. Skill Points (SP,
+start 0, granted by admins) pay for extra trigger lines (1 SP each after the
+first line per skill). Passive Points (PP, granted by admins for story moments,
+at most 2 per grant) pay for identity passives (price 1 to 6) and new unique
+statuses. A build over any pool is blocked from battle until fixed.
+
+**Levels** raise the BP pool: Level 1 at 30, 2 at 45, 3 at 63, 4 at 84, 5 at
+108. The higher level in a clash adds the gap to its Power each round.
+
+**Stats:** HP 100 to 160 and Power 6 to 12 (each step 0 / 1 / 2 / 4 / 4 / 6 / 8
+BP in total), Speed 1 to 8 with a range at least 2 wide, Offense and Defense
+Level 0 to 5 (4% damage per step). Caps: no single stat above 40% of the pool,
+Power + Speed and Power + HP each at most 60%. Skill Power is capped by
+Power: Max Base = floor(2 + 0.4 x Power), Max Coin = floor(1 + 0.2 x Power).
 
 **Stagger tier trade-off**: all 3 checkpoints are active by default. Tier 1
 is permanent, can never be paid off. Tiers 2/3 can be stripped with Build
-Points: removing Tier 3 means never eating its 2.5x penalty again; removing
-both leaves only Tier 1 in any fight. Duration is the other half: Tier 1
-clears end of the same Turn; Tiers 2/3, if kept, persist through one extra
-Turn. Paying to strip a tier is "spend upfront to guarantee only the mild,
-same-turn version."
+Points (5 and 7): removing Tier 3 means never eating its 2.5x penalty again;
+removing both leaves only Tier 1 in any fight. Duration is the other half:
+Tier 1 clears end of the same Turn; Tiers 2/3, if kept, persist through one
+extra Turn.
+
+**Resistances** are part of the build (admin only): a worse resistance
+refunds BP, a better one costs BP, and the total refund is capped at 18.
+
+**Status ranks and archetypes.** A character owns up to 2 ranked statuses
+(Burn, Bleed, Tremor, Rupture, Sinking, Poise, Charge) at Rank 1 to 5, which
+caps what a normal skill can apply. Up to 2 defense archetypes (Guard,
+Evade, Counter, Clashable Guard, Clashable Counter); Evade and the counters
+need a lowest Speed of 4, the clashable ones need Stagger Tier 2 removed.
+Non-keyword effects (Bind, Fragile, Protection and so on) cost
+ceil(size / 2) BP each, at most 3 BP for a whole kit. Supermoves are priced
+by expected damage and offset by admin-set drawbacks. Skills saved before a
+rule existed are grandfathered; only new or edited skills are checked.
 
 **Sanity, in combat** (matches actual code in `game/battle.py`/
 `cogs/battle.py`; if these ever drift, the code is the bug):
@@ -791,29 +844,14 @@ same-turn version."
 | Turn end, positive | -4 SP, floored at 0 |
 | Turn end, negative | +2 SP, capped at 0 (recovery slower than falling) |
 
-**Character creation rules:**
-
-- No single stat above 40% of total BP pool.
-- Power + Speed combined ≤ 60% of BP pool.
-- Power + HP combined ≤ 60% of BP pool.
-- Max 2 Status Effect Archetypes.
-- Max 2 Defense Skill Archetypes.
-- Status resistance refund capped at 6 BP total.
-- Stagger Tier 1 can never be removed.
-
 **Pacing**: 4–6 Turns minimum for a spar-weight fight, longer for anything
 serious.
 
 **Point economy**: Build Points earned via literacy training (weekly caps)
 and event participation, not handed out freely.
 
-**Still open, not decided**: how Power itself should scale against level and
-desired damage output; how much Power a mid-battle skill should trade for
-carrying a status effect, and how that scales; the Build Point (or
-Sanity/self-debuff/limited-use) cost of a Supermove and what real drawbacks
-should gate a strong one; the cost of attaching extra skill tags or
-amplifications onto a base skill. No concrete numbers yet; needs a
-dedicated design pass rather than inventing figures ad hoc.
+**Still open**: the player request and approval flow, and Reuse Coin (the
+bot has no such mechanic).
 
 ## Project Structure
 

@@ -7,8 +7,8 @@ level as a label on the pool's size, and caps that stop one-stat builds.
 
 What this module covers so far: HP, Power, Speed, Stagger tier removal,
 the Power ceiling on skills, Supermove slots (priced in
-game/supermoves.py) and resistances. Status ranks, defense archetypes and
-Passive Points come later.
+game/supermoves.py), resistances, Offense/Defense Level, status ranks,
+defense archetypes, non-keyword effects, Skill Points and Passive Points.
 """
 
 from dataclasses import dataclass, field
