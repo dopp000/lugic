@@ -282,7 +282,7 @@ class CharacterCog(commands.GroupCog, name="character"):
         embed = build_character_embed(character, owner_name)
         await interaction.response.send_message(embed=embed, ephemeral=not public)
 
-    @app_commands.command(name="edit", description="Edit a character (only fill in what you want to change; HP, Speed, Power, Stagger and resistances are admin only)")
+    @app_commands.command(name="edit", description="Edit a character. Fill in only what you change (stats, Stagger and resistances are admin only)")
     @app_commands.describe(
         name="Character to edit",
         new_name="Rename the character",
@@ -1033,7 +1033,8 @@ class CharacterCog(commands.GroupCog, name="character"):
 
 
 class CharacterAdminCog(commands.GroupCog, name="charadmin"):
-    """Admin-only build commands. They live in their own group because Discord allows at most 25 subcommands per group."""
+    """Admin only: Build Points, ranks, passives, tags and other build commands."""
+    # Kept apart from /character because Discord allows at most 25 subcommands per group.
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
