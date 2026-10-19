@@ -14,6 +14,7 @@ from game.character import (
     list_characters_by_owner,
     list_character_summaries,
     list_all_characters,
+    validate_character_name,
 )
 from game.build_points import (
     check_build, build_summary, level_for, next_level_at, character_level,
@@ -251,6 +252,10 @@ class CharacterCog(commands.GroupCog, name="character"):
         name: str,
         avatar: discord.Attachment | None = None,
     ):
+        name_problem = validate_character_name(name)
+        if name_problem:
+            await interaction.response.send_message(name_problem, ephemeral=True)
+            return
         if character_exists(name):
             await interaction.response.send_message(
                 f"A character named {name} already exists.", ephemeral=True
@@ -497,6 +502,10 @@ class CharacterCog(commands.GroupCog, name="character"):
         changes = []
 
         if new_name is not None and new_name != character.name:
+            name_problem = validate_character_name(new_name)
+            if name_problem:
+                await interaction.response.send_message(name_problem, ephemeral=True)
+                return
             if character_exists(new_name):
                 await interaction.response.send_message(
                     f"A character named {new_name} already exists.", ephemeral=True

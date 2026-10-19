@@ -1,6 +1,7 @@
 import dataclasses
 import json
 import os
+import re
 from dataclasses import dataclass, field
 
 from game.resistances import DEFAULT_RESISTANCES, migrate_percent_to_multiplier
@@ -8,6 +9,19 @@ from game.skills import Skill
 from game.custom_statuses import CustomStatus
 
 CHARACTERS_DIR = "data/characters"
+NAME_MAX_LENGTH = 40
+_BAD_NAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+
+
+def validate_character_name(name: str) -> str | None:
+    """Returns a message for the player if the name can't be used, or None when it is fine."""
+    if not name.strip():
+        return "A character needs a name."
+    if len(name) > NAME_MAX_LENGTH:
+        return f"Keep the name to {NAME_MAX_LENGTH} characters or fewer."
+    if _BAD_NAME_CHARS.search(name) or name.strip().startswith("."):
+        return "A name can't contain / \\ : * ? \" < > | and can't start with a dot."
+    return None
 
 
 @dataclass
@@ -191,14 +205,17 @@ class Character:
 
 
 def _character_path(name: str) -> str:
-    safe_name = name.lower().replace(" ", "_")
+    safe_name = _BAD_NAME_CHARS.sub("_", name.lower()).replace(" ", "_").lstrip(".")
     return os.path.join(CHARACTERS_DIR, f"{safe_name}.json")
 
 
 def save_character(character: Character):
     os.makedirs(CHARACTERS_DIR, exist_ok=True)
-    with open(_character_path(character.name), "w") as f:
+    path = _character_path(character.name)
+    # Write to a temp file first, then swap it in, so a crash mid-write can't leave a broken character file.
+    with open(path + ".tmp", "w") as f:
         json.dump(character.to_dict(), f, indent=2)
+    os.replace(path + ".tmp", path)
 
 
 def load_character(name: str) -> Character | None:

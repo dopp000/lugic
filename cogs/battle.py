@@ -936,7 +936,26 @@ def compute_hint_tier(fighter: Fighter, battle: Battle) -> int | None:
     return tier if tier > 0 else None
 
 
-def build_battle_embed(battle: Battle) -> discord.Embed:
+def _chunk_blocks(blocks: list[str], limit: int = 1024, joiner: str = "\n\n") -> list[str]:
+    """Packs text blocks into as few strings as possible, none longer than `limit` (a Discord embed field holds 1024)."""
+    chunks: list[str] = []
+    current = ""
+    for block in blocks:
+        if len(block) > limit:
+            block = block[: limit - 3] + "..."
+        candidate = block if not current else current + joiner + block
+        if len(candidate) <= limit:
+            current = candidate
+        else:
+            chunks.append(current)
+            current = block
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def build_battle_embed(battle: Battle, compact: bool = False) -> discord.Embed:
+    """compact drops the slot rows and hint icons. It is only used when a very big battle would pass Discord's 6000 character embed limit."""
     type_info = BATTLE_TYPES.get(battle.battle_type, BATTLE_TYPES["spar"])
     embed = discord.Embed(title=type_info["title"], color=type_info["color"])
     if "image" in type_info:
@@ -960,7 +979,7 @@ def build_battle_embed(battle: Battle) -> discord.Embed:
                 speed_val = f.slot_speeds[i] if i < len(f.slot_speeds) else "?"
                 icon = coin_emoji("base") if slot_num in f.declared_actions else skill_slot_emoji(slot_num)
                 slot_parts.append(f"{icon}`{speed_val}`{speed_icon}")
-            slot_line = " ".join(slot_parts)
+            slot_line = " ".join(slot_parts) if not compact else ""
 
             if filled == 0:
                 tag = ""
@@ -973,7 +992,7 @@ def build_battle_embed(battle: Battle) -> discord.Embed:
             hint_tier = compute_hint_tier(f, battle)
             # Just the icon now, no trailing " Hint" text -- the emoji
             # alone is the signal, spelling it out was redundant.
-            hint_line = f"\n-# {hint_emoji(hint_tier)}" if hint_tier else ""
+            hint_line = f"\n-# {hint_emoji(hint_tier)}" if hint_tier and not compact else ""
 
             parts_line = ""
             if f.parts:
@@ -984,16 +1003,18 @@ def build_battle_embed(battle: Battle) -> discord.Embed:
                     )
                     for n, p in sorted(f.parts.items())
                 ]
-                parts_line = "\n-# Parts: " + ", ".join(bits)
+                parts_line = "\n-# Parts: " + ", ".join(bits) if not compact else ""
 
             stagger_tag = f" {stagger_tier_emoji(f.current_stagger_tier)} Staggered" if f.current_stagger_tier else ""
             lines.append(
                 f"**{f.name}**{down_tag}{tag}{stagger_tag}\n"
                 f"{stat_emoji('hp')} {hp_bar(f.hp, f.max_hp)} {f.hp}/{f.max_hp}\n"
                 f"{stat_emoji('sanity')} {sanity_bar(f.sanity)} {f.sanity}\n"
-                f"{slot_line}{parts_line}{hint_line}"
+                f"{slot_line}{parts_line}{hint_line}".rstrip()
             )
-        embed.add_field(name=f"{'🟦' if side_name == 'A' else '🟧'} Side {side_name}", value="\n\n".join(lines), inline=False)
+        side_label = f"{'🟦' if side_name == 'A' else '🟧'} Side {side_name}"
+        for index, chunk in enumerate(_chunk_blocks(lines)):
+            embed.add_field(name=side_label if index == 0 else f"{side_label} (cont.)", value=chunk, inline=False)
 
     # Eliminated fighters are pulled out of their side's normal roster
     # entirely and listed here instead, across both sides combined --
@@ -1012,6 +1033,8 @@ def build_battle_embed(battle: Battle) -> discord.Embed:
         embed.description = "No fighters added yet. Use /battle addfighter."
 
     embed.set_footer(text=f"Round {battle.round_number}")
+    if not compact and len(embed) > 5800:
+        return build_battle_embed(battle, compact=True)
     return embed
 
 

@@ -64,8 +64,9 @@ def _load() -> dict:
 
 def _save(data: dict):
     os.makedirs(os.path.dirname(REQUESTS_PATH), exist_ok=True)
-    with open(REQUESTS_PATH, "w") as f:
+    with open(REQUESTS_PATH + ".tmp", "w") as f:
         json.dump(data, f, indent=2)
+    os.replace(REQUESTS_PATH + ".tmp", REQUESTS_PATH)
 
 
 def _to_request(raw: dict) -> Request:
