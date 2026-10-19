@@ -1371,7 +1371,7 @@ def fire_ally_reactions(
 
 
 def build_followup_units(battle: Battle) -> list:
-    """Turns every waiting "Use X as a follow-up attack" request into an unopposed ("solo") unit for the combat loop, oldest first. A request is dropped if its owner is down or no longer has the skill (or the skill is a defense or Supermove). If the enemy it was aimed at is already down, a skill with Attack Weight above 1 or the Unfocused Volley tag picks another living enemy instead, anything else is cancelled. A skill with Attack Weight also reaches that many extra enemies, like a declared one."""
+    """Turns every waiting "Use X as a follow-up attack" request into an unopposed ("solo") unit for the combat loop, oldest first. A request is dropped if its owner is down or no longer has the skill (or the skill is a defense or Supermove). If the enemy it was aimed at is already down, a skill with Attack Weight above 1, the Unfocused Volley tag or the Indiscriminate tag picks another living enemy instead, anything else is cancelled. A skill with Attack Weight also reaches that many extra enemies, like a declared one."""
     pending = []
     for f in battle.fighters:
         queue, f.followup_queue = f.followup_queue, []
@@ -1392,8 +1392,9 @@ def build_followup_units(battle: Battle) -> list:
         random.shuffle(others)
         weight = max(1, skill.attack_weight)
         volley = "unfocused_volley" in skill.tags
+        reroute = volley or "indiscriminate" in skill.tags
         if primary is None:
-            if (weight <= 1 and not volley) or not others:
+            if (weight <= 1 and not reroute) or not others:
                 continue
             primary = others.pop(0)
         extras = [(e, 1) for e in others[: weight - 1]] if weight > 1 and not volley else []
@@ -1432,6 +1433,14 @@ def fire_self_reactions(battle: Battle, owner: Fighter, event: str, other: Fight
     return log
 
 
+def fire_death_reaction(battle: Battle, dead: Fighter, killer: Fighter | None = None) -> list[str]:
+    """Fires Self On Death once for a fighter that just went down. `killer` is None when a status (Burn, Poison, Bleed) did it, so lines aimed at the target do nothing and lines on the owner or its allies still work."""
+    if dead.is_alive() or dead.death_reacted:
+        return []
+    dead.death_reacted = True
+    return fire_self_reactions(battle, dead, "self_on_death", killer)
+
+
 def fire_hit_ally_reactions(
     battle: Battle, attacker: Fighter, target: Fighter, damage: int, was_crit: bool,
     stagger_before: int, evaded: bool,
@@ -1442,7 +1451,7 @@ def fire_hit_ally_reactions(
     log = fire_self_reactions(battle, target, "self_is_hit", attacker)
     if not target.is_alive():
         log += fire_self_reactions(battle, attacker, "self_on_kill", target)
-        log += fire_self_reactions(battle, target, "self_on_death", attacker)
+        log += fire_death_reaction(battle, target, attacker)
     if stagger_before == 0 and target.current_stagger_tier > 0:
         log += fire_self_reactions(battle, target, "self_on_stagger", attacker)
     log += fire_ally_reactions(battle, attacker, "ally_on_hit", target)
@@ -1538,9 +1547,10 @@ def apply_turn_end_status_ticks(battle: Battle) -> list[str]:
             )
             log.extend(f.drain_survival_notes())
             f.set_status_instance(StatusInstance(name="poison", potency=poison.potency, count=poison.count // 2))
+            log.extend(fire_death_reaction(battle, f))
 
         burn = f.get_status("burn")
-        if burn is not None and burn.count > 0:
+        if f.is_alive() and burn is not None and burn.count > 0:
             shield_absorbed, hp_dmg = f.take_damage(burn.potency)
             breakdown = (
                 f" ({shield_absorbed} absorbed by {status_emoji('shield')} Shield, {hp_dmg} to HP)"
@@ -1552,6 +1562,7 @@ def apply_turn_end_status_ticks(battle: Battle) -> list[str]:
             )
             log.extend(f.drain_survival_notes())
             f.set_status_instance(decay_after_trigger(burn))
+            log.extend(fire_death_reaction(battle, f))
 
         sinking = f.get_status("sinking")
         if sinking is not None and sinking.potency > 0:
@@ -1627,7 +1638,7 @@ def fire_tremor_burst(caster: Fighter, target: Fighter, skill: Skill, context: T
     return log
 
 
-def apply_bleed_self_damage(fighter: Fighter, skill: Skill) -> list[str]:
+def apply_bleed_self_damage(fighter: Fighter, skill: Skill, battle: Battle | None = None) -> list[str]:
     """Bleed damages the BLEEDING fighter themselves once per
     non-Defense skill they actually use and land (a Clash's final
     decisive toss, or a solo unopposed toss) -- fixed Potency damage
@@ -1652,10 +1663,13 @@ def apply_bleed_self_damage(fighter: Fighter, skill: Skill) -> list[str]:
         if shield_absorbed > 0 else ""
     )
     fighter.set_status_instance(decay_after_trigger(bleed))
-    return [
+    out = [
         f"{status_emoji('bleed')} {fighter.name} takes {total} Bleed damage from using "
         f"{skill.name}.{breakdown} ({fighter.name}: {fighter.hp}/{fighter.max_hp} HP)"
     ] + notes
+    if battle is not None:
+        out += fire_death_reaction(battle, fighter)
+    return out
 
 
 def _resolve_pre_roll_chain(
@@ -3467,7 +3481,7 @@ class BattleCog(commands.GroupCog, name="battle"):
             winner_was_crit = any(c.is_crit for c in outcome.winner_final_result.coin_results)
             kill_log = fire_kill_triggers(winner, loser, winner_skill, winner_context, winner_was_crit)
             tremor_log = fire_tremor_burst(winner, loser, winner_skill, winner_context)
-            bleed_log = apply_bleed_self_damage(winner, winner_skill)
+            bleed_log = apply_bleed_self_damage(winner, winner_skill, battle)
             trigger_log = apply_trigger_effects(
                 winner_pre_roll_post_hit + clash_win_post_hit + attack_end_post_hit
                 + turn_end_post_hit_winner + per_coin_triggers
@@ -3718,21 +3732,18 @@ class BattleCog(commands.GroupCog, name="battle"):
                 )
                 first_action_done = True
 
-                result = resolve_skill(adjusted_skill, fighter.heads_chance(), context)
-                heads_landed = sum(1 for c in result.coin_results if c.heads)
-                sanity_gain = heads_landed * SANITY_PER_HEADS_UNOPPOSED
-                fighter.gain_sanity(sanity_gain)
-
                 # [Unfocused Volley]: coin 1 hits the main target, every other coin picks a random
-                # living enemy. primary_coins are the coins that stay on `target`, volley_extras is
-                # (enemy, slot, coin indices) for everyone else, handled by the splash block below.
+                # living enemy. The picks are made before the coins are tossed so each coin's conditions
+                # read the enemy it picked. primary_coins are the coins that stay on `target`, volley_extras
+                # is (enemy, slot, coin indices) for everyone else, handled by the splash block below.
                 volley_extras = None
                 primary_coins = None
                 volley_note = ""
+                volley_picks = None
                 if (
                     "unfocused_volley" in adjusted_skill.tags
                     and not (is_evade_readying or is_clashable_defense_idle or is_guard)
-                    and len(result.coin_results) > 1
+                    and adjusted_skill.coins > 1
                 ):
                     pool = [
                         e for e in battle.fighters
@@ -3740,7 +3751,15 @@ class BattleCog(commands.GroupCog, name="battle"):
                     ]
                     if target not in pool:
                         pool.append(target)
-                    picks = [target] + [random.choice(pool) for _ in range(len(result.coin_results) - 1)]
+                    volley_picks = [target] + [random.choice(pool) for _ in range(adjusted_skill.coins - 1)]
+
+                result = resolve_skill(adjusted_skill, fighter.heads_chance(), context, coin_targets=volley_picks)
+                heads_landed = sum(1 for c in result.coin_results if c.heads)
+                sanity_gain = heads_landed * SANITY_PER_HEADS_UNOPPOSED
+                fighter.gain_sanity(sanity_gain)
+
+                if volley_picks is not None and len(result.coin_results) > 1:
+                    picks = volley_picks
                     primary_coins = {i for i, e in enumerate(picks) if e is target}
                     groups: dict[int, tuple[Fighter, set[int]]] = {}
                     for i, e in enumerate(picks):
@@ -3807,7 +3826,7 @@ class BattleCog(commands.GroupCog, name="battle"):
                     fighter_was_crit = any(c.is_crit for c in result.coin_results)
                     kill_log = fire_kill_triggers(fighter, target, adjusted_skill, context, fighter_was_crit)
                     tremor_log = fire_tremor_burst(fighter, target, adjusted_skill, context)
-                    bleed_log = apply_bleed_self_damage(fighter, adjusted_skill)
+                    bleed_log = apply_bleed_self_damage(fighter, adjusted_skill, battle)
                     if is_counter:
                         _, before_getting_hit_post = resolve_triggers(adjusted_skill, context, "before_getting_hit")
                         trigger_log = apply_trigger_effects(before_getting_hit_post + stagger_post_hit, fighter, target)

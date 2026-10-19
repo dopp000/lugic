@@ -1,3 +1,4 @@
+import dataclasses
 import random
 from dataclasses import dataclass, field, replace
 
@@ -166,6 +167,7 @@ def resolve_skill(
     heads_chance: int = 50,
     context: TriggerContext | None = None,
     extra_coin_timings: tuple[str, ...] = (),
+    coin_targets: list | None = None,
 ) -> SkillResult:
     """Resolves a skill's coins one at a time, in sequence. See docs/ENGINEERING_NOTES.md#skills-resolve-skill for the full rationale."""
     power = skill.base_power
@@ -197,9 +199,17 @@ def resolve_skill(
             poise_remaining = poise.count
             poise_potency = poise.potency
 
+    base_context = context
     for i in range(skill.coins):
         coin_index = i + 1
         fired_triggers: list[Trigger] = []
+
+        # [Unfocused Volley] passes the enemy each coin picked, so a coin's conditions read that enemy.
+        context = base_context
+        if base_context is not None and coin_targets and i < len(coin_targets) and coin_targets[i] is not None:
+            picked = coin_targets[i]
+            if picked is not base_context.target:
+                context = dataclasses.replace(base_context, target=picked, target_slot_speed=picked.slot_speed(1))
 
         if context is not None:
             coin_start_fired = [

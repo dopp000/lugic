@@ -2264,8 +2264,10 @@ a new status gets an icon.
   while `stagger_immune` is on. `nullify_lethal` lasts until used. Because they only help when set before the damage,
   use them from Turn Start / Combat Start / Before Use style timings.
 - `Self On Death` (`self_on_death`, passive only): fired from `fire_hit_ally_reactions` when a landed hit kills the
-  owner, with the killer as the target (`Inflict 3 Burn` hits the killer). Deaths from Burn, Poison or Bleed do not
-  fire it yet (those paths have no attacker).
+  owner, with the killer as the target (`Inflict 3 Burn` hits the killer). Deaths from Burn, Poison or Bleed fire it
+  too (patch 13) through `fire_death_reaction(battle, dead, killer=None)`, with no target, so only lines on the owner
+  or its allies do anything. `Fighter.death_reacted` makes it fire once. The Burn tick is skipped for a fighter that
+  Poison just killed.
 
 <a id="group-tags-patch-6"></a>
 ## Group tags
@@ -2316,11 +2318,12 @@ a new status gets an icon.
 - Other enemies reuse the Attack Weight splash block: `volley_extras` entries are `(fighter, slot 1, coin indices)` and
   replace `entry["extra_targets"]` for that attack (Volley wins over Attack Weight). The block runs the usual Evade check
   once per enemy, damage with that enemy's resistances, Stagger and Fragile/Offense mods, Stagger check and ally reactions.
-  New: the coins' own `fired_triggers` (On Hit, Heads Hit, crit ...) are applied with that enemy as the target. Their
-  conditions were checked against the main target before the picks were known, so a condition like `If the target has
-  3+ Burn` reads the main target's state. Skill-level lines (Attack End, Turn End ...) still hit the main target only.
+  New: the coins' own `fired_triggers` (On Hit, Heads Hit, crit ...) are applied with that enemy as the target. Since
+  patch 13 the picks are made before the toss and `resolve_skill(..., coin_targets=picks)` evaluates each coin's
+  conditions with a copy of the context aimed at the enemy that coin picked, so `If the target has 3+ Burn` reads that
+  enemy. Skill-level lines (Attack End, Turn End ...) still hit the main target only.
 - The summary line lists the picks and each extra enemy's damage; the full log has the details.
-- In a Clash the flag does nothing (one opponent). `build_followup_units` treats the flag like Attack Weight above 1 for
+- In a Clash the flag does nothing (one opponent). `build_followup_units` treats the flag (and, since patch 13, `[Indiscriminate]`) like Attack Weight above 1 for
   picking another enemy when the main one is down, and a follow-up Volley picks its coins as above.
 
 <a id="player-requests"></a>

@@ -646,8 +646,9 @@ passives): `Ally On Hit`, `Ally On Crit`, `Ally On Kill`, `Ally Is Hit`, `Ally O
 Stagger`, `Ally Turn Start`, `Ally Combat Start`, `Ally Before Getting Hit` (fires
 before an unopposed attack on an ally, used with Assist Defense). Passive-only:
 `Self Is Hit`, `Self On Stagger`, `Self On Kill`, `Self On Death` (fires when a landed
-hit kills the owner, with the killer as the target; not for Burn, Poison or
-Bleed deaths).
+hit kills the owner, with the killer as the target. A Burn, Poison or Bleed
+death fires it too, with no target, so lines aimed at the target do nothing and
+lines on the owner or its allies still work).
 
 **Per-coin timings** (need `:CoinN:` prefix): `Coin Start`, `On Hit`, `Heads
 Hit`, `Tails Hit`, `Hit After Clash Win`, `Current Coin Attack End`, `Heads
@@ -783,8 +784,7 @@ Durante, and Backups, none of those fit what this bot is for.
 1. **`[Failed ...]` trigger prefix**: fires when a conditional (e.g. a Kill)
    would have activated but didn't. Not present.
 2. **`[Ally ...]` trigger prefix**: done (support skills, `to the ally`
-   effects and ally reaction timings). Still open: reactions to Attack Weight
-   splash hits.
+   effects and ally reaction timings, also for Attack Weight splash hits).
 3. **More non-Sin statuses**: Offense/Defense Level and Clash Power exist as
    one-turn trigger effects. Still open: Clash Power Down, Coin Drop/Boost,
    HP Healing Down and Curse as real statuses. Bind, Fragile, type Fragility,
