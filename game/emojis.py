@@ -128,11 +128,11 @@ COIN_ROLL_EMOJI_ID: int | None = 1538091919995965471
 # own discord.PartialEmoji directly from these same IDs (skipping the
 # kwarg entirely when one's still None) for the structural emoji= spot.
 HELP_CATEGORY_EMOJI_IDS: dict[str, int | None] = {
-    "skill_tags": None,
-    "damage_math": None,
-    "status_effects": None,
-    "trigger_syntax": None,
-    "commands": None,
+    "skill_tags": 1561766503387242536,
+    "damage_math": 1561766020992077854,
+    "status_effects": 1561764265822527579,
+    "trigger_syntax": 1561763009171292220,
+    "commands": 1561762768523362416,
 }
 
 # Skill-flag tags whose icon is one already uploaded for a different
@@ -145,12 +145,12 @@ SKILL_TAG_EMOJI_IDS: dict[str, int | None] = {
     "guard": STATUS_EMOJI_IDS["guard"],
     "clashable_guard": STATUS_EMOJI_IDS["clashable_guard"],
     "evade": STATUS_EMOJI_IDS["evasion"],
-    "target_fixed": None,
-    "unclashable": None,
-    "indiscriminate": None,
-    "unfocused_volley": None,
+    "target_fixed": 1561768570898219150,
+    "unclashable": 1561767756045484142,
+    "indiscriminate": 1561767465971753011,
+    "unfocused_volley": 1561767085644714084,
     "duality": 1561242795472199690,
-    "supermove": None,
+    "supermove": 1561766760313790625,
 }
 
 def emoji_tag(display_name: str, emoji_id: int | None, animated: bool = False) -> str:
