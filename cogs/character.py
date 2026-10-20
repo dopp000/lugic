@@ -183,12 +183,28 @@ def is_admin(interaction: discord.Interaction) -> bool:
     return interaction.user.guild_permissions.manage_guild
 
 
-async def get_or_create_webhook(channel: discord.TextChannel) -> discord.Webhook:
-    existing = await channel.webhooks()
-    for webhook in existing:
-        if webhook.name == WEBHOOK_NAME:
-            return webhook
-    return await channel.create_webhook(name=WEBHOOK_NAME)
+# channel id -> webhook. Looking a webhook up costs a round trip to Discord, so
+# /character say only does it the first time it speaks in a channel (or after
+# someone deletes the webhook).
+_WEBHOOK_CACHE: dict[int, discord.Webhook] = {}
+
+# Speaking as a character should not let anyone ping @everyone or a role
+# through the bot. Pinging a person still works.
+_SAY_MENTIONS = discord.AllowedMentions(everyone=False, roles=False, users=True)
+
+
+async def get_or_create_webhook(channel: discord.TextChannel, *, refresh: bool = False) -> discord.Webhook:
+    if not refresh and channel.id in _WEBHOOK_CACHE:
+        return _WEBHOOK_CACHE[channel.id]
+    webhook = None
+    for existing in await channel.webhooks():
+        if existing.name == WEBHOOK_NAME:
+            webhook = existing
+            break
+    if webhook is None:
+        webhook = await channel.create_webhook(name=WEBHOOK_NAME)
+    _WEBHOOK_CACHE[channel.id] = webhook
+    return webhook
 
 
 def _parse_resistance_tokens(resistance_types: str, values: str) -> tuple[dict[str, float], str | None]:
@@ -1019,12 +1035,38 @@ class CharacterCog(commands.GroupCog, name="character"):
             )
             return
 
-        await webhook.send(
-            content=message,
-            username=character.name,
-            avatar_url=character.avatar_url,
-        )
-        await interaction.followup.send("Sent.", ephemeral=True)
+        async def post(hook: discord.Webhook) -> None:
+            # wait=False: don't wait for Discord to hand the message back.
+            await hook.send(
+                content=message,
+                username=character.name,
+                avatar_url=character.avatar_url,
+                allowed_mentions=_SAY_MENTIONS,
+                wait=False,
+            )
+
+        try:
+            await post(webhook)
+        except discord.NotFound:
+            # The cached webhook was deleted. Look it up again and retry once.
+            _WEBHOOK_CACHE.pop(interaction.channel.id, None)
+            try:
+                webhook = await get_or_create_webhook(interaction.channel, refresh=True)
+            except discord.Forbidden:
+                await interaction.followup.send(
+                    "I don't have permission to manage webhooks in this channel. "
+                    "An admin needs to grant me the Manage Webhooks permission.",
+                    ephemeral=True,
+                )
+                return
+            await post(webhook)
+
+        # The message itself is the confirmation, so remove the private
+        # "thinking" reply instead of leaving a "Sent." behind.
+        try:
+            await interaction.delete_original_response()
+        except discord.HTTPException:
+            pass
 
     @app_commands.command(name="bp", description="See a character's level, Build Points and anything that breaks the rules")
     @app_commands.describe(name="Character to check")

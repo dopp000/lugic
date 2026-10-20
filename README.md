@@ -1020,6 +1020,10 @@ live again as soon as the bot restarts.
   can't know that yet — this is what made the `resolve_clash_unit`
   extraction necessary rather than optional.
 
+## Running 24/7
+
+See `docs/DEPLOYMENT.md` for putting the bot on a server so it stays online, plus daily backups of `data/`.
+
 ## Running the tests
 
 From the repo root:
