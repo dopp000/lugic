@@ -144,8 +144,11 @@ class SkillConfirmView(discord.ui.View):
     def __init__(
         self, fighter: Fighter, skill: Skill, preview_text: str, timeout: float = 60,
         on_saved=None, old_skill_name: str | None = None, old_preview_text: str | None = None,
+        log: bool = True,
     ):
         super().__init__(timeout=timeout)
+        # False for a throwaway practice bot, so its skills do not fill the admin log.
+        self.log = log
         self.fighter = fighter
         self.skill = skill
         self.preview_text = preview_text
@@ -179,7 +182,7 @@ class SkillConfirmView(discord.ui.View):
         if self.on_saved is not None:
             self.on_saved()
 
-        log_channel = interaction.client.get_channel(LOG_CHANNEL_ID)
+        log_channel = interaction.client.get_channel(LOG_CHANNEL_ID) if self.log else None
         if log_channel is not None:
             if self.old_preview_text is not None:
                 await log_channel.send(
@@ -200,6 +203,8 @@ class SkillConfirmView(discord.ui.View):
             else f"**Confirmed.** {self.fighter.name} learned {self.skill.name}."
         )
         await interaction.response.edit_message(content=confirm_text, view=self)
+        # Lets the /startingoff walkthrough notice that a skill was saved.
+        interaction.client.dispatch("skill_saved", interaction, self.fighter)
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
@@ -346,9 +351,11 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
         max_length=4000,
     )
 
-    def __init__(self, target_fighter, on_saved=None):
+    def __init__(self, target_fighter, on_saved=None, practice: bool = False):
         super().__init__()
         self.target_fighter = target_fighter
+        # True for a throwaway /practice bot: no admin log post, and refusals do not point at admin commands.
+        self.practice = practice
         # Passed straight through to SkillConfirmView -- see its own
         # on_saved docstring. target_fighter is typed loosely (not
         # `Fighter`) on purpose: /character addskill passes a
@@ -528,8 +535,12 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
                 await interaction.response.send_message(
                     f"{self.target_fighter.name} cannot take this skill:\n"
                     + "\n".join(f"- {p}" for p in fresh[:6])
-                    + "\nGrant more Build Points with /charadmin grantbp, set a drawback first with "
-                    "/charadmin drawback, or change the skill.",
+                    + (
+                        "\nChange the skill, or start a new bot with more points."
+                        if self.practice else
+                        "\nGrant more Build Points with /charadmin grantbp, set a drawback first with "
+                        "/charadmin drawback, or change the skill."
+                    ),
                     ephemeral=True,
                 )
                 return
@@ -546,7 +557,11 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
                     await interaction.response.send_message(
                         "This skill goes past the character's status ranks:\n"
                         + "\n".join(f"- {p}" for p in rank_issues[:6])
-                        + "\nAn admin sets ranks with /charadmin rank (see /help, Build Points).",
+                        + (
+                            "\nChange the skill to use the ranks the bot has. `/practice sheet` lists them."
+                            if self.practice else
+                            "\nAn admin sets ranks with /charadmin rank (see /help, Build Points)."
+                        ),
                         ephemeral=True,
                     )
                     return
@@ -559,7 +574,11 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
             def_issue = skill_defense_problem(owned_def, draft)
             if def_issue and (old_skill is None or skill_archetype(old_skill) != skill_archetype(draft)):
                 await interaction.response.send_message(
-                    f"{def_issue} An admin buys it with /charadmin archetype (see /help, Build Points).",
+                    (
+                        f"{def_issue} The practice bot only plays attack skills."
+                        if self.practice else
+                        f"{def_issue} An admin buys it with /charadmin archetype (see /help, Build Points)."
+                    ),
                     ephemeral=True,
                 )
                 return
@@ -578,8 +597,12 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
                 await interaction.response.send_message(
                     f"This skill has {len(draft.triggers)} trigger lines. The first line is free and each "
                     f"extra line costs {SP_PER_EXTRA_LINE} Skill Point. {self.target_fighter.name} would use "
-                    f"{used_after} but has {self.target_fighter.sp_total}. An admin can grant more with "
-                    "/charadmin grantsp, or remove a trigger line.",
+                    f"{used_after} but has {self.target_fighter.sp_total}. "
+                    + (
+                        "Remove a trigger line, or start a new bot with more skill_points."
+                        if self.practice else
+                        "An admin can grant more with /charadmin grantsp, or remove a trigger line."
+                    ),
                     ephemeral=True,
                 )
                 return
@@ -616,7 +639,7 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
 
     def _build_confirm_view(self, skill: Skill, preview_text: str) -> "SkillConfirmView":
         """Overridden by EditSkillModal. See docs/ENGINEERING_NOTES.md#battle-addskillmodal-hooks for the full rationale."""
-        return SkillConfirmView(self.target_fighter, skill, preview_text, on_saved=self.on_saved)
+        return SkillConfirmView(self.target_fighter, skill, preview_text, on_saved=self.on_saved, log=not self.practice)
 
 
 class EditSkillModal(AddSkillModal):
@@ -728,6 +751,8 @@ class ClashDeclareView(discord.ui.View):
             view=self,
         )
         self.stop()
+        # Lets the /startingoff walkthrough notice that a move was locked in.
+        interaction.client.dispatch("declare_locked", interaction, self.caster)
         await sync_battle_message(self.bot, self.battle)
 
 

@@ -587,6 +587,66 @@ The admin-only build commands. They are their own group because Discord allows a
 
 Plain dice roller (`1d20+4+2` style), not tied to battle state.
 
+### `/startingoff`
+
+A private walkthrough for new players (`cogs/tutorial.py`, rules and saved progress in `game/tutorial.py`).
+It has 10 steps in two parts: your character (create, view, add a skill, check Build Points) and a practice fight
+(create a battle, join, add a Dummy with a skill, declare both moves, run the round, end). The bot shows one step at
+a time. After every command it checks whether the step is now true: by looking at what really exists (saved
+characters, the channel's battle) or at which command just ran. When a step finishes, the bot sends a private
+follow-up with the next step. Buttons skip a step, start over, or turn tips on and off.
+
+The same listener sends a one-time tip the first time someone uses a command that has one (`TIPS` in
+`game/tutorial.py`), and a single pointer to `/startingoff` the first time anyone uses any command. A tip is not used
+up by a command that failed (for example a name that does not exist). Progress is saved per person in
+`data/tutorial.json`. Commands that open a form (`addskill`) cannot be followed by a message, so the skill steps
+finish when the form's Confirm button is pressed, and a locked-in move finishes the declare step the same way
+(`skill_saved` and `declare_locked` events dispatched from `cogs/battle.py`).
+
+### `/practice`
+
+A solo fight for learning (`cogs/practice.py`, rules in `game/practice.py`). `/practice start` builds an ordinary
+`Battle` in the channel with the player on Side A and a **Dummy** on Side B, and registers it in the cog. The player
+still uses the real `/battle declare` and `/battle combat`. The Dummy is an owner-less `Fighter`, so nobody can declare
+for it; the cog does it. Options: `character` (one of your own; blank uses your only one, or a ready-made **Trainee**
+with a lent starter skill if you have none), `tier` (Easy: 60 HP and one attack a round, or Tougher: 150 HP and three
+attacks a round) and `show_plan` (on by default).
+
+At the start of every round `plan_moves` gives each of the Dummy's acting slots a random skill, a random living enemy
+and an enemy slot (different slots when there is room), and `apply_plan` declares them. The cog posts that plan to the
+channel so the player can answer a move on purpose: a Clash happens when the player's slot aims at the Dummy slot that
+aims back at it. Turn `show_plan` off to guess. The channel message is sent with mentions switched off, because
+character names are free text.
+
+When the Dummy plans is decided by `_check`, which runs after every `/battle combat` (through
+`on_app_command_completion`) and when a move is locked in (the `declare_locked` event). It is safe to run any number
+of times: it only plans when the Dummy can act and has not declared. It also ends the fight when a side is down
+(`outcome`: won, lost or draw) and says so once. A Staggered or Immobilized Dummy sits the round out, and combat does
+not wait for it (`Battle.all_declared` already skips fighters that cannot act). Sessions live in memory like battles do,
+and a session is dropped as soon as its battle is gone, so `/battle end` needs no hook. `/practice start` replaces a
+finished fight; `/practice stop` clears the channel (the person who started it, or an admin). The walkthrough counts
+`/practice start` and `/practice bot` as its battle step and `/practice stop` as its cleanup step.
+
+**`/practice bot`** swaps the Dummy for a random bot (`game/practice_bot.py`, no Discord imports). `generate_bot` makes
+an ordinary unsaved `Character` with the Build Points, Skill Points and Passive Points it is given, so the cog can copy
+the player's own pools (or use `level`, `skill_points` and `passive_points`) and the bot follows the same rules. Stats
+are bought one random step at a time and a step is kept only if `check_build` still accepts the build. Skills are made
+to fit the bot's Power, status ranks and Skill Points, and passives to fit its Passive Points. The fight uses
+`Fighter.from_character` with `owner_id` set to None, so only the cog declares for it. Options: `character`, `level`
+(1 to 5, blank means the player's), `skill_points`, `passive_points`, `skills` and `passives` (Random, or None to add
+them by hand), `attacks` (1 to 3 moves a round, blank means every slot) and `show_plan`.
+
+A bot started with no skills or passives is set up after it exists. `/practice addskill` opens the normal skill form
+with the bot's `Character` as its target, so the same Skill Point, status rank, Power and archetype limits apply
+(a practice flag swaps the admin hints for ones that make sense here, and keeps the skill out of the admin log).
+`/practice addpassive` takes the same options as `/charadmin passive` and is checked against the bot's Passive Points.
+`/practice removeskill`, `/practice removepassive` and `/practice sheet` do what they say. Only whoever started the
+fight, or an admin, can change the bot (admins skip the Power, rank and archetype checks, as they do for characters; the Build Point and Skill Point checks still apply). After any change the
+live fighter is rebuilt from the `Character` (`_sync_bot`) and `_check` plans again. Limits worth knowing: the bot only
+plays attack skills (no Guard, Evade, Counter or Supermoves), so a Level 4 or 5 bot cannot spend every Build Point and
+its summary says how many are left; a bot with no skills makes `/battle combat` refuse until it has one, and the cog
+says so once per round.
+
 ### `/help`
 
 Player-facing guidebook, not a dev reference (that's this README).
@@ -897,6 +957,8 @@ bot has no such mechanic).
 │   ├── battle.py        # /battle group -- largest file, combat engine glue lives here
 │   ├── character.py     # /character group -- persistent character CRUD
 │   ├── help.py          # /help -- player-facing guidebook (drill-down menu)
+│   ├── tutorial.py      # /startingoff walkthrough and first-use tips
+│   ├── practice.py      # /practice: solo fight against a bot-controlled Dummy or random bot
 │   └── roll.py          # /roll -- standalone dice roller
 ├── game/               # Game logic, no Discord imports here
 │   ├── battle.py         # Fighter, Battle, DeclaredAction, BATTLE_TYPES
@@ -907,6 +969,9 @@ bot has no such mechanic).
 │   ├── resistances.py     # DAMAGE_TYPES, ALL_RESISTANCE_TYPES, apply_resistance
 │   ├── emojis.py          # Every custom Discord emoji ID this bot uses
 │   ├── help_content.py    # /help's plain-language topic content, no Discord imports
+│   ├── tutorial.py        # /startingoff steps, tips and saved progress, no Discord imports
+│   ├── practice.py        # The Dummy: its skills, move picking, plan text, win/loss check, no Discord imports
+│   ├── practice_bot.py    # Random practice bot: builds a legal Character for given BP, SP and PP, no Discord imports
 │   └── colors.py          # Embed color helpers
 ├── data/characters/    # One JSON file per saved Character. Gitignored on
 │                         purpose -- personal data, stays local, never in repo.

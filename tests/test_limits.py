@@ -24,7 +24,7 @@ from game.display import bar, budget_bar, hp_bar, sanity_bar  # noqa: E402
 from game.help_content import HELP_CATEGORIES  # noqa: E402
 from game.skills import Skill  # noqa: E402
 
-EXTENSIONS = ["cogs.general", "cogs.battle", "cogs.character", "cogs.build_requests", "cogs.roll", "cogs.help"]
+EXTENSIONS = ["cogs.general", "cogs.battle", "cogs.character", "cogs.build_requests", "cogs.roll", "cogs.help", "cogs.tutorial", "cogs.practice"]
 
 
 class InTempDir(unittest.TestCase):

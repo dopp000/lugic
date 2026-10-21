@@ -20,6 +20,8 @@ INITIAL_COGS = [
     "cogs.build_requests",
     "cogs.roll",
     "cogs.help",
+    "cogs.tutorial",
+    "cogs.practice",
 ]
 
 

@@ -859,11 +859,24 @@ COMMANDS: list[HelpEntry] = [
     HelpEntry(
         key="roll",
         title="Dice and help",
-        summary="/roll and /help.",
+        summary="/roll, /help, /startingoff and /practice.",
         body=(
             "`/roll` rolls a dice expression like `1d20+4+2` or `2d6-1`. It shows the "
             "total and the full breakdown to the whole channel.\n"
-            "`/help` opens this guidebook."
+            "`/help` opens this guidebook.\n"
+            "`/startingoff` is a short walkthrough for new players. It asks you to do one thing at a "
+            "time, and each time you finish one it tells you what to try next.\n"
+            "`/practice start` is a solo fight against a Dummy that the bot controls, so you can learn how a "
+            "round works without a second player or an admin. You pick your moves with the usual "
+            "`/battle declare` and `/battle combat`. The Dummy picks its own at the start of every round and "
+            "tells you what it will do, so you can try a Clash on purpose. `/practice stop` clears the channel.\n"
+            "`/practice bot` is the same, against a random bot built with the rules a character follows. By "
+            "default it gets your Level and your Build, Skill and Passive Points, so it is an even match. Set "
+            "`level`, `skill_points` or `passive_points` to change that. Its skills and passives are random, or "
+            "choose none and add them yourself with `/practice addskill` and `/practice addpassive` (checked "
+            "against the bot's own points, like a character's). `/practice sheet` shows its build, and "
+            "`/practice removeskill` and `/practice removepassive` take things away. The bot only plays attack "
+            "skills, never Guard, Evade, Counter or Supermoves."
         ),
     ),
 ]
