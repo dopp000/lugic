@@ -4,8 +4,9 @@
 Passive Points it is given, so a bot can match the level and points of the player it fights.
 The stats are bought one step at a time at random, and every step is kept only if
 `check_build` still accepts the build, so a bot never breaks the rules a player has to follow.
-Skills are made to fit its Power, its status ranks and its Skill Points, and passives to fit
-its Passive Points. A bot with no skills or passives (`skills=False`) is for a player who wants
+`spend` caps how many Build Points it may use, so by default a bot has spent only as many as the
+player it fights; without it the bot spends every point of its pool. Skills are made to fit its
+Power, its status ranks and its Skill Points, and passives to fit its Passive Points. A bot with no skills or passives (`skills=False`) is for a player who wants
 to add those by hand.
 
 The bot only gets attack skills. The practice AI (game/practice.py) does not play Guard, Evade
@@ -46,6 +47,21 @@ def points_of(character) -> tuple[int, int, int]:
         int(getattr(character, "sp_total", 0)),
         int(getattr(character, "pp_total", 0)),
     )
+
+
+def spent_of(character) -> int:
+    """The Build Points a character has spent, never more than its pool."""
+    report = check_build(character)
+    return max(0, min(report.spent, report.total))
+
+
+def starting_spent() -> int:
+    """What a brand new character has spent (a Trainee's build): the base stats and the narrowest Speed range."""
+    new = Character(
+        owner_id=0, name=BOT_NAME, speed=_START_SPEED[0], speed_min=_START_SPEED[0], speed_max=_START_SPEED[1],
+        bp_total=STARTING_BP,
+    )
+    return spent_of(new)
 
 
 # ---- stats -----------------------------------------------------------------
@@ -140,8 +156,8 @@ _MOVES = (
 )
 
 
-def _spend_points(c, rng, reserve: int = 0):
-    """Buys random upgrades until nothing else fits the budget, keeping `reserve` BP unspent. Each bot has its own taste, so some lean on Power, some on HP, and so on, but the build caps keep any of them from becoming one-sided."""
+def _spend_points(c, rng, reserve: int = 0, limit: int | None = None):
+    """Buys random upgrades until nothing else fits the budget, keeping `reserve` BP unspent and never spending more than `limit` in total (None: no limit). Each bot has its own taste, so some lean on Power, some on HP, and so on, but the build caps keep any of them from becoming one-sided."""
     taste = {name: weight * rng.uniform(0.3, 2.0) for name, _, weight in _MOVES}
     while True:
         # Weighted order without replacement: a higher taste tends to come first.
@@ -151,7 +167,7 @@ def _spend_points(c, rng, reserve: int = 0):
             if not move(trial, rng):
                 continue
             report = check_build(trial)
-            if report.ok and report.spent <= report.total - reserve:
+            if report.ok and report.spent <= report.total - reserve and (limit is None or report.spent <= limit):
                 c = trial
                 break
         else:
@@ -318,9 +334,9 @@ def _give_passives(c, rng):
 
 def generate_bot(
     bp_total: int, sp_total: int = 0, pp_total: int = 0, rng=None, name: str = BOT_NAME,
-    owner_id: int = 0, skills: bool = True, passives: bool = True,
+    owner_id: int = 0, skills: bool = True, passives: bool = True, spend: int | None = None,
 ) -> Character:
-    """An unsaved Character that follows the Build Point rules for the pools it is given."""
+    """An unsaved Character that follows the Build Point rules for the pools it is given. `spend` is the most Build Points it may use (None: all of them)."""
     rng = rng or random
     c = Character(
         owner_id=owner_id, name=name, speed=_START_SPEED[0], speed_min=_START_SPEED[0], speed_max=_START_SPEED[1],
@@ -328,7 +344,7 @@ def generate_bot(
     )
     # A bot whose skills the player will add by hand keeps a few BP back, because a skill with
     # a Haste or Fragile style effect is paid for in Build Points (NONKEYWORD_CAP).
-    c = _spend_points(c, rng, reserve=0 if skills else NONKEYWORD_CAP)
+    c = _spend_points(c, rng, reserve=0 if skills else NONKEYWORD_CAP, limit=spend)
     if skills:
         _give_skills(c, rng)
     if passives:
@@ -368,8 +384,8 @@ def describe_skill(skill: Skill) -> str:
     return f"{skill.name} ({skill.damage_type.capitalize()}, Base {skill.base_power}, Coin +{skill.coin_power}, {coins}{tail})"
 
 
-def bot_text(c) -> str:
-    """The private summary after a bot is made: level, points, stats, skills and passives."""
+def bot_text(c, spend: int | None = None) -> str:
+    """The private summary after a bot is made: level, points, stats, skills and passives. `spend` is the limit the bot was made with, when it was matched to the player's own spending."""
     report = check_build(c)
     sp_used = skill_points_spent(c)
     pp_used = passive_points_spent(c)
@@ -379,7 +395,12 @@ def bot_text(c) -> str:
         describe_stats(c) + ".",
     ]
     left = report.total - report.spent
-    if left > UNSPENT_NOTE_AT:
+    if spend is not None:
+        lines.append(
+            f"It has spent about as many Build Points as you have ({spend} for you), so the fight is even. "
+            "Use the level option to fight a bot with every point of a Level spent."
+        )
+    elif left > UNSPENT_NOTE_AT:
         if c.skills:
             lines.append(
                 f"{left} Build Points are unspent. What is left needs Supermoves or Guard, Evade and Counter skills, "

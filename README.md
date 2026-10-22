@@ -635,11 +635,13 @@ finished fight; `/practice stop` clears the channel (the person who started it, 
 
 **`/practice bot`** swaps the Dummy for a random bot (`game/practice_bot.py`, no Discord imports). `generate_bot` makes
 an ordinary unsaved `Character` with the Build Points, Skill Points and Passive Points it is given, so the cog can copy
-the player's own pools (or use `level`, `skill_points` and `passive_points`) and the bot follows the same rules. Stats
+the player's own pools (or use `level`, `skill_points` and `passive_points`) and the bot follows the same rules. By default
+`spend` caps its Build Points at what the player has spent (`spent_of`, or `starting_spent` for a Trainee), so a new player
+meets a new build; giving `level` drops the cap and the bot spends its whole pool. Stats
 are bought one random step at a time and a step is kept only if `check_build` still accepts the build. Skills are made
 to fit the bot's Power, status ranks and Skill Points, and passives to fit its Passive Points. The fight uses
 `Fighter.from_character` with `owner_id` set to None, so only the cog declares for it. Options: `character`, `level`
-(1 to 5, blank means the player's), `skill_points`, `passive_points`, `skills` and `passives` (Random, or None to add
+(1 to 5, blank means the bot spends only as many Build Points as the player has), `skill_points`, `passive_points`, `skills` and `passives` (Random, or None to add
 them by hand), `attacks` (1 to 3 moves a round, blank means every slot) and `show_plan`.
 
 A bot started with no skills or passives is set up after it exists. `/practice addskill` opens the normal skill form

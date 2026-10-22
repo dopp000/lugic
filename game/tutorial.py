@@ -173,7 +173,7 @@ STEPS = (
     Step(
         "battle", PART_2, "Start a battle",
         "Go to a channel set aside for practice, since each channel holds one battle, then run `/battle create`. "
-        "In a hurry? `/practice start` (a Dummy) or `/practice bot` (a random bot that matches your level) "
+        "In a hurry? `/practice start` (a Dummy) or `/practice bot` (a random bot with as many points spent as you) "
         "sets up the whole fight for you, and skips ahead to picking moves.",
         "The battle is open.",
         _started_battle,

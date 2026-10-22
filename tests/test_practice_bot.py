@@ -160,6 +160,51 @@ class Generator(unittest.TestCase):
                 self.assertNotIn("unspent", text)
         self.assertTrue(found, "no sample had unspent points, so the note was never checked")
 
+    def test_spent_of_reads_the_points_a_character_has_used(self):
+        new = Character(owner_id=USER, name="New", speed=1, speed_min=1, speed_max=3)
+        self.assertEqual(pb.spent_of(new), 1)
+        self.assertEqual(pb.starting_spent(), 1)
+        built = Character(owner_id=USER, name="Built", speed=1, speed_min=2, speed_max=5, max_hp=140, hp=140, power=8)
+        self.assertEqual(pb.spent_of(built), check_build(built).spent)
+        self.assertEqual(pb.spent_of(built), 4 + 2 + 3)
+        tiny = Character(owner_id=USER, name="Tiny", speed=1, speed_min=2, speed_max=5, max_hp=160, hp=160, bp_total=3)
+        self.assertEqual(pb.spent_of(tiny), 3)  # never more than its pool
+
+    def test_spend_caps_the_build_points_a_bot_uses(self):
+        for spend in (0, 1, 5, 10, 20, 40):
+            for seed in range(6):
+                c = pb.generate_bot(63, 4, 3, rng=random.Random(seed), spend=spend)
+                report = check_build(c)
+                self.assertTrue(report.ok, (spend, seed, report.problems))
+                self.assertLessEqual(report.spent, max(spend, pb.starting_spent()), (spend, seed))
+                if spend >= 5:
+                    self.assertGreaterEqual(report.spent, spend - 2, (spend, seed))
+                self.assertEqual(character_level(c), 3)
+
+    def test_the_least_a_bot_can_spend_leaves_it_with_base_stats(self):
+        for seed in range(5):
+            c = pb.generate_bot(30, rng=random.Random(seed), spend=pb.starting_spent())
+            self.assertEqual(
+                (c.max_hp, c.power, c.speed_min, c.speed_max, c.offense_level, c.defense_level),
+                (100, 6, 1, 3, 0, 0),
+            )
+            self.assertFalse([k for k, v in c.status_ranks.items() if v])
+            self.assertTrue(c.skills)   # still gets skills to fight with
+
+    def test_without_a_limit_a_bot_spends_its_whole_pool_as_before(self):
+        for seed in range(6):
+            c = pb.generate_bot(63, 4, 3, rng=random.Random(seed))
+            self.assertGreaterEqual(check_build(c).spent, 55, seed)
+
+    def test_a_matched_bots_summary_says_so_and_does_not_list_unspent_points(self):
+        c = pb.generate_bot(45, rng=random.Random(2), spend=6)
+        text = pb.bot_text(c, 6)
+        self.assertIn("about as many Build Points as you have (6 for you)", text)
+        self.assertIn("level option", text)
+        self.assertNotIn("unspent", text)
+        self.assertFalse(banned_dashes(text), text)
+        self.assertLess(len(text), 1500)
+
     def test_a_manual_bot_summary_says_why_points_are_kept(self):
         c = pb.generate_bot(63, 3, 2, rng=random.Random(0), skills=False, passives=False)
         text = pb.bot_text(c)
@@ -259,7 +304,8 @@ class Glue(InTempDir):
         return i
 
     def make_character(self, name, owner=USER, bp=STARTING_BP, sp=0, pp=0, skills=True):
-        c = Character(owner_id=owner, name=name, bp_total=bp, sp_total=sp, pp_total=pp)
+        # Same start as /character create: HP 100, Power 6, Speed 1-3.
+        c = Character(owner_id=owner, name=name, bp_total=bp, sp_total=sp, pp_total=pp, speed_min=1, speed_max=3)
         if skills:
             c.add_skill(Skill("Jab", 4, 2, 2))
         save_character(c)
@@ -311,6 +357,56 @@ class Glue(InTempDir):
         char = self.session().bot_char
         self.assertEqual((char.sp_total, char.pp_total), (0, 0))
         self.assertFalse(char.passives)
+
+    def test_by_default_the_bot_spends_only_what_the_player_has_spent(self):
+        c = self.make_character("Rook", bp=63)
+        c.max_hp = c.hp = 140
+        c.power = 8
+        c.speed_min, c.speed_max = 2, 5
+        save_character(c)
+        spent = pb.spent_of(c)
+        self.assertEqual(spent, 9)
+        for seed in range(5):
+            random.seed(seed)
+            self.battle_cog.battles.clear()
+            self.cog.sessions.clear()
+            i = self.run_bot()
+            char = self.session().bot_char
+            report = check_build(char)
+            self.assertTrue(report.ok)
+            self.assertLessEqual(report.spent, spent)
+            self.assertGreaterEqual(report.spent, spent - 2)
+            self.assertEqual(pb.points_of(char)[0], 63)          # same pool, so the same Level
+            self.assertIn("about as many Build Points as you have (9 for you)", i.followup.send.call_args.args[0])
+
+    def test_a_player_with_no_character_meets_a_bot_with_base_stats(self):
+        self.run_bot()
+        c = self.session().bot_char
+        self.assertEqual((c.max_hp, c.power, c.speed_min, c.speed_max), (100, 6, 1, 3))
+        self.assertEqual(check_build(c).spent, 1)
+
+    def test_a_character_that_has_not_spent_anything_gets_the_same_kind_of_bot(self):
+        self.make_character("Rook", bp=63)
+        self.run_bot()
+        self.assertEqual(check_build(self.session().bot_char).spent, 1)
+
+    def test_choosing_a_level_gives_a_full_build(self):
+        self.make_character("Rook")
+        for level, pool in ((1, 30), (3, 63), (5, 108)):
+            random.seed(level)
+            self.battle_cog.battles.clear()
+            self.cog.sessions.clear()
+            i = self.run_bot(level=level)
+            report = check_build(self.session().bot_char)
+            self.assertEqual(report.total, pool)
+            self.assertGreaterEqual(report.spent, min(pool - 5, 50), (level, report.spent))
+            self.assertNotIn("about as many Build Points as you have", i.followup.send.call_args.args[0])
+
+    def test_the_command_and_option_texts_fit_discord(self):
+        command = practice_cog.PracticeCog.versus
+        self.assertLessEqual(len(command.description), 100)
+        for parameter in command.parameters:
+            self.assertLessEqual(len(str(parameter.description)), 100, parameter.name)
 
     def test_nobody_owns_the_bot_and_it_has_already_picked(self):
         self.run_bot()

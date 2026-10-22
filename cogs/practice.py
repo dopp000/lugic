@@ -6,7 +6,8 @@ Side A, the opponent on Side B) and register it here. The player then uses the r
 this cog declares its moves at the start of every round, using the rules in game/practice.py.
 
 `/practice bot` makes the opponent from a real unsaved Character (game/practice_bot.py) with the
-same Build Points, Skill Points and Passive Points as the player, so it follows the same rules.
+player's pools, but it only spends as many Build Points as the player has spent (a chosen `level`
+gives it every point of that Level instead), so it follows the same rules.
 The player can add skills and passives to it by hand (`addskill`, `addpassive`), checked
 against the bot's own points exactly like a character's.
 """
@@ -195,11 +196,11 @@ class PracticeCog(commands.GroupCog, name="practice"):
 
     @app_commands.command(
         name="bot",
-        description="Fight a random bot built to match your level and points",
+        description="Fight a random bot that has spent as many points as you have",
     )
     @app_commands.describe(
         character="Which of your characters to match (blank: your only one, or a Level 1 Trainee)",
-        level="The bot's Level, 1 to 5 (blank: the same as yours)",
+        level="Give the bot every point of this Level, 1 to 5 (blank: it spends only as many as you have)",
         skill_points="The bot's Skill Points (blank: the same as yours)",
         passive_points="The bot's Passive Points (blank: the same as yours)",
         skills="Random skills, or none so you add them yourself with /practice addskill",
@@ -227,8 +228,13 @@ class PracticeCog(commands.GroupCog, name="practice"):
             await interaction.response.send_message(picked.problem, ephemeral=True)
             return
         bp, sp, pp = pb.points_of(picked.character) if picked.character is not None else (STARTING_BP, 0, 0)
+        # By default the bot has spent only as many Build Points as the player has, so a new player
+        # fights a new build. Choosing a level gives it a full build for that Level instead.
+        spend = None
         if level is not None:
             bp = pb.bp_for_level(level)
+        else:
+            spend = pb.spent_of(picked.character) if picked.character is not None else pb.starting_spent()
         if skill_points is not None:
             sp = skill_points
         if passive_points is not None:
@@ -237,11 +243,12 @@ class PracticeCog(commands.GroupCog, name="practice"):
         manual = skills == "manual"
         char = pb.generate_bot(
             bp, sp, pp, name=name, owner_id=interaction.user.id, skills=not manual, passives=passives != "manual",
+            spend=spend,
         )
         foe = Fighter.from_character(char, "B")
         foe.owner_id = None  # nobody declares for it, the cog does
         guide = pr.bot_start_text(
-            picked.fighter, foe, pb.bot_text(char), picked.lent, show_plan, picked.trainee, manual,
+            picked.fighter, foe, pb.bot_text(char, spend), picked.lent, show_plan, picked.trainee, manual,
         )
         await self._launch(
             interaction, picked.fighter, foe, guide, show_plan=show_plan, max_moves=attacks, bot_char=char,
