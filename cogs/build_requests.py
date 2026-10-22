@@ -22,6 +22,7 @@ from game.build_requests import (
     set_review_channel, try_change,
 )
 from game.passives import parse_passive, tag_warnings
+from cogs.build_check import run_build
 from cogs.character import _parse_resistance_tokens, dm_owner, is_admin
 
 COLOR_OPEN = 0xF1C40F
@@ -49,6 +50,11 @@ def request_embed(req: Request) -> discord.Embed:
                 embed.add_field(name="Budget", value=cost_preview(current, changed), inline=False)
             elif error:
                 embed.add_field(name="Right now", value=error[:900], inline=False)
+        if req.kind == "build":
+            note = "Skills are checked again when you approve. The budget above leaves their cost out."
+            if req.params.get("passives"):
+                note += " Passive prices are the player's own suggestion: deny with a note if one is off."
+            embed.add_field(name="Note", value=note, inline=False)
     if req.decided_by:
         note = f": {req.decision_note}" if req.decision_note else ""
         embed.add_field(name="Decided by", value=f"<@{req.decided_by}>{note}"[:900], inline=False)
@@ -112,7 +118,10 @@ async def approve(interaction: discord.Interaction, req: Request):
             f"There is no character called {req.character} any more. Deny the request.", ephemeral=True
         )
         return
-    summary, error, changed = try_change(character, req.kind, req.params)
+    if req.kind == "build":
+        summary, error, changed = await run_build(character, req.params)
+    else:
+        summary, error, changed = try_change(character, req.kind, req.params)
     if error:
         await interaction.response.send_message(
             f"This can't be applied right now, nothing changed:\n{error}"[:1900], ephemeral=True
@@ -127,6 +136,21 @@ async def approve(interaction: discord.Interaction, req: Request):
         interaction.client, req.owner_id,
         f"Your request #{req.id} for **{req.character}** was approved: {summary}.",
     )
+
+
+async def post_for_review(client, req: Request) -> bool:
+    """Posts a new request with its buttons in the review channel. False when there is no channel or it could not be posted."""
+    channel_id = get_review_channel()
+    channel = client.get_channel(channel_id) if channel_id else None
+    if channel is None:
+        return False
+    try:
+        msg = await channel.send(embed=request_embed(req), view=review_view(req.id))
+    except discord.HTTPException:
+        return False
+    req.channel_id, req.message_id = channel.id, msg.id
+    save_request(req)
+    return True
 
 
 class DenyModal(discord.ui.Modal, title="Deny this request"):
@@ -227,17 +251,7 @@ class RequestCog(commands.GroupCog, name="request"):
             extra += tag_warnings(parsed, known_tags())
         req = create_request(interaction.user.id, character.name, kind, params, reason)
 
-        posted = False
-        channel_id = get_review_channel()
-        channel = interaction.client.get_channel(channel_id) if channel_id else None
-        if channel is not None:
-            try:
-                msg = await channel.send(embed=request_embed(req), view=review_view(req.id))
-                req.channel_id, req.message_id = channel.id, msg.id
-                save_request(req)
-                posted = True
-            except discord.HTTPException:
-                posted = False
+        posted = await post_for_review(interaction.client, req)
         tail = "An admin will answer it, and you get a DM." if posted else (
             "No review channel is set up yet, so an admin has to find it with /request list."
         )

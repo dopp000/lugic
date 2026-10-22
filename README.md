@@ -531,6 +531,7 @@ that flag.
 | Command | Notes |
 | --- | --- |
 | `create` | New saved character, owned by whoever ran it. |
+| `import` | Makes a new character from a code copied off the character builder website (see **Character Builder Website**). Skills are added at once; anything that costs points becomes one `build` request for the admins. Never overwrites an existing character. |
 | `list` | Lists your own saved characters. |
 | `view` | Owner or admin; `public:True` posts to channel. |
 | `edit` | Owner-or-admin for name, avatar and resistances. HP, Speed, Power, Stagger, resistances and Offense/Defense Level are admin-only (they cost Build Points) and a build that breaks the rules is rejected before anything is saved. `speed_min`/`speed_max` must be given together, no implicit flat-speed shortcut anymore. Also where `stagger_thresholds`/`stagger_tiers_enabled` get set, applied at battle-start via `Fighter.from_character()`. |
@@ -565,6 +566,11 @@ Filing a request shows the budget before and after (`BP 16/30 -> 18/30`, plus PP
 and a passive that counts a tag nobody has gets a warning with a "did you mean" hint. The same warning shows in the skill form
 and after `/charadmin passive`. A player can have 3 open requests, and one open request per kind and character. Skills and custom statuses are not
 requests: owners add those themselves and the Build Point checks still apply. Requests are stored in `data/requests.json`.
+
+A fifth kind, `build`, cannot be filed with a command. `/character import` makes it: one request that holds a whole new character's stats, ranks,
+defense types, tags, passives and skills. `game/build_requests.py` applies it as the same single changes in a fixed order (`build_steps`), so every
+existing check runs unchanged, and `cogs/build_check.py` teaches the skills through the real skill popup. Approving re-checks all of it. A passive
+needs Passive Points that an admin gives out, so an admin adds them to the character first, otherwise the approval says so and changes nothing.
 
 ### `/charadmin` group (`cogs/character.py`)
 
@@ -949,6 +955,31 @@ and event participation, not handed out freely.
 **Still open**: the player request and approval flow, and Reuse Coin (the
 bot has no such mechanic).
 
+## Character Builder Website (`docs/builder/`)
+
+A static web page (plain HTML, CSS and JavaScript, no build step, nothing sent anywhere) where a player sets up a whole character and sees
+the Build Point cost as they go, then copies a code and pastes it into `/character import`. It is the "identity card" side of making a
+character: name, portrait link, stats, resistances, status ranks, defense types, tags, passives and skills.
+
+- **The code** is the character as JSON, compressed and written as text (`LUGIC1Z.` then base64url; `LUGIC1.` is the same without compression for a
+  browser that cannot compress). `game/character_import.py` reads it, caps its size (it cannot unpack into more than 60 KB), and checks the shape.
+  The site and the bot never talk to each other, so there is nothing to host on the bot's side.
+- **What the bot does with it** (`cogs/character_import.py`): the whole build is checked first with the bot's own rules, on a copy, and a build
+  that would fail creates nothing and says why. A build that only has skills creates the character at once. Anything else creates the character
+  with the starting stats and no skills, and files one `build` request; approving it applies everything. It only makes new characters.
+- **Rules on the site** (`docs/builder/engine.js`) are a port of `check_build` and of the skill popup's Power, rank and defense-type rules, with the
+  same wording. The prices come from `docs/builder/rules.js`, which is written by `python -m game.builder_rules` from the constants in
+  `game/build_points.py`, so changing a price means running that one command. The site cannot know whether a trigger line parses or what it costs;
+  the bot checks those on import and the player is told then.
+- **Putting it online (GitHub Pages):** the repository must be public on a free plan. On GitHub open Settings, Pages, set the source to the `main`
+  branch and the `/docs` folder. The page is then at `https://<owner>.github.io/<repo>/builder/` (`docs/index.html` forwards the root to it, and
+  `docs/.nojekyll` stops GitHub from converting the Markdown files). To have the bot tell players where it is, add
+  `CHARACTER_SITE_URL=https://<owner>.github.io/<repo>/builder/` to `.env`.
+- **Trying it locally:** open `docs/builder/index.html` in a browser. It also works from `python -m http.server` in `docs/`.
+- **Tests:** `tests/test_builder_site.py` runs the site's engine under node and the bot's Python on 400 random builds and compares prices and
+  problems exactly, checks codes both ways, that every "add a line" button parses, and that `rules.js` is current. `tests/test_character_import.py`
+  covers the bot side. Not covered: how the page looks and behaves in other browsers, and a real Discord client.
+
 ## Project Structure
 
 ```
@@ -956,6 +987,8 @@ bot has no such mechanic).
 ├── cogs/               # Discord-facing commands, grouped by feature
 │   ├── battle.py        # /battle group -- largest file, combat engine glue lives here
 │   ├── character.py     # /character group -- persistent character CRUD
+│   ├── character_import.py  # /character import: makes a character from a builder site code
+│   ├── build_check.py   # runs a whole build (stats, ranks, skills) through the bot's own rules
 │   ├── help.py          # /help -- player-facing guidebook (drill-down menu)
 │   ├── tutorial.py      # /startingoff walkthrough and first-use tips
 │   ├── practice.py      # /practice: solo fight against a bot-controlled Dummy or random bot
@@ -965,6 +998,8 @@ bot has no such mechanic).
 │   ├── skills.py          # Skill, SkillResult, resolve_skill, resolve_round_clash, resolve_triggers
 │   ├── conditions.py      # Trigger, TriggerContext, parse_trigger_text -- the trigger syntax parser
 │   ├── character.py       # Character (persistent, JSON-backed), separate from per-battle Fighter
+│   ├── character_import.py # reads the builder site's code into a build request, no Discord imports
+│   ├── builder_rules.py   # writes docs/builder/rules.js from the bot's rule constants
 │   ├── statuses.py        # StatusInstance, apply_status, decay_after_trigger
 │   ├── resistances.py     # DAMAGE_TYPES, ALL_RESISTANCE_TYPES, apply_resistance
 │   ├── emojis.py          # Every custom Discord emoji ID this bot uses
@@ -975,6 +1010,7 @@ bot has no such mechanic).
 │   └── colors.py          # Embed color helpers
 ├── data/characters/    # One JSON file per saved Character. Gitignored on
 │                         purpose -- personal data, stays local, never in repo.
+├── docs/builder/       # The character builder website (static, served by GitHub Pages)
 ├── requirements.txt
 ├── .env.example
 └── .gitignore
@@ -1099,5 +1135,7 @@ python -m unittest discover tests
 
 - `tests/test_limits.py` checks the things Discord rejects outright: every slash command description and name, the size of the battle display with many fighters, help text lengths, the bars, character name and file safety, and how often the combat message is edited.
 - `tests/test_scenarios.py` runs each script in `tests/scenarios/` in its own process from an empty temp folder (so nothing is written to `data/`). They cover trigger parsing, passives, statuses and Stagger, follow-ups and Assist Defense, Unfocused Volley, player requests, death reactions, adjacency and `[Failed ...]`, Part Stagger, and the `/help` menus.
+- `tests/test_character_import.py` covers reading builder codes and what `/character import` does with them (made at once, sent to the admins, refused, approved).
+- `tests/test_builder_site.py` checks that the website's rules agree with the bot's. Its comparison tests need node 18 or newer and are skipped without it. After changing a price in `game/build_points.py`, run `python -m game.builder_rules` or its freshness test fails.
 - Run them before pushing a change to `cogs/` or `game/`. A failing scenario prints its last output.
 - `requirements.txt` pins `discord.py` to the version these tests were run against (2.7.1).

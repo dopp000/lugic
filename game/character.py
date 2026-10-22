@@ -4,11 +4,13 @@ import os
 import re
 from dataclasses import dataclass, field
 
+from game.build_points import STARTING_BP
 from game.resistances import DEFAULT_RESISTANCES, migrate_percent_to_multiplier
 from game.skills import Skill
 from game.custom_statuses import CustomStatus
 
 CHARACTERS_DIR = "data/characters"
+STARTING_SPEED = (1, 3)   # the Speed range a new character gets
 NAME_MAX_LENGTH = 40
 _BAD_NAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
@@ -22,6 +24,14 @@ def validate_character_name(name: str) -> str | None:
     if _BAD_NAME_CHARS.search(name) or name.strip().startswith("."):
         return "A name can't contain / \\ : * ? \" < > | and can't start with a dot."
     return None
+
+
+def starting_character(owner_id: int, name: str, avatar_url: str | None = None) -> "Character":
+    """A new character as /character create makes it: a valid Level 1 build with HP 100, Power 6 and a 1-3 Speed range
+    (a flat Speed 10 would break the Speed 1-8 rule)."""
+    return Character(
+        owner_id=owner_id, name=name, avatar_url=avatar_url, speed_min=STARTING_SPEED[0], speed_max=STARTING_SPEED[1], bp_total=STARTING_BP,
+    )
 
 
 @dataclass

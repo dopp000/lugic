@@ -756,6 +756,9 @@ COMMANDS: list[HelpEntry] = [
             "Want a build change? Use `/request stats`, `rank`, `archetype`, `tags` or `passive` with a reason. "
             "The bot checks it first, then an admin approves or denies it and you get a DM. "
             "`/request mine` shows your requests, `/request cancel` withdraws one.\n"
+            "`/character import` makes a new character from a code you copy off the character builder website "
+            "(it shows what everything costs as you build). Skills are added at once. Stats, ranks, defense types, "
+            "tags and passives go to the admins like a `/request`, and you get a DM when they answer.\n"
             "`/character delete` removes one for good."
         ),
     ),

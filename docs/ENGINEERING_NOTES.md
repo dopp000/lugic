@@ -2400,6 +2400,24 @@ The combat message used to be edited about 12 times in 5 seconds (64 edits for o
 - `build_character_embed` was rebuilt: level and pools with a BP bar on top, HP/Speed/Power, Offense/Defense Level and Stagger thresholds in rows, resistances split into damage and status (with arrows for resist and weak), and a Kit field. The embed color follows the character's highest status rank (`game/colors.py`).
 - Not checked on a real Discord client: wide rows of emoji squares may wrap on a narrow phone screen. `SEGMENTS` in `game/display.py` sets the bar width.
 
+## Character builder site and /character import
+<a id="character-builder-site"></a>
+
+Why it is built the way it is:
+
+- **A pasted code, not a connection.** The site is static and the bot has no web server, so the only link between them is text the player copies. That keeps the bot free of anything to host, secure or keep awake. The cost is that the site's numbers can drift from the bot's, which is what the next two points are for.
+- **One source of numbers.** `game/builder_rules.py` reads the constants in `game/build_points.py`, `game/passives.py`, `game/conditions.py` and `game/statuses.py` and writes `docs/builder/rules.js`. `engine.js` has no prices of its own. `tests/test_builder_site.py` fails when `rules.js` is stale.
+- **Two implementations, compared.** `engine.js` repeats the logic of `check_build` (the stat side), `skill_rank_problems`, `skill_power_problem` and the defense-type and Skill Point rules from the skill popup. The test builds 400 random characters, runs them through both, and requires the same price, the same breakdown and the same problem sentences in the same order. When you change `check_build`, change `engine.js` the same way; the test says where they differ. Trigger lines are not ported: whether one parses, and what a non-keyword effect inside a line costs, is only known to the bot.
+- **The bot checks everything again.** The code is untrusted input from any Discord user. `decode_code` limits the pasted size and the unpacked size (a few KB can compress from megabytes), `read_spec` checks every field's type and length, and the build then goes through the same rules a typed request would.
+- **Skills go through the real skill popup.** `cogs/build_check.py` fills in `AddSkillModal` and reads its reply instead of copying its rules, so a skill from a code is held to what a skill typed in Discord is. The form's reply sometimes tells the player to ask an admin for a command; `player_words` drops those sentences. The fake interaction it answers is never an admin.
+- **A build is one request.** `/request` allows 3 open per player and one per kind per character, so a character built from many single requests could never be filed. The `build` kind holds everything and is applied as the same steps in order (`build_steps`), so each step keeps its own checks. Skills are taught after the steps, on the changed copy, so a skill can use a rank the same build buys.
+- **No approval when nothing costs points.** `needs_approval` is true for stats, ranks, defense types, tags and passives. A build with only skills creates the character at once, because players add their own skills anyway and the form's limits still apply.
+- **A new character has no Passive Points.** Admins hand those out, so at import the passives are checked as if the points were there (`defer_pp`), and the approval checks for real. The admin adds the points to the character first, or the approval says so and changes nothing.
+- **Import only makes new characters.** Changing an existing character through a code would need a diff against what it has now, and a request per change; it is left for later.
+- **Nothing is saved until the build passes.** A refused import leaves no character behind. An import that goes to the admins saves the character with the starting stats and no skills so the name is taken, and the request holds the rest.
+
+Not checked: a real Discord client, GitHub Pages itself, and any browser other than the headless Chromium used for screenshots.
+
 ## Limits and safety (patch 19)
 
 - A Discord embed field holds at most 1024 characters and a whole embed 6000. `build_battle_embed` used to put a whole side in one field, which already passed 1024 at 4 fighters per side (the bars made each fighter a little longer). `_chunk_blocks` now splits a side into several fields (the later ones are named "Side A (cont.)"), and if the embed would pass 5800 characters it is rebuilt with `compact=True`, which drops the slot rows, Parts line and hint icons.

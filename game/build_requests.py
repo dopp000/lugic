@@ -20,10 +20,10 @@ from game.conditions import MAX_TAG_LENGTH, MAX_TAGS, norm_tag
 from game.passives import MAX_PASSIVES, followup_problem, parse_passive
 
 REQUESTS_PATH = "data/requests.json"
-KINDS = ("stats", "rank", "archetype", "tags", "passive")
+KINDS = ("stats", "rank", "archetype", "tags", "passive", "build")
 KIND_LABELS = {
     "stats": "Stats", "rank": "Status rank", "archetype": "Defense archetype",
-    "tags": "Group tags", "passive": "Identity passive",
+    "tags": "Group tags", "passive": "Identity passive", "build": "Full build",
 }
 MAX_OPEN_PER_PLAYER = 3
 REASON_MAX = 300
@@ -219,9 +219,53 @@ def _apply(character, kind: str, params: dict) -> tuple[list[str], str | None]:
                 "An admin can grant more for a GM-approved moment."
             )
         changes.append(f"passive {entry['name']} ({entry['cost']} PP)")
+    elif kind == "build":
+        # A whole character from the builder site, as one request. The skills in it are
+        # checked by the caller (they need the skill form's rules, which live in cogs/).
+        steps = build_steps(params)
+        if not steps:
+            return [], "A full build needs at least one change."
+        for sub_kind, sub_params in steps:
+            _, error = _apply(character, sub_kind, sub_params)
+            if error:
+                return [], error
+        changes.append(build_summary_text(params))
     else:
         return [], f"Unknown request type {kind}."
     return changes, None
+
+
+def build_steps(params: dict) -> list[tuple[str, dict]]:
+    """The single-change requests a "build" request is made of, in the order they are applied."""
+    steps: list[tuple[str, dict]] = []
+    if params.get("stats"):
+        steps.append(("stats", params["stats"]))
+    for status, rank in (params.get("ranks") or {}).items():
+        steps.append(("rank", {"status": status, "rank": rank}))
+    for key in params.get("archetypes") or []:
+        steps.append(("archetype", {"archetype": key, "own": True}))
+    if params.get("tags"):
+        steps.append(("tags", {"tags": list(params["tags"])}))
+    for passive in params.get("passives") or []:
+        steps.append(("passive", dict(passive)))
+    return steps
+
+
+def build_summary_text(params: dict) -> str:
+    """Short words for what a build changes, for DMs and the sent-confirmation."""
+    bits = []
+    if params.get("stats"):
+        bits.append("stats")
+    for key, one, many in (
+        ("ranks", "status rank", "status ranks"), ("archetypes", "defense archetype", "defense archetypes"),
+        ("passives", "passive", "passives"), ("skills", "skill", "skills"),
+    ):
+        n = len(params.get(key) or [])
+        if n:
+            bits.append(f"{n} {one if n == 1 else many}")
+    if params.get("tags"):
+        bits.append("group tags")
+    return "full build (" + ", ".join(bits) + ")"
 
 
 def try_change(character, kind: str, params: dict) -> tuple[str, str | None, "object | None"]:
@@ -282,4 +326,19 @@ def describe_request(req: Request) -> str:
     if req.kind == "passive":
         text = f"{p['name']} ({p['kind']}, asks {p['cost']} PP)"
         return text + "\n" + "\n".join(p["lines"])
+    if req.kind == "build":
+        out = []
+        if p.get("stats"):
+            out.append("Stats: " + describe_request(Request(0, 0, "", "stats", p["stats"])))
+        if p.get("ranks"):
+            out.append("Ranks: " + ", ".join(f"{k.capitalize()} {v}" for k, v in p["ranks"].items()))
+        if p.get("archetypes"):
+            out.append("Defense: " + ", ".join(defense_label(k) for k in p["archetypes"]))
+        if p.get("tags"):
+            out.append("Tags: " + ", ".join(p["tags"]))
+        for passive in p.get("passives") or []:
+            out.append(f"Passive {passive['name']} ({passive['kind']}, asks {passive['cost']} PP): " + " / ".join(passive["lines"]))
+        if p.get("skills"):
+            out.append("Skills: " + "; ".join(f"{sk['name']} ({sk['stats']})" for sk in p["skills"]))
+        return "\n".join(out)
     return req.kind

@@ -15,6 +15,7 @@ from game.character import (
     list_character_summaries,
     list_all_characters,
     validate_character_name,
+    starting_character,
 )
 from game.build_points import (
     check_build, build_summary, level_for, next_level_at, character_level,
@@ -279,12 +280,8 @@ class CharacterCog(commands.GroupCog, name="character"):
             return
 
         avatar_url = avatar.url if avatar else None
-        # A fresh character starts as a valid Level 1 build: HP 100, Power 6
-        # and a 1-3 Speed range (a flat Speed 10 would break the Speed 1-8 rule).
-        character = Character(
-            owner_id=interaction.user.id, name=name, avatar_url=avatar_url,
-            speed_min=1, speed_max=3, bp_total=STARTING_BP,
-        )
+        # A fresh character starts as a valid Level 1 build (see starting_character).
+        character = starting_character(interaction.user.id, name, avatar_url)
         save_character(character)
 
         embed = discord.Embed(
@@ -303,6 +300,12 @@ class CharacterCog(commands.GroupCog, name="character"):
         )
         embed.set_footer(text="Use /character view to see stats. You and admins can view them.")
         await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="import", description="Make a character from a code made on the character builder site")
+    async def import_character(self, interaction: discord.Interaction):
+        # Imported here because that module needs cogs.build_requests, which imports this one.
+        from cogs.character_import import ImportModal
+        await interaction.response.send_modal(ImportModal())
 
     @app_commands.command(name="list", description="List your saved characters")
     async def list_characters(self, interaction: discord.Interaction):

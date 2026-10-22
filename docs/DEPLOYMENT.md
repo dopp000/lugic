@@ -44,7 +44,7 @@ sudo -u lugic /opt/lugic/venv/bin/pip install -r /opt/lugic/requirements.txt
 sudo -u lugic nano /opt/lugic/.env
 ```
 
-The file has one line: `DISCORD_TOKEN=your token here`. Then lock it down:
+The file has one line: `DISCORD_TOKEN=your token here`. You can add `CHARACTER_SITE_URL=` with the address of the character builder website (see the README) so `/character import` can point players to it. Then lock it down:
 
 ```
 sudo chmod 600 /opt/lugic/.env
