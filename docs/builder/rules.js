@@ -7,66 +7,19 @@
     },
     "codeVersion": 1,
     "colorKey": {
-      "sins": [
-        {
-          "color": "Red",
-          "hint": "fire, anger",
-          "sin": "wrath",
-          "status": "burn"
-        },
-        {
-          "color": "Orange",
-          "hint": "blood, heat",
-          "sin": "lust",
-          "status": "bleed"
-        },
-        {
-          "color": "Yellow",
-          "hint": "caution, shaking ground",
-          "sin": "sloth",
-          "status": "tremor"
-        },
-        {
-          "color": "Green",
-          "hint": "bursting, rot",
-          "sin": "gluttony",
-          "status": "rupture"
-        },
-        {
-          "color": "Teal",
-          "hint": "cold, deep water",
-          "sin": "gloom",
-          "status": "sinking"
-        },
-        {
-          "color": "Blue",
-          "hint": "calm, steady",
-          "sin": "pride",
-          "status": "poise"
-        },
-        {
-          "color": "Purple",
-          "hint": "stored energy, jealousy",
-          "sin": "envy",
-          "status": "charge"
-        }
-      ],
       "tones": [
         {
           "color": "Yellow",
-          "hint": "gold: reward, energy",
           "means": "Helps you",
           "tone": "positive"
         },
         {
           "color": "Red",
-          "hint": "red: danger, blood, stop",
           "means": "Hurts you",
           "tone": "negative"
         },
         {
           "color": "Brown",
-          "hint": "brown: plain, stored, waiting",
           "means": "Neither",
           "tone": "neutral"
         }
@@ -98,6 +51,16 @@
         "evade",
         "guard"
       ]
+    },
+    "glossary": {
+      "blunt": "A damage type. A unit's Resistances can make it take 0.5x, 1.0x or 1.5x of it.",
+      "defense_level": "0 to 5. Every step is 4% less damage you take.",
+      "hp": "Health. Damage lowers it, Heal raises it.",
+      "offense_level": "0 to 5. Every step is 4% more damage you deal.",
+      "pierce": "A damage type. A unit's Resistances can make it take 0.5x, 1.0x or 1.5x of it.",
+      "sanity": "At -30 Sanity a unit is on Low Morale. At -45 it Panics and can't act next turn.",
+      "slash": "A damage type. A unit's Resistances can make it take 0.5x, 1.0x or 1.5x of it.",
+      "speed": "Rolled for every skill slot each round, from the unit's Speed range. Higher is faster."
     },
     "hp": {
       "base": 100,
@@ -436,7 +399,8 @@
               "name": "n"
             }
           ],
-          "text": "If the target has {n}+ negative effects,"
+          "text": "If the target has {n}+ negative effects,",
+          "tone": "negative"
         },
         {
           "id": "hp",
@@ -569,7 +533,8 @@
               ]
             }
           ],
-          "text": "If {who} is {state},"
+          "text": "If {who} is {state},",
+          "tone": "negative"
         },
         {
           "id": "affinity",
@@ -768,7 +733,8 @@
             }
           ],
           "power": true,
-          "text": "Deal +{n}% damage"
+          "text": "Deal +{n}% damage",
+          "tone": "positive"
         },
         {
           "flat": true,
@@ -786,7 +752,8 @@
             }
           ],
           "power": true,
-          "text": "Deal +{n} damage"
+          "text": "Deal +{n} damage",
+          "tone": "positive"
         },
         {
           "flat": true,
@@ -804,7 +771,8 @@
             }
           ],
           "power": true,
-          "text": "Coin Power +{n}"
+          "text": "Coin Power +{n}",
+          "tone": "positive"
         },
         {
           "group": "Damage and power",
@@ -821,7 +789,8 @@
             }
           ],
           "power": true,
-          "text": "Clash Power +{n}"
+          "text": "Clash Power +{n}",
+          "tone": "positive"
         },
         {
           "group": "Damage and power",
@@ -838,7 +807,8 @@
             }
           ],
           "power": true,
-          "text": "Final Power +{n}"
+          "text": "Final Power +{n}",
+          "tone": "positive"
         },
         {
           "group": "Damage and power",
@@ -955,7 +925,8 @@
             }
           ],
           "power": true,
-          "text": "Deal +{n}% damage per {per} {status} {basis} on the target (max {max}%)"
+          "text": "Deal +{n}% damage per {per} {status} {basis} on the target (max {max}%)",
+          "tone": "positive"
         },
         {
           "flat": true,
@@ -1037,7 +1008,8 @@
             }
           ],
           "power": true,
-          "text": "Coin Power +{n} per {per} {status} {basis} (max {max})"
+          "text": "Coin Power +{n} per {per} {status} {basis} (max {max})",
+          "tone": "positive"
         },
         {
           "flat": true,
@@ -1119,7 +1091,8 @@
             }
           ],
           "power": true,
-          "text": "Deal +{n} damage per {per} {status} {basis} (max {max})"
+          "text": "Deal +{n} damage per {per} {status} {basis} (max {max})",
+          "tone": "positive"
         },
         {
           "flat": true,
@@ -1177,7 +1150,8 @@
             }
           ],
           "power": true,
-          "text": "Consume {m} {status}: Coin Power +{n}"
+          "text": "Consume {m} {status}: Coin Power +{n}",
+          "tone": "positive"
         },
         {
           "group": "Statuses",
@@ -1734,7 +1708,8 @@
             }
           ],
           "post": true,
-          "text": "Gain {stat} Level +{n}"
+          "text": "Gain {stat} Level +{n}",
+          "tone": "positive"
         },
         {
           "group": "Offense and Defense Level",
@@ -1767,7 +1742,8 @@
             }
           ],
           "post": true,
-          "text": "Inflict {stat} Level -{n}"
+          "text": "Inflict {stat} Level -{n}",
+          "tone": "negative"
         },
         {
           "ally": true,
@@ -1785,7 +1761,8 @@
             }
           ],
           "post": true,
-          "text": "Gain {n} Sanity"
+          "text": "Gain {n} Sanity",
+          "tone": "positive"
         },
         {
           "group": "Sanity, HP and shield",
@@ -1802,7 +1779,8 @@
             }
           ],
           "post": true,
-          "text": "Lose {n} Sanity"
+          "text": "Lose {n} Sanity",
+          "tone": "negative"
         },
         {
           "ally": true,
@@ -1820,7 +1798,8 @@
             }
           ],
           "post": true,
-          "text": "Heal {n} HP"
+          "text": "Heal {n} HP",
+          "tone": "positive"
         },
         {
           "ally": true,
@@ -1838,7 +1817,8 @@
             }
           ],
           "post": true,
-          "text": "Heal {n}% max HP"
+          "text": "Heal {n}% max HP",
+          "tone": "positive"
         },
         {
           "ally": true,
@@ -1856,7 +1836,8 @@
             }
           ],
           "post": true,
-          "text": "Gain {n} Shield"
+          "text": "Gain {n} Shield",
+          "tone": "positive"
         },
         {
           "ally": true,
@@ -1874,7 +1855,8 @@
             }
           ],
           "post": true,
-          "text": "Gain {n}% max HP Shield"
+          "text": "Gain {n}% max HP Shield",
+          "tone": "positive"
         },
         {
           "group": "Staying alive",
@@ -1891,7 +1873,8 @@
             }
           ],
           "post": true,
-          "text": "HP cannot drop below {n} this turn"
+          "text": "HP cannot drop below {n} this turn",
+          "tone": "positive"
         },
         {
           "group": "Staying alive",
@@ -1899,7 +1882,8 @@
           "label": "Nullify the next lethal damage",
           "params": [],
           "post": true,
-          "text": "Nullify the next lethal damage"
+          "text": "Nullify the next lethal damage",
+          "tone": "positive"
         },
         {
           "group": "Staying alive",
@@ -1907,7 +1891,8 @@
           "label": "Cannot be Staggered this turn",
           "params": [],
           "post": true,
-          "text": "Cannot be Staggered this turn"
+          "text": "Cannot be Staggered this turn",
+          "tone": "positive"
         },
         {
           "group": "Staying alive",
@@ -1915,7 +1900,8 @@
           "label": "Recover from Stagger",
           "params": [],
           "post": true,
-          "text": "Recover from Stagger"
+          "text": "Recover from Stagger",
+          "tone": "positive"
         },
         {
           "followup": true,

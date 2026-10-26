@@ -254,8 +254,23 @@ FLAG_LABELS = ["Guard", "Evade", "Counter", "Clashable Guard", "Clashable Counte
                "Unclashable", "Indiscriminate", "Unfocused Volley"]
 
 
+# What an effect or a condition is worth, in the wiki's three colours: yellow helps, red hurts. The site colours the words of a rule line, and the
+# choice in the picker, by it. An effect that depends on its status (Gain, Inflict, Remove) has no tone of its own: the status carries it.
+_POSITIVE_EFFECTS = (
+    "dmg_pct", "dmg_flat", "coin_power", "clash_power", "final_power", "dmg_pct_per", "coin_power_per", "dmg_flat_per", "consume", "level_gain",
+    "sanity_gain", "heal", "heal_pct", "shield", "shield_pct", "hp_floor", "nullify", "no_stagger", "recover_stagger",
+)
+_NEGATIVE_EFFECTS = ("level_inflict", "sanity_lose")
+_NEGATIVE_CONDITIONS = ("negatives", "morale")
+
+
+def _toned(items: list[dict], positive: tuple = (), negative: tuple = ()) -> list[dict]:
+    return [{**item, "tone": "positive" if item["id"] in positive else "negative"} if item["id"] in positive + negative else item for item in items]
+
+
 def spec() -> dict:
     return {
-        "groups": GROUPS, "timings": timings(), "conditions": conditions(), "effects": effects(),
+        "groups": GROUPS, "timings": timings(), "conditions": _toned(conditions(), negative=_NEGATIVE_CONDITIONS),
+        "effects": _toned(effects(), _POSITIVE_EFFECTS, _NEGATIVE_EFFECTS),
         "targets": TARGETS, "limits": LIMITS, "chance": CHANCE, "selectors": SELECTOR_NAMES, "flagHelp": flag_help(),
     }

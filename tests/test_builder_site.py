@@ -23,6 +23,7 @@ sys.path.insert(0, ROOT)
 warnings.simplefilter("ignore")
 
 from cogs.battle import _parse_status_tokens  # noqa: E402
+from game import build_points as bp  # noqa: E402
 from game import builder_rules  # noqa: E402
 from game.build_points import (  # noqa: E402
     DEFENSE_ARCHETYPES, RANKED_STATUSES, check_build, skill_rank_problems,
@@ -33,7 +34,8 @@ from game.character_import import decode_code, encode_code, needs_approval, read
 from game.conditions import parse_trigger_text  # noqa: E402
 from game.passives import parse_passive  # noqa: E402
 from game.skills import Skill  # noqa: E402
-from game.statuses import ONE_TURN_STATUSES, OTHER_DEBUFF_STATUSES  # noqa: E402
+from game.help_content import HELP_CATEGORIES  # noqa: E402
+from game.statuses import ONE_TURN_STATUSES, OTHER_DEBUFF_STATUSES, SANITY_LOW_MORALE, SANITY_PANIC  # noqa: E402
 
 NODE = shutil.which("node")
 PARITY_JS = os.path.join(ROOT, "tests", "builder_parity.js")
@@ -256,17 +258,44 @@ class StatusShortForm(unittest.TestCase):
             self.assertIn(key, self.guide)
             self.assertNotEqual(self.guide[key]["group"], "keyword")
 
-    def test_the_colour_key_covers_every_tone_and_every_keyword_sin(self):
+    def test_the_colour_key_is_the_three_tones_and_nothing_else(self):
         key = self.rules["colorKey"]
+        self.assertEqual(list(key), ["tones"])                      # no Sin colour cards, no explanation lines
         self.assertEqual({t["tone"] for t in key["tones"]}, {"positive", "negative", "neutral"})
-        self.assertEqual({s["status"]: s["sin"] for s in key["sins"]},
-                         {k: self.guide[k]["sin"] for k, s in self.guide.items() if s["group"] == "keyword"})
-        for entry in key["tones"] + key["sins"]:
-            self.assertTrue(entry["color"] and entry["hint"], entry)
+        for entry in key["tones"]:
+            self.assertEqual(sorted(entry), ["color", "means", "tone"], entry)
+            self.assertTrue(entry["color"] and entry["means"], entry)
+
+    def test_each_keyword_status_still_knows_its_sin_for_the_chip_in_its_row(self):
+        self.assertEqual({k: s["sin"] for k, s in self.guide.items() if s["group"] == "keyword"},
+                         {"burn": "wrath", "bleed": "lust", "tremor": "sloth", "rupture": "gluttony", "sinking": "gloom", "poise": "pride", "charge": "envy"})
 
     def test_the_potency_and_count_line_agrees_with_the_bot(self):
         self.assertIn("99", self.rules["potencyCount"])
         self.assertIn("99", self.rules["stackingNote"])
+
+
+class Glossary(unittest.TestCase):
+    """What an underlined word says when it is pointed at. Statuses use the status guide; the rest is the glossary."""
+
+    def test_every_number_in_the_glossary_is_in_the_bots_help_text(self):
+        help_text = " ".join(f"{e.title} {e.summary} {e.body}" for *_, entries in HELP_CATEGORIES for e in entries)
+        known = set(re.findall(r"\d+(?:\.\d+)?", help_text))
+        for key, text in builder_rules.rules()["glossary"].items():
+            for number in re.findall(r"\d+(?:\.\d+)?", text):
+                with self.subTest(word=key, number=number):
+                    self.assertIn(number, known)
+
+    def test_the_numbers_come_from_the_bots_constants(self):
+        glossary = builder_rules.rules()["glossary"]
+        self.assertIn(f"{bp.OFFDEF_PERCENT_PER_STEP}% more damage", glossary["offense_level"])
+        self.assertIn(f"{bp.OFFDEF_PERCENT_PER_STEP}% less damage", glossary["defense_level"])
+        self.assertIn(str(SANITY_LOW_MORALE), glossary["sanity"])
+        self.assertIn(str(SANITY_PANIC), glossary["sanity"])
+
+    def test_every_glossary_entry_is_short_enough_to_read_at_a_glance(self):
+        for key, text in builder_rules.rules()["glossary"].items():
+            self.assertLessEqual(len(text), 100, key)
 
 
 class SkillExamples(unittest.TestCase):
@@ -319,6 +348,85 @@ class Preview(unittest.TestCase):
         self.assertIn({"kind": "status", "key": "haste", "text": "Haste"}, second)
         self.assertEqual(third[0]["cls"], "hit")
         self.assertIn({"kind": "status", "key": "power_down", "text": "Power Down"}, third)
+
+    def test_a_status_is_coloured_but_the_plain_words_round_it_are_not(self):
+        # "Gain 2 Protection": only Protection is a buff. "Gain 2" is plain text, not yellow.
+        tokens = self.run_preview(["[Ally Is Hit] Gain 2 Protection", "[On Hit] Inflict 3 Burn"], [])["tokens"]
+        self.assertEqual(tokens[0][1], {"kind": "text", "text": "Gain 2 "})
+        self.assertEqual(tokens[0][2], {"kind": "status", "key": "protection", "text": "Protection"})
+        self.assertEqual(tokens[1][1], {"kind": "text", "text": "Inflict 3 "})
+
+    def test_effects_that_help_or_hurt_carry_their_tone_like_a_status_does(self):
+        lines = [
+            "[Turn Start] Heal 5 HP", "[Turn Start] Heal 10% max HP", "[On Use] Deal +10% damage", "[On Use] Coin Power +2", "[On Use] Final Power +3",
+            "[Turn End] Gain 5 Sanity", "[Turn End] Gain 4 Shield", "[Turn End] Gain Offense Level +1", "[Turn End] Nullify the next lethal damage",
+            "[Turn End] Lose 5 Sanity", "[On Hit] Inflict Defense Level -2",
+        ]
+        out = self.run_preview(lines, [])["tokens"]
+        expect = ["positive"] * 9 + ["negative"] * 2
+        for line, tokens, tone in zip(lines, out, expect):
+            with self.subTest(line=line):
+                toned = [t for t in tokens[1:] if t.get("tone")]
+                self.assertTrue(toned, tokens)
+                self.assertEqual({t["tone"] for t in toned}, {tone})
+                self.assertEqual("".join(t["text"] for t in toned), line.split("] ", 1)[1])    # the whole phrase, nothing else
+
+    def test_conditions_with_a_good_or_bad_word_are_coloured_and_the_rest_is_not(self):
+        tokens = self.run_preview(["[On Use] If the target has 5+ negative effects, Deal +10% damage", "[Combat Start] If this unit is Low Morale, Coin Power +1"], [])["tokens"]
+        first, second = tokens
+        self.assertIn({"kind": "text", "text": "negative effects", "tone": "negative"}, first)
+        self.assertIn({"kind": "text", "text": "If the target has 5+ "}, first)
+        self.assertIn({"kind": "text", "text": "Low Morale", "tone": "negative"}, second)
+        self.assertIn({"kind": "text", "text": "Coin Power +1", "tone": "positive"}, second)
+
+    def test_a_status_inside_an_effect_keeps_its_own_tone(self):
+        tokens = self.run_preview(["[On Use] Deal +10% damage per 5 Burn on the target (max 30%)"], [])["tokens"][0]
+        self.assertIn({"kind": "status", "key": "burn", "text": "Burn"}, tokens)
+        self.assertIn({"kind": "text", "text": "Deal +10% damage", "tone": "positive"}, tokens)
+
+    def test_the_tones_live_in_the_pickers_data_and_every_toned_effect_is_coloured_from_its_own_wording(self):
+        effects = builder_rules.rules()["lines"]["effects"]
+        toned = [e for e in effects if e.get("tone")]
+        self.assertEqual({e["tone"] for e in toned}, {"positive", "negative"})
+        self.assertEqual({e["id"] for e in effects if not e.get("tone")},
+                         {"inflict_count", "inflict_bare", "inflict_both", "gain_count", "gain_bare", "gain_both", "remove", "followup", "assist"})   # the status carries these
+        lines = []
+        for e in toned:
+            values = {}
+            for p in e["params"]:
+                default = p.get("default", p["options"][0] if p.get("options") else 1)
+                values[p["name"]] = default["value"] if isinstance(default, dict) else default
+            if e["id"] == "consume":
+                values["status"] = "Charge"
+            if e["id"].endswith("_per"):
+                values.update(per=5, max=3, basis="Count", status="Burn")
+            lines.append("[On Use] " + e["text"].format(**values))
+        out = self.run_preview(lines, [])["tokens"]
+        for e, line, tokens in zip(toned, lines, out):
+            with self.subTest(effect=e["id"], line=line):
+                tones = {t["tone"] for t in tokens if t.get("tone")}
+                self.assertEqual(tones, {e["tone"]})
+                if not (e["id"].endswith("_per") or e["id"] == "consume"):
+                    self.assertEqual("".join(t["text"] for t in tokens[1:] if t.get("tone")), line.split("] ", 1)[1])
+        conditions = {c["id"]: c.get("tone") for c in builder_rules.rules()["lines"]["conditions"]}
+        self.assertEqual({k for k, v in conditions.items() if v}, {"negatives", "morale"})
+
+    def test_every_underlined_word_has_a_definition(self):
+        rules = builder_rules.rules()
+        asks = [["status", s["key"]] for s in rules["statusGuide"]]
+        asks += [["damage", k] for k in rules["skills"]["damageTypes"]]
+        asks += [["stat", k] for k in ("hp", "speed", "sanity", "offense_level", "defense_level")]
+        flags = [k for k in rules["skills"]["flagTags"] if k != "supermove"]           # the picker has no help line for Supermove
+        asks += [["flag", k] for k in flags]
+        found = self.run_preview([], [], definitions=asks)["definitions"]
+        for (kind, key), d in zip(asks, found):
+            with self.subTest(kind=kind, key=key):
+                self.assertIsNotNone(d)
+                self.assertTrue(d["title"] and d["text"])
+        by_key = {key: d for (kind, key), d in zip(asks, found) if kind == "status"}
+        self.assertEqual(by_key["burn"]["slots"], {"when": "Turn end", "does": "Take Potency damage", "then": "Count −1"})
+        self.assertEqual(by_key["burn"]["tone"], "negative")
+        self.assertEqual(self.run_preview([], [], definitions=[["status", "nope"], ["flag", "supermove"]])["definitions"], [None, None])
 
     def test_every_status_name_is_recognised(self):
         rules = builder_rules.rules()
@@ -487,11 +595,18 @@ class PageShape(unittest.TestCase):
         self.assertIn("getElementById('tools')", self.app)    # moved under the code in the card
         self.assertLess(self.html.index('<nav class="tabs"'), self.html.index('<main class="layout"'))
 
-    def test_the_portrait_keeps_the_pictures_own_shape(self):
+    def test_the_portrait_is_only_ever_resized(self):
+        # width from the size choice, height from the picture's own shape: no crop, no zoom, no stretch, no height cap, nothing hides a corner
         rule = re.search(r"\.portrait img \{([^}]*)\}", self.css).group(1)
         self.assertIn("height: auto", rule)
-        self.assertNotIn("cover", rule)
         self.assertIn("var(--pw", rule)
+        for forbidden in ("object-fit", "max-height", "min-height", "transform", "scale", "aspect-ratio", "clip"):
+            self.assertNotIn(forbidden, rule, forbidden)
+        frame = re.search(r"\n\.portrait \{([^}]*)\}", self.css).group(1)
+        self.assertNotIn("overflow", frame)
+        self.assertNotIn("object-fit", " ".join(re.findall(r"[^\n]*\.portrait[^\n]*", self.css)))
+        self.assertIn("class: 'plate' }, [cardParts.level", self.app)          # the Lv label sits under the picture, not on it
+        self.assertNotIn("portraitImg, cardParts.level", self.app)
 
     def test_the_portrait_sizes_are_fixed_steps(self):
         steps = re.findall(r"\{ id: '(\w+)', label: '(\w+)', percent: (\d+) \}", self.app)
@@ -505,7 +620,36 @@ class PageShape(unittest.TestCase):
         for name in ("nunito-latin.woff2", "nunito-latin-ext.woff2", "Nunito-OFL.txt"):
             self.assertGreater(os.path.getsize(os.path.join(self.folder, "fonts", name)), 1000, name)
         self.assertIn("fonts/nunito-latin.woff2", self.css)
-        self.assertRegex(self.css, r'--font:\s*"Nunito"')
+
+    def test_every_piece_of_text_uses_the_wikis_font_with_nunito_behind_it(self):
+        # the wiki sets its names and descriptions in Mikodacs; its file is fonts/mikodacs.ttf, and while it is missing Nunito shows
+        self.assertRegex(self.css, r'--font:\s*"Mikodacs",\s*"Nunito"')
+        face = re.search(r'@font-face \{\s*font-family: "Mikodacs";([^}]*)\}', self.css).group(1)
+        self.assertIn('url("fonts/mikodacs.ttf")', face)
+        self.assertIn("font-weight: 400", face)          # one weight: the browser makes bold from it, as it does on the wiki
+        self.assertIn("size-adjust: 110%", face)
+        families = re.findall(r"font-family:\s*([^;}]+)[;}]", self.css)
+        self.assertTrue(families)
+        for family in families:
+            self.assertTrue(family.strip() in ("var(--font)", "inherit", '"Mikodacs"', '"Nunito"'), family)   # no monospace, no private stack
+        self.assertNotIn("monospace", self.css)
+
+    def test_bold_text_is_white_and_inline_code_is_not_gold(self):
+        self.assertEqual(re.search(r"--bold:\s*(#[0-9a-fA-F]{6})", self.css).group(1).lower(), "#ffffff")
+        last = self.css[self.css.rindex("/* ---- bold is white"):]
+        self.assertRegex(last, r"strong, b, h1, h2, h3, h4[^{]*\{ color: var\(--bold\); \}")
+        code = re.search(r"\ncode \{([^}]*)\}", self.css).group(1)
+        self.assertNotIn("--gold", code)
+
+    def test_underlined_words_show_their_definition(self):
+        for needed in ("role: 'tooltip'", "pointerover", "focusin", "Escape", "LugicPreview.definition", "aria-describedby"):
+            self.assertIn(needed, self.app, needed)
+        self.assertIn(".tip {", self.css)
+        for needed in ("'data-tone': item.tone", "tone: statusTone(o.value)", "tone: e.tone", "tone: c.tone"):      # the picker's choices carry their tone too
+            self.assertIn(needed, self.app, needed)
+        for tone in ("positive", "negative", "neutral"):
+            self.assertIn(f'select[data-tone="{tone}"]', self.css)
+        self.assertIn("pointer-events: none", re.search(r"\n\.tip \{([^}]*)\}", self.css).group(1))   # the box never takes the pointer, so it cannot flicker
 
     def test_missing_icon_folders_do_not_break_the_page(self):
         # both lists are optional: a failed fetch becomes an empty list, and a slot can name a fallback ("coin coin_heads")

@@ -87,7 +87,63 @@
     return tones[key] || 'negative';
   }
 
-  // Splits a line into coloured pieces: { kind: 'tag'|'status'|'damage'|'stat'|'text', text, key?, cls? }.
+  // Effects and conditions that are not statuses still help or hurt, and they are coloured the way a status is: yellow for what helps,
+  // red for what hurts. Only the words that do the helping or hurting are coloured. "Gain 2 Protection" colours Protection (a status,
+  // so it has its own colour); "Heal 5 HP" colours the whole phrase, because there is no status to carry it. Which effects have a tone is
+  // in the picker's data (each effect's "tone"), and the pattern is made from the effect's own wording, so the two cannot drift apart.
+  var CONDITION_WORDS = [{ tone: 'negative', text: 'negative effects' }, { tone: 'negative', text: 'Low Morale' }];
+  var polarity = null;
+  function patternOf(wording) {
+    // the fixed beginning of the wording: "Deal +{n}% damage per ..." counts as "Deal +{n}% damage"; "Consume {m} {status}: Coin Power +{n}" as "Coin Power +{n}"
+    var head = wording.split(' per ')[0].split(': ').pop();
+    return head.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\{stat\}/g, '(?:Offense|Defense)').replace(/\{\w+\}/g, '\\d+');
+  }
+  function getPolarity() {
+    if (polarity) { return polarity; }
+    polarity = ['positive', 'negative'].map(function (tone) {
+      var parts = [];
+      ((R.lines && R.lines.effects) || []).forEach(function (e) { if (e.tone === tone) { parts.push(patternOf(e.text)); } });
+      CONDITION_WORDS.forEach(function (w) { if (w.tone === tone) { parts.push(w.text); } });
+      return { tone: tone, pattern: new RegExp(parts.join('|'), 'gi') };
+    });
+    return polarity;
+  }
+
+  // The stretches of a line that carry a tone, in order and never overlapping: [{ start, end, tone }].
+  function polaritySpans(text) {
+    var found = [];
+    getPolarity().forEach(function (group) {
+      var m;
+      group.pattern.lastIndex = 0;
+      while ((m = group.pattern.exec(text)) !== null) { found.push({ start: m.index, end: m.index + m[0].length, tone: group.tone }); }
+    });
+    found.sort(function (a, b) { return a.start - b.start || b.end - a.end; });
+    var out = [];
+    found.forEach(function (f) { if (!out.length || f.start >= out[out.length - 1].end) { out.push(f); } });
+    return out;
+  }
+
+  // Splits a stretch of text into plain text and the words worth colouring. tone (or null) is the stretch's own tone: it goes
+  // on plain text and on damage and stat words, never on a status, which already has one.
+  function words(piece, tone, out) {
+    if (!piece) { return; }
+    var v = getVocab();
+    var last = 0;
+    var m;
+    function plain(text) { var t = { kind: 'text', text: text }; if (tone) { t.tone = tone; } out.push(t); }
+    v.pattern.lastIndex = 0;
+    while ((m = v.pattern.exec(piece)) !== null) {
+      if (m.index > last) { plain(piece.slice(last, m.index)); }
+      var hit = v.words[m[1].toLowerCase()];
+      var token = { kind: hit.kind, key: hit.key, text: m[1] };
+      if (tone && hit.kind !== 'status') { token.tone = tone; }
+      out.push(token);
+      last = m.index + m[1].length;
+    }
+    if (last < piece.length) { plain(piece.slice(last)); }
+  }
+
+  // Splits a line into coloured pieces: { kind: 'tag'|'status'|'damage'|'stat'|'text', text, key?, cls?, tone? }.
   function tokenize(text) {
     var out = [];
     var rest = String(text || '');
@@ -96,18 +152,36 @@
       out.push({ kind: 'tag', text: '[' + lead[1].trim() + ']', cls: timingClass(lead[1]) });
       rest = rest.slice(lead[0].length);
     }
-    var v = getVocab();
     var last = 0;
-    var m;
-    v.pattern.lastIndex = 0;
-    while ((m = v.pattern.exec(rest)) !== null) {
-      if (m.index > last) { out.push({ kind: 'text', text: rest.slice(last, m.index) }); }
-      var hit = v.words[m[1].toLowerCase()];
-      out.push({ kind: hit.kind, key: hit.key, text: m[1] });
-      last = m.index + m[1].length;
-    }
-    if (last < rest.length) { out.push({ kind: 'text', text: rest.slice(last) }); }
+    polaritySpans(rest).forEach(function (span) {
+      words(rest.slice(last, span.start), null, out);
+      words(rest.slice(span.start, span.end), span.tone, out);
+      last = span.end;
+    });
+    words(rest.slice(last), null, out);
     return out;
+  }
+
+  // ---- what an underlined word says ----------------------------------------------------------------------------
+  // { title, icon, tone?, text, slots? } or null. A status says what the status list says (its sentence, then WHEN / DOES / THEN);
+  // damage types and stats use the glossary; a skill-type tag uses the picker's help line. kind is 'status', 'damage', 'stat' or 'flag'.
+  var STAT_TITLES = { hp: 'HP' };
+  function definition(kind, key) {
+    if (kind === 'status') {
+      var s = (R.statusGuide || []).filter(function (x) { return x.key === key; })[0];
+      return s ? { title: s.title, icon: s.key, tone: s.tone, text: s.summary, slots: s.quick || null } : null;
+    }
+    if (kind === 'damage' || kind === 'stat') {
+      var text = (R.glossary || {})[key];
+      return text ? { title: kind === 'damage' ? E.capitalize(key) : (STAT_TITLES[key] || E.title(key)), icon: key, text: text } : null;
+    }
+    if (kind === 'flag') {
+      var canon = R.skills.flagTags[key] || key.replace(/ /g, '_');
+      var help = R.lines.flagHelp || {};
+      var name = Object.keys(help).filter(function (k) { return k.toLowerCase().replace(/ /g, '_') === canon; })[0];
+      return name ? { title: key.split(' ').map(E.capitalize).join(' '), tone: 'neutral', text: help[name] } : null;
+    }
+    return null;
   }
 
   // ---- what to draw ------------------------------------------------------------------------------------------
@@ -192,6 +266,15 @@
     n.setAttribute('aria-hidden', 'true');
     return n;
   }
+  // An underlined word can be pointed at for its definition; app.js shows it (see "definitions on hover" there). A word with no
+  // definition is not made pointable.
+  function pointable(n, kind, key) {
+    if (!definition(kind, key)) { return n; }
+    n.setAttribute('data-tip-kind', kind);
+    n.setAttribute('data-tip-key', key);
+    n.setAttribute('tabindex', '0');
+    return n;
+  }
   function roman(n) { return ['I', 'II', 'III', 'IV', 'V', 'VI'][n - 1] || String(n); }
 
   function applyArt(img, art) {
@@ -245,10 +328,17 @@
 
   function renderTokens(tokens, into) {
     tokens.forEach(function (t) {
-      if (t.kind === 'tag') { into.appendChild(node('span', 'pv-tag pv-' + t.cls, t.text)); into.appendChild(document.createTextNode(' ')); }
-      else if (t.kind === 'text') { into.appendChild(document.createTextNode(t.text)); }
+      if (t.kind === 'tag') {
+        var tag = node('span', 'pv-tag pv-' + t.cls, t.text);
+        if (t.cls === 'flag') { pointable(tag, 'flag', t.text.slice(1, -1).trim().toLowerCase()); }
+        into.appendChild(tag);
+        into.appendChild(document.createTextNode(' '));
+      }
+      else if (t.kind === 'text') { into.appendChild(t.tone ? node('span', 'pv-tone-' + t.tone, t.text) : document.createTextNode(t.text)); }
       else {
-        var span = node('span', 'pv-word pv-w-' + t.kind + ' pv-k-' + t.key + (t.kind === 'status' ? ' pv-tone-' + toneOf(t.key) : ''));
+        var tone = t.kind === 'status' ? toneOf(t.key) : t.tone;
+        var span = node('span', 'pv-word pv-w-' + t.kind + ' pv-k-' + t.key + (tone ? ' pv-tone-' + tone : ''));
+        pointable(span, t.kind, t.key);
         span.appendChild(icon(t.key));
         span.appendChild(document.createTextNode(t.text));
         into.appendChild(span);
@@ -284,7 +374,7 @@
     numbers.appendChild(type);
     numbers.appendChild(node('span', 'pv-base', String(m.base)));
     numbers.appendChild(node('span', 'pv-coinpower', (m.coin >= 0 ? '+' : '') + m.coin + ' per coin'));
-    m.flags.forEach(function (t) { numbers.appendChild(node('span', 'pv-tag pv-' + t.cls, t.text)); });
+    m.flags.forEach(function (t) { numbers.appendChild(pointable(node('span', 'pv-tag pv-' + t.cls, t.text), 'flag', t.text.slice(1, -1).trim().toLowerCase())); });
     box.appendChild(numbers);
 
     m.general.forEach(function (tokens) {
@@ -311,5 +401,5 @@
     return box;
   }
 
-  return { tokenize: tokenize, renderTokens: renderTokens, model: model, render: render, timingClass: timingClass, statusSentence: statusSentence, toneOf: toneOf, frameTiers: FRAME_TIERS, emblem: emblem, applyArt: applyArt, clampArt: clampArt, artStyle: artStyle, maxZoom: ART_MAX_ZOOM };
+  return { tokenize: tokenize, definition: definition, renderTokens: renderTokens, model: model, render: render, timingClass: timingClass, statusSentence: statusSentence, toneOf: toneOf, frameTiers: FRAME_TIERS, emblem: emblem, applyArt: applyArt, clampArt: clampArt, artStyle: artStyle, maxZoom: ART_MAX_ZOOM };
 });

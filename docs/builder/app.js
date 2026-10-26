@@ -319,7 +319,7 @@
     return el('div', { class: 'field portrait-size' }, [
       el('span', { class: 'label-like', text: 'Portrait size on the card' }),
       group,
-      el('p', { class: 'note', text: 'The picture keeps its own shape, so a tall one stays tall. This only changes how wide it shows here; the bot is not told.' })
+      el('p', { class: 'note', text: 'Only the size changes. The picture is never cropped, zoomed or reshaped, so a tall one stays tall. The bot is not told.' })
     ]);
   }
 
@@ -565,18 +565,32 @@
 
   var LN = window.LugicLines;
 
+  // A choice can carry a tone (positive, negative): it shows in the wiki's yellow or red in the list and, once chosen, in the box.
   function plainSelect(options, value, onChange) {
     var select = el('select');
+    function option(item) { return el('option', { value: item.value, text: item.label, 'data-tone': item.tone }); }
+    function paintTone() {
+      var chosen = select.options[select.selectedIndex];
+      var tone = chosen ? chosen.getAttribute('data-tone') : null;
+      if (tone) { select.setAttribute('data-tone', tone); } else { select.removeAttribute('data-tone'); }
+    }
     options.forEach(function (o) {
       if (o.group) {
         var group = el('optgroup', { label: o.group });
-        o.items.forEach(function (item) { group.appendChild(el('option', { value: item.value, text: item.label })); });
+        o.items.forEach(function (item) { group.appendChild(option(item)); });
         select.appendChild(group);
-      } else { select.appendChild(el('option', { value: o.value, text: o.label })); }
+      } else { select.appendChild(option(o)); }
     });
     select.value = String(value);
-    select.addEventListener('change', function () { onChange(select.value); });
+    paintTone();
+    select.addEventListener('change', function () { paintTone(); onChange(select.value); });
     return select;
+  }
+
+  // The tone of a status, by the name the picker lists it under ("Power Up").
+  function statusTone(name) {
+    var found = R.statusGuide.filter(function (s) { return s.title.toLowerCase() === String(name).toLowerCase(); })[0];
+    return found ? found.tone : undefined;
   }
 
   var DEFENSE_FLAGS = ['guard', 'evade', 'counter', 'clashable_guard', 'clashable_counter', 'supermove'];
@@ -637,14 +651,14 @@
       return groups.filter(function (g) { return g.items.length; });
     }
     function conditionOptions() {
-      return [{ value: '', label: 'Always (no condition)' }].concat(LN.spec.conditions.map(function (c) { return { value: c.id, label: c.label }; }));
+      return [{ value: '', label: 'Always (no condition)' }].concat(LN.spec.conditions.map(function (c) { return { value: c.id, label: c.label, tone: c.tone }; }));
     }
     function effectOptions() {
       var names = [];
       var by = {};
       LN.spec.effects.forEach(function (e) {
         if (!by[e.group]) { by[e.group] = []; names.push(e.group); }
-        by[e.group].push({ value: e.id, label: e.label });
+        by[e.group].push({ value: e.id, label: e.label, tone: e.tone });
       });
       return names.map(function (g) { return { group: g, items: by[g] }; });
     }
@@ -657,7 +671,8 @@
         control.value = String(values[p.name]);
         control.addEventListener('input', function () { values[p.name] = control.value === '' ? '' : Number(control.value); changed(); });
       } else if (p.kind === 'choice') {
-        control = plainSelect(p.options, values[p.name], function (v) { values[p.name] = v; changed(); });
+        var choices = p.name === 'status' ? p.options.map(function (o) { return { value: o.value, label: o.label, tone: statusTone(o.value) }; }) : p.options;
+        control = plainSelect(choices, values[p.name], function (v) { values[p.name] = v; changed(); });
       } else if (p.kind === 'skill' && opts.names().length) {
         if (opts.names().indexOf(values[p.name]) < 0) { values[p.name] = opts.names()[0]; }
         control = plainSelect(opts.names().map(function (n) { return { value: n, label: n }; }), values[p.name], function (v) { values[p.name] = v; changed(); });
@@ -1257,27 +1272,15 @@
   }
 
   function colourKey() {
-    var key = R.colorKey;
-    var tones = key.tones.map(function (t) {
+    var tones = R.colorKey.tones.map(function (t) {
       return el('li', { class: 'ck-item tone-' + t.tone }, [
         el('i', { class: 'ck-swatch', 'aria-hidden': 'true' }),
-        el('span', {}, [el('b', { text: t.color }), ' ' + t.means]),
-        el('span', { class: 'ck-hint', text: t.hint })
-      ]);
-    });
-    var sins = key.sins.map(function (s) {
-      return el('li', { class: 'ck-item pv-sin-' + s.sin }, [
-        el('i', { class: 'ck-swatch', 'aria-hidden': 'true' }),
-        el('span', {}, [icon('sin_' + s.sin), el('b', { text: s.color }), ' ', icon(s.status), E.capitalize(s.status)]),
-        el('span', { class: 'ck-hint', text: s.hint })
+        el('span', {}, [el('b', { text: t.color }), ' ' + t.means])
       ]);
     });
     return el('div', { class: 'legend' }, [
       el('h3', { text: 'What the colours say' }),
-      el('p', { class: 'note', text: 'The name of a status is coloured by what it does to you.' }),
       el('ul', { class: 'ck-list' }, tones),
-      el('p', { class: 'note', text: 'The small chip beside a keyword status is coloured by its Sin, and each colour suits the status.' }),
-      el('ul', { class: 'ck-list' }, sins),
       el('details', { class: 'st-more' }, [
         el('summary', { text: 'Colours in the skill preview and resistances' }),
         el('ul', { class: 'legend-list' }, [
@@ -1383,9 +1386,9 @@
     cardParts.copy.addEventListener('click', copyCode);
     cardParts.jump = document.getElementById('jump');
 
-    cardParts.portrait = el('div', { class: 'portrait empty' }, [cardParts.initial, portraitImg, cardParts.level]);
+    cardParts.portrait = el('div', { class: 'portrait empty' }, [cardParts.initial, portraitImg]);
     card.appendChild(cardParts.portrait);
-    card.appendChild(el('div', { class: 'plate' }, [cardParts.name, cardParts.sub]));
+    card.appendChild(el('div', { class: 'plate' }, [cardParts.level, cardParts.name, cardParts.sub]));
     card.appendChild(el('div', { class: 'budget' }, [cardParts.coins, cardParts.bpText]));
     card.appendChild(cardParts.stats);
     card.appendChild(cardParts.chips);
@@ -1613,6 +1616,82 @@
       input.value = '';
     });
   });
+
+  // ---- definitions on hover ------------------------------------------------------------------------------------
+  // An underlined word (a status, a damage type, HP, a skill-type tag...) says what it is when the pointer rests on it, when it has
+  // keyboard focus, or when it is tapped. One small box is moved around; it never takes the pointer, so it cannot flicker.
+  // What it says comes from LugicPreview.definition(), which reads the bot's own text.
+  var tip = null;
+  var tipFor = null;
+
+  function tipTarget(node) { return node && node.closest ? node.closest('[data-tip-kind]') : null; }
+
+  function showTip(target, event) {
+    var d = window.LugicPreview.definition(target.getAttribute('data-tip-kind'), target.getAttribute('data-tip-key'));
+    if (!d) { hideTip(); return; }
+    if (!tip) {
+      tip = el('div', { id: 'tip', class: 'tip', role: 'tooltip', hidden: true });
+      document.body.appendChild(tip);
+    }
+    if (tipFor && tipFor !== target) { tipFor.removeAttribute('aria-describedby'); }
+    tip.textContent = '';
+    tip.appendChild(el('p', { class: 'tip-title' + (d.tone ? ' tone-' + d.tone : '') }, [d.icon ? icon(d.icon) : null, d.title]));
+    tip.appendChild(el('p', { class: 'tip-text', text: d.text }));
+    if (d.slots) {
+      var slots = el('dl', { class: 'tip-slots' });
+      ['when', 'does', 'then'].forEach(function (slot) { slots.appendChild(el('dt', { text: slot })); slots.appendChild(el('dd', { text: d.slots[slot] })); });
+      tip.appendChild(slots);
+    }
+    tip.hidden = false;
+    fillIcons();
+    placeTip(target, event);
+    target.setAttribute('aria-describedby', 'tip');
+    tipFor = target;
+  }
+
+  // Under the word, or above it when there is no room below; never past the edge of the window. A word that wraps onto two lines has
+  // several boxes, so the one under the pointer is used.
+  function placeTip(target, event) {
+    var rects = target.getClientRects();
+    var rect = rects[0] || target.getBoundingClientRect();
+    if (event && typeof event.clientX === 'number') {
+      for (var i = 0; i < rects.length; i++) {
+        if (event.clientX >= rects[i].left && event.clientX <= rects[i].right && event.clientY >= rects[i].top && event.clientY <= rects[i].bottom) { rect = rects[i]; }
+      }
+    }
+    tip.style.left = '0px';
+    tip.style.top = '0px';
+    var w = tip.offsetWidth, h = tip.offsetHeight;
+    var vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+    var left = Math.max(8, Math.min(rect.left, vw - w - 8));
+    var top = rect.bottom + 8;
+    if (top + h > vh - 8 && rect.top - h - 8 >= 8) { top = rect.top - h - 8; }
+    tip.style.left = Math.round(left) + 'px';
+    tip.style.top = Math.round(top) + 'px';
+  }
+
+  function hideTip() {
+    if (tip) { tip.hidden = true; }
+    if (tipFor) { tipFor.removeAttribute('aria-describedby'); }
+    tipFor = null;
+  }
+
+  document.addEventListener('pointerover', function (e) {
+    if (e.pointerType && e.pointerType !== 'mouse') { return; }   // a touch or a pen is handled by the tap below
+    var target = tipTarget(e.target);
+    if (target) { if (target !== tipFor || !document.contains(tipFor)) { showTip(target, e); } } else if (tipFor) { hideTip(); }
+  });
+  document.addEventListener('click', function (e) {
+    if (e.pointerType === 'mouse') { return; }                      // the mouse has already seen it on hover
+    var target = tipTarget(e.target);
+    if (target) { if (target !== tipFor) { showTip(target, e); } } else if (tipFor) { hideTip(); }    // a tap on a word shows it, a tap anywhere else closes it
+  });
+  document.addEventListener('focusin', function (e) { var target = tipTarget(e.target); if (target) { showTip(target); } else if (tipFor) { hideTip(); } });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { hideTip(); } });
+  document.addEventListener('input', hideTip);                      // typing redraws the lines, so a word under the pointer may no longer exist
+  document.addEventListener('scroll', hideTip, true);
+  window.addEventListener('resize', hideTip);
+  document.documentElement.addEventListener('mouseleave', hideTip);
 
   buildCard();
   paintPortraitSize();

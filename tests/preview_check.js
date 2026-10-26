@@ -7,6 +7,7 @@ process.stdout.write(JSON.stringify({
   models: input.skills.map((skill) => P.model(skill)),
   tones: (input.tones || []).map((key) => P.toneOf(key)),
   classes: (input.timings || []).map((label) => P.timingClass(label)),
+  definitions: (input.definitions || []).map(([kind, key]) => P.definition(kind, key)),
   frameTiers: P.frameTiers,
   arts: (input.arts || []).map((art) => ({ style: P.artStyle(art), clamped: P.clampArt(art) })),
 }));

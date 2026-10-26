@@ -19,7 +19,7 @@ from game.help_content import STATUS_EFFECTS
 from game.passives import MAX_PASSIVE_LINES, MAX_PASSIVES, PASSIVE_KINDS
 from game.resistances import DAMAGE_TYPES, STATUS_RESISTANCE_TYPES
 from game.statuses import (
-    OTHER_DEBUFF_STATUSES, ONE_TURN_STATUSES, PERCENT_COUNT_STATUSES, POTENCY_TURN_STATUSES,
+    OTHER_DEBUFF_STATUSES, ONE_TURN_STATUSES, PERCENT_COUNT_STATUSES, POTENCY_TURN_STATUSES, SANITY_LOW_MORALE, SANITY_PANIC,
 )
 
 RULES_JS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "builder", "rules.js")
@@ -94,23 +94,25 @@ _PAIRS = [
     {"axis": "Damage you deal", "up": "damage_up", "down": "damage_down"},
     {"axis": "Damage you take", "up": "protection", "down": "fragile", "downExtra": ["slash_fragility", "pierce_fragility", "blunt_fragility"]},
 ]
-# What the colours say, in the common reading of each colour. The tone colours (what a status does to you) are the wiki's; the Sin colours are
-# also the wiki's, and the hint is why the colour suits the status: fire is red, blood is orange, a quake is a yellow warning, and so on.
+# What the colours say. The three tone colours (what a status does to you) are the wiki's. Nothing else is explained: the colour is the hint.
 _COLOR_KEY = {
     "tones": [
-        {"tone": "positive", "color": "Yellow", "means": "Helps you", "hint": "gold: reward, energy"},
-        {"tone": "negative", "color": "Red", "means": "Hurts you", "hint": "red: danger, blood, stop"},
-        {"tone": "neutral", "color": "Brown", "means": "Neither", "hint": "brown: plain, stored, waiting"},
+        {"tone": "positive", "color": "Yellow", "means": "Helps you"},
+        {"tone": "negative", "color": "Red", "means": "Hurts you"},
+        {"tone": "neutral", "color": "Brown", "means": "Neither"},
     ],
-    "sins": [
-        {"sin": "wrath", "status": "burn", "color": "Red", "hint": "fire, anger"},
-        {"sin": "lust", "status": "bleed", "color": "Orange", "hint": "blood, heat"},
-        {"sin": "sloth", "status": "tremor", "color": "Yellow", "hint": "caution, shaking ground"},
-        {"sin": "gluttony", "status": "rupture", "color": "Green", "hint": "bursting, rot"},
-        {"sin": "gloom", "status": "sinking", "color": "Teal", "hint": "cold, deep water"},
-        {"sin": "pride", "status": "poise", "color": "Blue", "hint": "calm, steady"},
-        {"sin": "envy", "status": "charge", "color": "Purple", "hint": "stored energy, jealousy"},
-    ],
+}
+# What an underlined word says when the reader points at it (statuses use their own entry in the status guide, skill-type tags use
+# line_spec's flag help). Every number here is checked against the bot's /help text by tests/test_builder_site.py.
+_GLOSSARY = {
+    "slash": "A damage type. A unit's Resistances can make it take 0.5x, 1.0x or 1.5x of it.",
+    "pierce": "A damage type. A unit's Resistances can make it take 0.5x, 1.0x or 1.5x of it.",
+    "blunt": "A damage type. A unit's Resistances can make it take 0.5x, 1.0x or 1.5x of it.",
+    "hp": "Health. Damage lowers it, Heal raises it.",
+    "speed": "Rolled for every skill slot each round, from the unit's Speed range. Higher is faster.",
+    "sanity": f"At {SANITY_LOW_MORALE} Sanity a unit is on Low Morale. At {SANITY_PANIC} it Panics and can't act next turn.",
+    "offense_level": f"0 to {bp.OFFDEF_MAX}. Every step is {bp.OFFDEF_PERCENT_PER_STEP}% more damage you deal.",
+    "defense_level": f"0 to {bp.OFFDEF_MAX}. Every step is {bp.OFFDEF_PERCENT_PER_STEP}% less damage you take.",
 }
 _POTENCY_COUNT = "Potency is how strong, Count is how many times or how long. Gaining the same status again adds to both. Potency stops at 99."
 
@@ -191,6 +193,7 @@ def rules() -> dict:
         "wikiImages": wiki_assets.remote_urls(),
         "statusPairs": _PAIRS,
         "colorKey": _COLOR_KEY,
+        "glossary": _GLOSSARY,
         "potencyCount": _POTENCY_COUNT,
         "stackingNote": next(e.body for e in STATUS_EFFECTS if e.key == "stacking"),
         "defense": {
