@@ -2216,7 +2216,7 @@ class BattleCog(commands.GroupCog, name="battle"):
         fighter="Fighter name",
         status_name="A status to set, or 'none' to clear all statuses",
         custom_status="A player-made status to set instead (pick from the list)",
-        potency="Potency for status_name",
+        potency="Potency for status_name (statuses with no keyword, like Haste, only use this)",
         count="Count for status_name",
         hp="Set current HP",
         max_hp="Set max HP",
@@ -2401,7 +2401,8 @@ class BattleCog(commands.GroupCog, name="battle"):
                     if status_name.value in POTENCY_TURN_STATUSES:
                         new_inst = apply_status(None, status_name.value, potency, 1 if potency > 0 else 0)
                     else:
-                        new_inst = apply_status(None, status_name.value, 1 if count > 0 else 0, count)
+                        strength = max(potency, count)       # no keyword: Potency is the strength, and a Count alone does the same
+                        new_inst = apply_status(None, status_name.value, 1 if strength > 0 else 0, strength)
                     if status_name.value == "bind":
                         target_fighter.shift_slot_speeds(-(new_inst.potency - (old.potency if old else 0)))
                     if status_name.value == "haste":

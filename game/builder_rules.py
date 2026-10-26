@@ -27,6 +27,10 @@ from game.statuses import (
 
 RULES_JS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "builder", "rules.js")
 MAX_SKILLS = 12
+
+# Group tags offered in the site's drop-down besides the ones saved characters already use (see tags_js). The names are the factions the
+# passive survey found identities counting; a tag is free text and is matched ignoring case, so any other spelling still works ("Other").
+SUGGESTED_TAGS = ["Blade Lineage", "Dawn Office", "Heishou", "Kurokumo", "Liu Association", "N Corp", "Seven Association", "The Middle", "The Ring"]
 MAX_COINS = 4
 
 # Starting points for the "add a line" buttons on the site. tests/test_builder_site.py runs every
@@ -77,18 +81,18 @@ _QUICK = {
     "sinking": ("Turn end", "Lose Potency Sanity", "Does not fade alone"),
     "poise": ("Each coin", "5% Crit per Potency, a Crit deals 20% more", "Count −1 per Crit"),
     "charge": ("You Consume it", "Spend it for a payoff", "Count −1 at turn end"),
-    "power_up": ("Each coin", "+Count Power", "Gone at turn end"),
+    "power_up": ("Each coin", "+Potency Power", "Gone at turn end"),
     "power_down": ("Each coin", "−Potency Power", "Gone at turn end"),
-    "haste": ("Each skill slot", "+Count Speed", "Gone at turn end"),
+    "haste": ("Each skill slot", "+Potency Speed", "Gone at turn end"),
     "bind": ("Each skill slot", "−Potency Speed", "Gone at turn end"),
-    "damage_up": ("Damage you deal", "+10% per Count, up to 10", "Gone at turn end"),
-    "damage_down": ("Damage you deal", "−10% per Count, up to 10", "Gone at turn end"),
-    "protection": ("Damage you take", "−10% per Count, up to 10", "Gone at turn end"),
-    "fragile": ("Damage you take", "+10% per Count, up to 10", "Gone at turn end"),
-    "paralyze": ("Each skill you use", "First Count coins deal 0", "Gone at turn end"),
+    "damage_up": ("Damage you deal", "+10% per Potency, up to 10", "Gone at turn end"),
+    "damage_down": ("Damage you deal", "−10% per Potency, up to 10", "Gone at turn end"),
+    "protection": ("Damage you take", "−10% per Potency, up to 10", "Gone at turn end"),
+    "fragile": ("Damage you take", "+10% per Potency, up to 10", "Gone at turn end"),
+    "paralyze": ("Each skill you use", "First Potency coins deal 0", "Gone at turn end"),
     "poison": ("Turn end", "Take Count damage", "Count halves"),
     "immobilized": ("When you declare", "You can't act", "Ends after the round it stops you"),
-    "panic": ("Sanity −45", "Can't act next turn", "Sanity resets to 0"),
+    "panic": ("Sanity −30 and below, up to −45", "Low Morale. Panic at −45: can't act next turn", "Sanity resets to 0"),
 }
 # Opposites sit side by side on the site, so learning one teaches the other. Each pair is one thing that can go up or down.
 _PAIRS = [
@@ -117,7 +121,7 @@ _GLOSSARY = {
     "offense_level": f"0 to {bp.OFFDEF_MAX}. Every step is {bp.OFFDEF_PERCENT_PER_STEP}% more damage you deal.",
     "defense_level": f"0 to {bp.OFFDEF_MAX}. Every step is {bp.OFFDEF_PERCENT_PER_STEP}% less damage you take.",
 }
-_POTENCY_COUNT = "Potency is how strong, Count is how many times or how long. Gaining the same status again adds to both. Potency stops at 99."
+_POTENCY_COUNT = "Potency is how strong, Count is how many times or how long. Gaining the same status again adds to both. Potency stops at 99. Statuses with no keyword (the up and down list) only have Potency."
 
 
 def status_guide() -> list[dict]:
@@ -211,7 +215,7 @@ def rules() -> dict:
         },
         "lines": line_spec.spec(),
         "sp": {"perExtraLine": bp.SP_PER_EXTRA_LINE},
-        "tags": {"max": MAX_TAGS, "maxLength": MAX_TAG_LENGTH},
+        "tags": {"max": MAX_TAGS, "maxLength": MAX_TAG_LENGTH, "suggested": SUGGESTED_TAGS},
         "skills": {
             "max": MAX_SKILLS, "maxCoins": MAX_COINS, "damageTypes": list(DAMAGE_TYPES),
             "flagTags": dict(SKILL_FLAG_TAGS), "flagButtons": SKILL_FLAG_BUTTONS,
@@ -244,8 +248,40 @@ def write_rules_js(path: str = RULES_JS_PATH) -> None:
 # page breaks. Each file's address in index.html therefore carries a short fingerprint of its content (preview.js?v=3fa9...), so a
 # changed file is always fetched fresh and a page is never made of two versions.
 SITE_FOLDER = os.path.dirname(RULES_JS_PATH)
-VERSIONED_FILES = ["style.css", "rules.js", "engine.js", "preview.js", "lines.js", "app.js"]
+VERSIONED_FILES = ["style.css", "rules.js", "tags.js", "engine.js", "preview.js", "lines.js", "app.js"]
 INDEX_HTML_PATH = os.path.join(SITE_FOLDER, "index.html")
+TAGS_JS_PATH = os.path.join(SITE_FOLDER, "tags.js")
+
+
+def site_tags(saved=None) -> list[str]:
+    """The group tags the site's drop-down lists: every tag a saved character has plus the suggestions, once each (ignoring case and
+    spacing), in alphabetical order. Where both spell a tag, the suggestion's spelling is used. `saved` is a list of tag texts; left
+    out, it is read from the bot's saved characters (data/characters), which only exist where the bot runs."""
+    from game.conditions import norm_tag
+    if saved is None:
+        from game.character import list_all_characters
+        saved = [tag for character in list_all_characters() for tag in character.tags]
+    found = {}
+    for tag in saved:
+        spelled = " ".join(str(tag).split())
+        if spelled and len(spelled) <= MAX_TAG_LENGTH:
+            found.setdefault(norm_tag(spelled), spelled)
+    for tag in SUGGESTED_TAGS:
+        found[norm_tag(tag)] = tag
+    return [found[key] for key in sorted(found)]
+
+
+def tags_js(tags=None) -> str:
+    """The text of docs/builder/tags.js: the tag list the page loads before app.js."""
+    return (
+        "// Generated by game/builder_rules.py from the suggested tags and the tags saved characters have. Do not edit by hand: run  python -m game.builder_rules\n"
+        "window.LUGIC_TAGS = " + json.dumps(site_tags() if tags is None else tags, ensure_ascii=False) + ";\n"
+    )
+
+
+def write_tags_js(path: str = TAGS_JS_PATH) -> None:
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(tags_js())
 
 
 def file_version(name: str, folder: str = SITE_FOLDER) -> str:
@@ -270,5 +306,6 @@ def write_index_html(path: str = INDEX_HTML_PATH) -> None:
 
 if __name__ == "__main__":
     write_rules_js()
+    write_tags_js()
     write_index_html()
-    print(f"Wrote {RULES_JS_PATH} and the file versions in {INDEX_HTML_PATH}")
+    print(f"Wrote {RULES_JS_PATH}, {TAGS_JS_PATH} and the file versions in {INDEX_HTML_PATH}")

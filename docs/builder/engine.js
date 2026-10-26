@@ -141,6 +141,14 @@
     return { flags: flags, lines: lines };
   }
 
+  // The statuses with no keyword (Haste, Fragile, Bind and so on) have one number, and the game calls it Potency. The bot keeps some of them
+  // in Count, so whichever of the two a coin has is the strength; this is also the size the Build Point price is worked out from.
+  function isKeywordless(name) { return R.nonKeyword.oneTurn.indexOf(slug(name)) >= 0; }
+  function coinStrength(name, pot, cnt) {
+    var p = Math.max(0, intOr(pot, 0)), c = Math.max(0, intOr(cnt, 0));
+    return R.nonKeyword.potencyTurn.indexOf(slug(name)) >= 0 ? p : Math.max(p, c);
+  }
+
   // Every (status, potency, count) the coins hand out, with the status written the way the bot keys it.
   function coinGrants(skill) {
     var out = [];
@@ -335,9 +343,14 @@
     costs.forEach(function (pair) { costMap[pair[0]] = pair[1]; });
     var spent = sum(costs.map(function (pair) { return pair[1]; }));
     var problems = [];
-    [resProblems, offdefProblems, rankProblems, defProblems, nkProblems, ppProblems].forEach(function (list) {
-      list.forEach(function (p) { problems.push(p); });
+    var problemParts = [];      // for each problem, the parts of the form (tab ids) it belongs to
+    [
+      [resProblems, ['sec-resistances']], [offdefProblems, ['sec-stats']], [rankProblems, ['sec-status-ranks']],
+      [defProblems, ['sec-defense-types']], [nkProblems, ['sec-skills']], [ppProblems, ['sec-passives', 'sec-your-points']]
+    ].forEach(function (pair) {
+      pair[0].forEach(function (p) { problems.push(p); problemParts.push(pair[1]); });
     });
+    var statProblemsFrom = problems.length;
 
     if (hp < R.hp.base) { problems.push('HP ' + hp + ' is below the minimum of ' + R.hp.base + '.'); }
     if (hp > R.hp.max) { problems.push('HP ' + hp + ' is above the maximum of ' + R.hp.max + '.'); }
@@ -368,6 +381,9 @@
         pairCap + ' (60% of ' + total + ').');
     }
     if (spent > total) { problems.push('This build costs ' + spent + ' BP but only ' + total + ' BP are available.'); }
+    for (var k = statProblemsFrom; k < problems.length; k++) {
+      problemParts.push(/^This build costs /.test(problems[k]) ? ['sec-stats', 'sec-your-points'] : ['sec-stats']);
+    }
 
     var skillProblems = [];
     (state.skills || []).forEach(function (skill) {
@@ -378,7 +394,7 @@
 
     return {
       level: levelFor(total), total: total, spent: spent, costs: costs, breakdown: costMap,
-      problems: problems, skillProblems: skillProblems, effectLines: nkLines,
+      problems: problems, problemParts: problemParts, skillProblems: skillProblems, effectLines: nkLines,
       ppUsed: ppUsed, ppTotal: ppTotal, ppShort: ppShort, ok: !problems.length && !skillProblems.length
     };
   }
@@ -500,6 +516,24 @@
       list.forEach(function (p) { blocking.push('Skill "' + (state.skills[i].name || (i + 1)) + '": ' + p); });
     });
 
+    // Which part of the form each problem belongs to, so the page can mark that tab and that part. `parts` has every message for a part;
+    // `own` leaves out the ones a skill or passive already shows in its own card.
+    var parts = {}, own = {};
+    function flag(ids, text, isOwn) {
+      ids.forEach(function (id) {
+        (parts[id] = parts[id] || []).push(text);
+        if (isOwn) { (own[id] = own[id] || []).push(text); }
+      });
+    }
+    identity.forEach(function (p) { flag([/^Build Points/.test(p) ? 'sec-your-points' : 'sec-identity'], p, true); });
+    tagProblems.forEach(function (p) { flag(['sec-group-tags'], p, true); });
+    report.problems.forEach(function (p, i) { flag(report.problemParts[i], p, true); });
+    passiveCount.forEach(function (p) { flag(['sec-passives'], p, true); });
+    skillCount.forEach(function (p) { flag(['sec-skills'], p, true); });
+    spProblems.forEach(function (p) { flag(['sec-skills', 'sec-your-points'], p, true); });
+    perPassive.forEach(function (list) { list.forEach(function (p) { flag(['sec-passives'], p, false); }); });
+    perSkill.forEach(function (list) { list.forEach(function (p) { flag(['sec-skills'], p, false); }); });
+
     var notes = [];
     if (report.ppShort > 0) {
       notes.push('Your passives ask for ' + report.ppUsed + ' Passive Points and you have ' + state.pools.pp +
@@ -509,7 +543,7 @@
       notes.push('Trigger lines are checked by the bot when you import. Anything it refuses is told to you then, and nothing is created.');
     }
     return {
-      report: report, blocking: blocking, notes: notes, perSkill: perSkill, perPassive: perPassive,
+      report: report, blocking: blocking, notes: notes, perSkill: perSkill, perPassive: perPassive, parts: parts, own: own,
       spUsed: spUsed, level: report.level, nextLevel: nextLevelAt(state.pools.bp),
       needsAdmin: needsApproval(state), ok: blocking.length === 0
     };
@@ -586,7 +620,13 @@
     Object.keys(state.ranks || {}).forEach(function (k) { if (state.ranks[k]) { ranks[k] = state.ranks[k]; } });
     if (Object.keys(ranks).length) { spec.ranks = ranks; }
     if ((state.archetypes || []).length) { spec.archetypes = state.archetypes.slice(); }
-    var tags = (state.tags || []).map(function (t) { return t.split(/\s+/).filter(Boolean).join(' '); }).filter(Boolean);
+    var seenTags = {};
+    var tags = (state.tags || []).map(function (t) { return t.split(/\s+/).filter(Boolean).join(' '); }).filter(function (t) {
+      // a tag written twice is one tag, the way the bot counts it (letters in any case, spaces collapsed)
+      if (!t || seenTags[t.toLowerCase()]) { return false; }
+      seenTags[t.toLowerCase()] = true;
+      return true;
+    });
     if (tags.length) { spec.tags = tags; }
     var passives = (state.passives || []).map(function (p) {
       var out = {
@@ -693,6 +733,7 @@
     toSpec: toSpec, fromSpec: fromSpec, encode: encode, decode: decode, cleanFlavour: cleanFlavour,
     readTriggers: readTriggers, skillToRaw: skillToRaw, rawToSkill: rawToSkill,
     skillRankProblems: skillRankProblems, skillPowerProblem: skillPowerProblem, coinGrants: coinGrants,
+    isKeywordless: isKeywordless, coinStrength: coinStrength,
     levelFor: levelFor, nextLevelAt: nextLevelAt, hpCost: hpCost, powerCost: powerCost, speedCost: speedCost,
     maxBasePower: maxBasePower, maxCoinPower: maxCoinPower, title: title, capitalize: capitalize
   };

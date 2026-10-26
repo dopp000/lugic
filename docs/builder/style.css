@@ -131,7 +131,9 @@ p { margin: 0; }
 .tab:hover { color: var(--text); }
 .tab[aria-selected="true"] { color: var(--gold); border-bottom-color: var(--gold); }
 .tab:focus-visible { outline-offset: -3px; }
-.tab.flagged::after { content: ""; position: absolute; top: 9px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--alert); }
+/* a part with something to fix: its tab turns red with the colours reversed (dark on red instead of light on dark) */
+.tab.flagged, .tab.flagged:hover { background: var(--alert); color: #230a07; }
+.tab.flagged[aria-selected="true"] { border-bottom-color: #fff; }
 .tab-nav { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding-top: 20px; margin-top: 8px; border-top: 1px solid var(--rule); }
 .tab-nav .btn:only-child { margin-left: auto; }
 html { scroll-padding-top: 56px; }
@@ -265,6 +267,13 @@ html { scroll-padding-top: 56px; }
 
 /* ---- form parts ---------------------------------------------------------------------------- */
 .part { padding: 4px 0 0; }
+/* a part with a broken rule: a red frame, the heading reversed (dark on red) and what is wrong written at the top */
+.part.flagged { outline: 2px solid var(--alert); outline-offset: 10px; border-radius: 6px; }
+.part.flagged > h2 { display: inline-block; padding: 2px 12px; border-radius: 6px; background: var(--alert); color: #230a07; }
+.part-flag { margin: 12px 0 0; padding: 10px 14px; border-radius: 8px; background: var(--alert); color: #230a07; font-weight: 600; }
+.part-flag p { margin: 0; }
+.part-flag ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 2px; font-weight: 500; }
+@media (max-width: 620px) { .part.flagged { outline-offset: 7px; } }
 .intro { color: var(--mist); margin-top: 6px; max-width: 62ch; }
 .part-body { margin-top: 16px; display: grid; gap: 14px; }
 .grid { display: grid; gap: 14px; }
@@ -313,13 +322,13 @@ input[type="range"]::-moz-range-thumb {
 /* status ranks */
 .ranks { display: grid; gap: 8px; }
 .rank-row { display: grid; grid-template-columns: 6.5rem auto 1fr; gap: 8px 14px; align-items: center; }
-.rank-name { font-weight: 600; padding-left: 10px; border-left: 4px solid var(--rule); }
+.rank-name { font-weight: 600; }
 .segments { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; width: max-content; }
 .segment { position: relative; display: block; }
 .segment input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
-.segment span { display: grid; place-items: center; width: 40px; height: 40px; background: var(--well); color: var(--mist); border-left: 1px solid var(--rule); }
-.segment:first-child span { border-left: 0; }
-.segments.wide .segment span { width: auto; min-width: 64px; padding: 0 14px; font-size: 0.9rem; }
+.segment > span { display: grid; place-items: center; width: 40px; height: 40px; background: var(--well); color: var(--mist); border-left: 1px solid var(--rule); }
+.segment:first-child > span { border-left: 0; }
+.segments.wide .segment > span { width: auto; min-width: 64px; padding: 0 14px; font-size: 0.9rem; }
 .label-like { color: var(--mist); font-size: 0.92rem; }
 .portrait-size { display: grid; gap: 6px; margin-top: 12px; }
 .portrait-size .label-like:not(:first-child) { margin-top: 10px; }
@@ -341,6 +350,7 @@ input[type="range"]::-moz-range-thumb {
 .coin-row { display: grid; grid-template-columns: 4.2rem minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px 10px; align-items: end; }
 .coin-no { color: var(--mist); font-size: 0.9rem; align-self: center; }
 .mini { display: grid; gap: 4px; font-size: 0.8rem; color: var(--mist); }
+.mini[hidden] { display: none; }
 .quick { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; align-items: center; }
 .quick-label { color: var(--mist); font-size: 0.86rem; }
 .quick-set { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -376,14 +386,22 @@ input[type="range"]::-moz-range-thumb {
 .rule-preview { display: block; padding: 10px 12px; background: var(--well); border: 1px solid var(--rule); border-radius: 6px; font-family: var(--font); line-height: 1.5; overflow-wrap: anywhere; }
 .rule-problem { margin: 0; padding: 8px 12px; border-left: 3px solid var(--alert); background: rgba(255, 122, 107, 0.09); color: #ffd5cf; font-size: 0.92rem; }
 .rule-problem[hidden] { display: none; }
-.rule-text-mode > summary { cursor: pointer; color: var(--mist); font-size: 0.88rem; min-height: 32px; display: flex; align-items: center; }
+.rule-text-mode > summary {
+  cursor: pointer; list-style: none; width: max-content; max-width: 100%; min-height: 40px; padding: 8px 14px; display: inline-flex; align-items: center; gap: 10px;
+  border: 1px solid var(--rule); border-radius: 8px; background: var(--well); color: var(--text); font-size: 0.9rem;
+}
+.rule-text-mode > summary::-webkit-details-marker { display: none; }
+.rule-text-mode > summary::before { content: ""; flex: none; width: 7px; height: 7px; border-right: 2px solid var(--gold); border-bottom: 2px solid var(--gold); transform: rotate(-45deg); transition: transform 0.12s; }
+.rule-text-mode[open] > summary::before { transform: rotate(45deg); }
+.rule-text-mode > summary:hover { border-color: var(--gold-deep); color: var(--bold); background: rgba(250, 196, 0, 0.06); }
+.rule-text-mode > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .rule-text-mode[open] { display: grid; gap: 8px; }
 @media (max-width: 620px) { .rule-row { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---- icons (filled in from icons/index.json when it exists) ---- */
 .ico:empty { display: none; }
-.ico { display: inline-flex; flex: none; }
-.ico img { width: 1.25em; height: 1.25em; object-fit: contain; }
+.ico { display: inline-flex; flex: none; margin-block: -0.2em; }      /* a bigger picture that does not make the line taller */
+.ico img { width: 1.5em; height: 1.5em; object-fit: contain; }
 .rank-name { display: inline-flex; align-items: center; gap: 8px; }
 .chip { display: inline-flex; align-items: center; gap: 5px; }
 .statlines dt { display: inline-flex; align-items: center; gap: 6px; }
@@ -474,7 +492,8 @@ input[type="range"]::-moz-range-thumb {
 .code { font-family: var(--font); font-size: 0.85rem; word-break: break-all; min-height: 72px; }
 .steps { font-size: 0.9rem; color: var(--text); }
 
-.foot { max-width: 1180px; margin: 0 auto; padding: 0 var(--gutter) 40px; color: var(--mist); font-size: 0.86rem; }
+.main-col { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-content: start; min-width: 0; }
+.foot { margin: 0; padding: 0 6px; color: var(--mist); font-size: 0.86rem; }
 .foot p { max-width: 72ch; }
 .jump { display: none; }
 .nojs { padding: 20px var(--gutter); color: var(--alert); }
@@ -484,6 +503,8 @@ input[type="range"]::-moz-range-thumb {
 /* ---- narrow screens ---------------------------------------------------------------------- */
 @media (max-width: 920px) {
   .layout { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .main-col { display: contents; }                /* below the form the card comes next, and the note after it */
+  .sheet { order: 1; } .card { order: 2; } .foot { order: 3; }
   .card { position: static; max-height: none; }   /* below the form: the tabs come first, and the bar at the bottom jumps here */
   .portrait.empty { height: 160px; }
   body { padding-bottom: 56px; }
@@ -536,7 +557,7 @@ input[type="range"]::-moz-range-thumb {
 .st-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
 .st-name.tone-positive { color: var(--wiki-positive); } .st-name.tone-negative { color: var(--wiki-negative); } .st-name.tone-neutral { color: var(--wiki-neutral); }
 .st-sin { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--sin); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text); }
-.st-sin .ico img { width: 1.05em; height: 1.05em; }
+.st-sin .ico img { width: 1.3em; height: 1.3em; }
 .st-pairs td { min-width: 190px; }
 .st-does { display: block; color: var(--text); font-weight: 400; margin-top: 2px; }
 .st-extra { display: block; margin-top: 4px; color: var(--mist); font-size: 0.84rem; }
@@ -606,10 +627,22 @@ input[type="range"]::-moz-range-thumb {
   font-size: 0.92rem; line-height: 1.45; color: var(--wiki-cream);
 }
 .tip-title { display: flex; align-items: center; gap: 6.5px; margin: 2px 0 4px; font-size: 1.3rem; font-weight: 700; letter-spacing: 0.04em; line-height: 1.1; color: var(--wiki-cream); }
-.tip-title .ico img { width: 25px; height: 25px; }
+.tip-title .ico img { width: 30px; height: 30px; }
 .tip-line { position: relative; margin: 0; padding-left: 13px; }
 .tip-line::before { content: "-"; position: absolute; left: 0; }
 .tip-flavour { margin: 9px 0 0; font-style: italic; color: var(--wiki-brown-text); }
 
 /* ---- bold is white (last, so it wins over the colours set above; a name that carries a tone colour keeps it) ---- */
 strong, b, h1, h2, h3, h4, .cardname, .rank-name, .rule-title, .pv-base, .pv-damage, .st-first { color: var(--bold); }
+
+
+/* the attack type (Slash, Pierce, Blunt): three buttons with their pictures, above the preview so the change is seen at once */
+.skill-numbers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.type-pick { display: grid; gap: 6px; }
+.segments.type .segment > span { grid-auto-flow: column; gap: 8px; width: auto; min-width: 104px; padding: 0 16px; font-size: 0.95rem; }
+.segments.type .segment .ico { margin-block: 0; }
+@media (max-width: 620px) { .skill-numbers { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .segments.type { width: 100%; } .segments.type .segment { flex: 1 1 0; } .segments.type .segment > span { min-width: 0; padding: 0 8px; } }
+
+/* group tags: pick one that already exists, or Other to write a new one */
+.tag-slot { display: grid; gap: 8px; align-content: start; }
+.tag-slot input[hidden] { display: none; }

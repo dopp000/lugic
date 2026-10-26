@@ -101,7 +101,12 @@ CONDITION_TARGET_STATUSES = [title(s) for s in TARGET_STATUSES if "_" not in s]
 TARGET_STATUS_NAMES = [title(s) for s in TARGET_STATUSES]
 SELF_STATUS_NAMES = [title(s) for s in SELF_BUFF_STATUSES]
 REMOVABLE_NAMES = TARGET_STATUS_NAMES + [s for s in SELF_STATUS_NAMES if s not in TARGET_STATUS_NAMES]
-SELECTOR_NAMES = [phrase.title().replace("Hp", "HP").replace("Sp", "SP") for phrase in _SELECTOR_PHRASES]
+def _selector_label(phrase: str) -> str:
+    """'slowest speed' -> 'Slowest Speed', 'lowest hp percent' -> 'Lowest HP Percent' (whole words only, so Speed never becomes SPeed)."""
+    return " ".join({"hp": "HP", "sp": "SP"}.get(word, word.capitalize()) for word in phrase.split())
+
+
+SELECTOR_NAMES = [_selector_label(phrase) for phrase in _SELECTOR_PHRASES]
 
 BASIS = [{"value": "Count", "label": "Count"}, {"value": "Potency", "label": "Potency"}]
 

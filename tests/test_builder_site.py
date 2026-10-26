@@ -41,6 +41,7 @@ from game.statuses import ONE_TURN_STATUSES, OTHER_DEBUFF_STATUSES, SANITY_LOW_M
 
 NODE = shutil.which("node")
 PARITY_JS = os.path.join(ROOT, "tests", "builder_parity.js")
+FLAGS_JS = os.path.join(ROOT, "tests", "builder_flags.js")
 COIN_STATUSES = list(RANKED_STATUSES) + list(ONE_TURN_STATUSES) + list(OTHER_DEBUFF_STATUSES)
 TRIGGER_CHOICES = ["", "[On Use] Coin Power +1", "[Guard]", "[Evade]\n[On Use] Deal +10% damage", "[Counter]", "[Duality]"]
 
@@ -144,9 +145,9 @@ def random_spec(rng: random.Random, index: int) -> dict:
     return spec
 
 
-def run_node(payload: dict) -> dict:
+def run_node(payload: dict, script: str = PARITY_JS) -> dict:
     done = subprocess.run(
-        [NODE, PARITY_JS], input=json.dumps(payload), capture_output=True, text=True, timeout=120, cwd=ROOT,
+        [NODE, script], input=json.dumps(payload), capture_output=True, text=True, timeout=120, cwd=ROOT,
     )
     if done.returncode != 0:
         raise AssertionError(f"node failed:\n{done.stderr}")
@@ -243,6 +244,69 @@ class SiteAgreesWithBot(unittest.TestCase):
                 self.assertEqual(needs_approval(parsed.params), got["toSpec"].get("stats") is not None or any(
                     got["toSpec"].get(k) for k in ("ranks", "archetypes", "tags", "passives")
                 ))
+
+
+@unittest.skipUnless(NODE, "node is not installed")
+class FlaggedParts(unittest.TestCase):
+    """The page turns a part of the form red when something in it breaks a rule. The engine says which part each message belongs to."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.specs = {
+            "clean": {"v": 1, "name": "X"},
+            "badName": {"v": 1, "name": "a/b"},
+            "longTag": {"v": 1, "name": "X", "tags": ["x" * 31]},
+            "overBudget": {"v": 1, "name": "X", "pools": {"bp": 5}, "stats": {"hp": 170, "power": 14}},
+            "badResistance": {"v": 1, "name": "X", "stats": {"resist": {"burn": 0.6}}},
+            "missingRank": {"v": 1, "name": "X", "skills": [{"name": "Shot", "stats": "4, 2, 3, Pierce", "statuses": "Poise:2:2,none,none"}]},
+        }
+        cls.js = run_node({
+            "specs": list(cls.specs.values()),
+            "strength": [["haste", 3, 1], ["Haste", 1, 3], ["haste", 0, 0], ["bind", 4, 1], ["Power Down", 2, 5], ["burn", 3, 2]],
+            "tagLists": [["Dawn Office", "dawn   office", "N Corp"], ["", "  "], ["A", "a", "B", "b"]],
+        }, FLAGS_JS)
+        cls.review = dict(zip(cls.specs, cls.js["reviews"]))
+
+    def test_a_clean_build_marks_nothing(self):
+        self.assertEqual(self.review["clean"]["parts"], {})
+        self.assertTrue(self.review["clean"]["ok"])
+
+    def test_each_kind_of_mistake_lands_on_its_own_part(self):
+        self.assertEqual(list(self.review["badName"]["parts"]), ["sec-identity"])
+        self.assertEqual(list(self.review["longTag"]["parts"]), ["sec-group-tags"])
+        self.assertEqual(list(self.review["badResistance"]["parts"]), ["sec-resistances"])
+
+    def test_a_build_that_costs_too_much_marks_the_stats_and_the_points(self):
+        parts = self.review["overBudget"]["parts"]
+        self.assertEqual(sorted(parts), ["sec-stats", "sec-your-points"])
+        self.assertEqual(len(parts["sec-your-points"]), 1)
+        self.assertRegex(parts["sec-your-points"][0], r"^This build costs ")
+        self.assertGreater(len(parts["sec-stats"]), 1)
+
+    def test_every_problem_of_the_bots_check_is_placed_on_some_part(self):
+        for name, review in self.review.items():
+            with self.subTest(build=name):
+                self.assertEqual(len(review["problems"]), len(review["problemParts"]))
+                for ids in review["problemParts"]:
+                    self.assertTrue(ids)
+                    for part_id in ids:
+                        self.assertIn(part_id, review["parts"])
+
+    def test_a_message_shown_inside_a_skill_is_flagged_but_not_repeated_in_the_banner(self):
+        review = self.review["missingRank"]
+        self.assertFalse(review["ok"])
+        self.assertEqual(list(review["parts"]), ["sec-skills"])
+        self.assertRegex(review["parts"]["sec-skills"][0], r"needs a Poise rank")
+        self.assertEqual(review["own"], {})
+
+    def test_a_status_with_no_keyword_is_as_strong_as_the_larger_of_its_two_numbers(self):
+        keywordless = [(got["keywordless"], got["strength"]) for got in self.js["strength"]]
+        self.assertEqual(keywordless, [(True, 3), (True, 3), (True, 0), (True, 4), (True, 2), (False, 3)])
+        # Bind and Power Down keep their strength in Potency: a Count next to it is not the strength
+        self.assertEqual(self.js["strength"][4]["strength"], 2)
+
+    def test_a_tag_written_twice_is_exported_once_like_the_bot_counts_it(self):
+        self.assertEqual(self.js["exported"], [["Dawn Office", "N Corp"], None, ["A", "B"]])
 
 
 class StatusGuide(unittest.TestCase):
@@ -887,7 +951,7 @@ class PageShape(unittest.TestCase):
         self.assertIn("var(--wiki-cream)", box)
         self.assertRegex(self.css, r'\.tip-line::before \{ content: "-"')    # every line starts with "- "
         self.assertRegex(self.css, r"\.tip-flavour \{[^}]*font-style: italic")
-        self.assertIn(".tip-title .ico img { width: 25px; height: 25px; }", self.css)
+        self.assertIn(".tip-title .ico img { width: 30px; height: 30px; }", self.css)     # a little bigger than the wiki's 25 so the picture reads at a glance
 
     def test_a_status_or_timing_can_be_pointed_at_wherever_it_is_named(self):
         # not only in the skill card: the pickers' lists, the coin's status list, the checking messages, the status chips and the rank names
@@ -917,6 +981,66 @@ class PageShape(unittest.TestCase):
         for needed in (".frame-picker", ".frame-grid", ".frame-opt", '.frame-opt[aria-checked="true"]'):
             self.assertIn(needed, self.css, needed)
         self.assertIn("frame", re.search(r"function frameControls.*?\n  \}", self.app, re.S).group(0))
+
+    def test_the_note_under_the_form_sits_right_under_it(self):
+        main = re.search(r'<main class="layout">(.*?)</main>', self.html, re.S).group(1)
+        column = re.search(r'<div class="main-col">(.*?)</div>\s*<aside', main, re.S).group(1)
+        self.assertLess(column.index('id="sheet"'), column.index('class="foot"'))
+        self.assertNotIn('class="foot"', self.html.split("</main>")[1])
+        self.assertRegex(self.css, r"\.main-col \{[^}]*grid-template-columns: minmax\(0, 1fr\)")      # a wide card never pushes the form under the side card
+
+    def test_the_rank_names_have_no_coloured_stripe(self):
+        self.assertRegex(self.app, r"el\('span', \{ class: 'rank-name'[^}]*\}")
+        self.assertNotRegex(self.css, r"\.rank-name \{[^}]*border-left")
+
+    def test_the_attack_type_is_three_buttons_with_their_pictures_above_the_preview(self):
+        card = self.app[self.app.index("function skillCard"):]
+        self.assertIn("'aria-label': 'Attack type'", card)
+        self.assertIn("R.skills.damageTypes.forEach", card)
+        self.assertIn("icon(t)", card)
+        self.assertNotIn("field('Damage type'", card)
+        shown = card[card.index("class: 'skill-numbers'"):]
+        self.assertLess(shown.index("class: 'skill-numbers'"), shown.index("class: 'type-pick'"))
+        self.assertLess(shown.index("class: 'type-pick'"), shown.index("        preview,"))
+        # a picture and a word inside one button are not each drawn as a button
+        self.assertIn(".segment > span {", self.css)
+        self.assertNotRegex(self.css, r"\n\.segment span \{")
+
+    def test_a_status_with_no_keyword_has_no_count_box_and_one_number_for_both(self):
+        for needed in ("E.isKeywordless(coin.name)", "E.coinStrength(", "cntBox.hidden = plain", "coin.pot = coin.cnt = size"):
+            self.assertIn(needed, self.app, needed)
+        self.assertIn("function isKeywordless", self.engine)
+        self.assertIn("isKeywordless: isKeywordless, coinStrength: coinStrength", self.engine)
+
+    def test_group_tags_are_a_dropdown_of_every_known_tag_with_other(self):
+        tags = self.app[self.app.index("function buildTags"):]
+        tags = tags[:tags.index("// ---- the rule-line picker")]
+        for needed in ("knownTags()", "OTHER_TAG", "choice(options", "R.tags.max", "Other (write your own)", "maxlength", "repeats an earlier tag"):
+            self.assertIn(needed, tags, needed)
+        known = self.app[self.app.index("function knownTags"):][:700]
+        self.assertIn("LUGIC_TAGS", known)
+        self.assertIn("R.tags.suggested", known)
+        loaded = re.findall(r'<script src="([\w.]+)', self.html)
+        self.assertLess(loaded.index("tags.js"), loaded.index("app.js"))
+
+    def test_the_text_lines_toggle_looks_like_a_button(self):
+        rule = re.search(r"\.rule-text-mode > summary \{([^}]*)\}", self.css).group(1)
+        for needed in ("cursor: pointer", "border:", "background:"):
+            self.assertIn(needed, rule, needed)
+        self.assertRegex(self.css, r"\.rule-text-mode > summary::before")       # the arrow that turns when it is open
+
+    def test_a_part_that_breaks_a_rule_turns_red_with_its_colours_reversed(self):
+        for needed in ("function markTabs", "r.parts", "r.own", "part-flag", "'flagged'"):
+            self.assertIn(needed, self.app, needed)
+        tab = re.search(r"\.tab\.flagged, \.tab\.flagged:hover \{([^}]*)\}", self.css).group(1)
+        self.assertIn("background: var(--alert)", tab)               # red ground, dark letters: the tab's usual colours the other way round
+        self.assertRegex(self.css, r"\.part\.flagged \{[^}]*outline: 2px solid var\(--alert\)")
+        self.assertRegex(self.css, r"\.part\.flagged > h2 \{[^}]*background: var\(--alert\)")
+        self.assertRegex(self.css, r"\.part-flag \{[^}]*background: var\(--alert\)")
+
+    def test_pictures_are_a_little_bigger_without_making_a_row_taller(self):
+        self.assertRegex(self.css, r"\.ico \{[^}]*margin-block: -0\.2em")
+        self.assertRegex(self.css, r"\.ico img \{ width: 1\.5em; height: 1\.5em;")
 
     def test_no_script_uses_a_lookbehind_pattern(self):
         # older Safari cannot even parse one, and then the whole page is dead
@@ -959,6 +1083,31 @@ class GeneratedRules(unittest.TestCase):
                 handle.read(), builder_rules.rules_js(),
                 "docs/builder/rules.js is out of date. Run:  python -m game.builder_rules",
             )
+
+    def test_tags_js_is_a_well_formed_list_that_has_the_suggested_tags(self):
+        # It is written from the saved characters, which only exist where the bot runs, so it cannot be compared with a fresh run here.
+        from game.conditions import norm_tag
+        with open(builder_rules.TAGS_JS_PATH, encoding="utf-8") as handle:
+            text = handle.read()
+        match = re.fullmatch(r"//[^\n]*\nwindow\.LUGIC_TAGS = (\[.*\]);\n", text, re.S)
+        self.assertTrue(match, "docs/builder/tags.js is not the shape python -m game.builder_rules writes")
+        tags = json.loads(match.group(1))
+        self.assertTrue(set(builder_rules.SUGGESTED_TAGS) <= set(tags))
+        self.assertEqual(len({norm_tag(t) for t in tags}), len(tags))
+        self.assertEqual(tags, sorted(tags, key=norm_tag))
+        for tag in tags:
+            self.assertTrue(tag.strip() and tag == " ".join(tag.split()) and len(tag) <= builder_rules.MAX_TAG_LENGTH, tag)
+
+    def test_the_tag_list_is_the_saved_tags_and_the_suggestions_once_each(self):
+        tags = builder_rules.site_tags(["Moon Guild", "moon   guild", "  dawn office ", "x" * 31, "", "Zebra"])
+        self.assertIn("Moon Guild", tags)                          # the first spelling of a saved tag is kept
+        self.assertEqual(sum(1 for t in tags if t.lower() == "moon guild"), 1)
+        self.assertIn("Dawn Office", tags)                         # where a suggestion names the same tag, its spelling wins
+        self.assertNotIn("dawn office", tags)
+        self.assertNotIn("x" * 31, tags)                           # a tag too long for the bot is not offered
+        self.assertEqual(tags, sorted(tags, key=str.lower))
+        self.assertEqual(builder_rules.site_tags([]), sorted(builder_rules.SUGGESTED_TAGS, key=str.lower))
+        self.assertIn("window.LUGIC_TAGS = [", builder_rules.tags_js(["A", "B"]))
 
     def test_index_html_names_the_current_version_of_every_file(self):
         with open(builder_rules.INDEX_HTML_PATH, encoding="utf-8", newline="") as handle:
@@ -1027,6 +1176,36 @@ class PageInABrowser(unittest.TestCase):
         self.assertEqual(fresh["parts"], 10)
         self.assertEqual(fresh["open"], ["sec-identity"])
         self.assertEqual(fresh["box"], "")
+
+    def test_the_note_under_the_form_is_not_far_below_it(self):
+        footer = self.found["behaviour"]["footer"]
+        self.assertTrue(footer["beforeTools"])
+        self.assertLess(footer["gap"], 40)
+
+    def test_a_rule_broken_in_the_skills_turns_its_tab_and_its_part_red(self):
+        flag = self.found["behaviour"]["flag"]
+        self.assertEqual(flag["tab"], ["Skills"])
+        self.assertTrue(flag["part"])
+        self.assertTrue(flag["banner"])
+
+    def test_the_attack_type_can_be_picked_and_shows_on_the_preview(self):
+        attack = self.found["behaviour"]["attack"]
+        self.assertEqual(attack["offered"], ["slash", "blunt", "pierce"])
+        self.assertEqual(attack["checked"], ["blunt"])
+        self.assertTrue(attack["preview"])
+        self.assertFalse(attack["typeSelect"])
+
+    def test_a_status_with_no_keyword_shows_only_a_potency_box_in_its_coin(self):
+        self.assertEqual([coin["countHidden"] for coin in self.found["behaviour"]["coin"]], [False, True, False])
+
+    def test_every_known_group_tag_is_in_the_dropdown_and_other_lets_one_be_written(self):
+        behaviour = self.found["behaviour"]
+        self.assertTrue(behaviour["known"])
+        self.assertEqual(behaviour["tagOptions"], ["None"] + behaviour["known"] + ["Other (write your own)"])
+        self.assertTrue(behaviour["tagOther"])
+
+    def test_nothing_runs_off_the_side_of_a_phone_on_any_tab(self):
+        self.assertEqual(self.found["behaviour"]["phone"], [True] * 10)
 
     def test_an_older_copy_of_one_script_still_leaves_the_tabs_and_a_way_to_fix_it(self):
         stale = self.found["stale"]

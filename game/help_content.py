@@ -273,7 +273,7 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Potency and Count",
         summary="The two numbers on every status, and what the warning icons mean.",
         body=(
-            "Most statuses have two numbers. **Potency** is how strong it is. **Count** is how many times it can still happen, or how long it lasts. Gaining the same status again adds to both. Potency tops out at 99.\n\nSome statuses only last for the turn they land in and are wiped at turn end (Bind, Fragile and friends). Others stay until they run out. Each status page says which.\n\nYou usually can't see exact numbers on an enemy. The icons under a fighter's name hint at how dangerous their statuses and passives are."
+            "Most statuses have two numbers. **Potency** is how strong it is. **Count** is how many times it can still happen, or how long it lasts. Gaining the same status again adds to both. Potency tops out at 99.\n\nSome statuses only last for the turn they land in and are wiped at turn end (Bind, Fragile and friends). These have no keyword and only a **Potency**: the one number is how strong they are. Others stay until they run out. Each status page says which.\n\nYou usually can't see exact numbers on an enemy. The icons under a fighter's name hint at how dangerous their statuses and passives are."
         ),
     ),
     HelpEntry(
@@ -371,7 +371,7 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Fragile",
         summary="You take more damage this turn.",
         body=(
-            "Take **10% more damage per Count** for one turn, up to 10 Count (+100%). "
+            "Take **10% more damage per Potency** for one turn, up to 10 Potency (+100%). "
             "**Slash, Pierce and Blunt Fragility** work the same but only against that "
             "damage type. All add together."
         ),
@@ -381,7 +381,7 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Damage Down",
         summary="You deal less damage this turn.",
         body=(
-            "Deal **10% less damage per Count** for one turn, up to 10 Count."
+            "Deal **10% less damage per Potency** for one turn, up to 10 Potency."
         ),
     ),
     HelpEntry(
@@ -390,7 +390,7 @@ STATUS_EFFECTS: list[HelpEntry] = [
         summary="Your first coins deal nothing this turn.",
         body=(
             "Fix the Power of the **first X coins** of each skill you use to 0 for one "
-            "turn, where X is the effect's **Count**."
+            "turn, where X is the effect's **Potency**."
         ),
     ),
     HelpEntry(
@@ -415,7 +415,7 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Power Up",
         summary="Stronger coins this turn.",
         body=(
-            "Each coin gains Final Power by the effect's **Count** for one turn. Gained "
+            "Each coin gains Final Power by the effect's **Potency** for one turn. Gained "
             "on yourself."
         ),
     ),
@@ -424,7 +424,7 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Haste",
         summary="Faster this turn.",
         body=(
-            "Every skill slot gains Speed by the effect's **Count** for one turn. Gained "
+            "Every skill slot gains Speed by the effect's **Potency** for one turn. Gained "
             "on yourself."
         ),
     ),
@@ -433,7 +433,7 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Damage Up",
         summary="You deal more damage this turn.",
         body=(
-            "Deal **10% more damage per Count** for one turn, up to 10 Count. Damage Up, "
+            "Deal **10% more damage per Potency** for one turn, up to 10 Potency. Damage Up, "
             "Damage Down, Fragile and Protection add together into one number."
         ),
     ),
@@ -442,7 +442,7 @@ STATUS_EFFECTS: list[HelpEntry] = [
         title="Protection",
         summary="You take less damage this turn.",
         body=(
-            "Take **10% less damage per Count** for one turn, up to 10 Count."
+            "Take **10% less damage per Potency** for one turn, up to 10 Potency."
         ),
     ),
     HelpEntry(

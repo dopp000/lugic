@@ -358,17 +358,40 @@
 
   window.addEventListener('hashchange', function () { selectTab(window.location.hash.slice(1), true); });
 
-  // A small dot on a tab whose part has something to fix.
+  // A part with a broken rule is marked three ways: its tab turns red with the colours reversed, the part gets a red frame and a reversed heading,
+  // and what is wrong is written at the top of the part. The skills and passives also show their own problems inside each card, so for those
+  // only the problems that belong to the part as a whole are written out here.
   function markTabs(r) {
-    var marks = {
-      'sec-skills': (r.perSkill || []).some(function (list) { return list.length; }),
-      'sec-passives': (r.perPassive || []).some(function (list) { return list.length; })
-    };
+    var parts = r.parts || {};
+    var own = r.own || {};
     tabButtons.forEach(function (tab) {
       var id = tab.getAttribute('aria-controls');
-      var on = !!marks[id];
-      tab.classList.toggle('flagged', on);
-      if (on) { tab.title = 'Something here needs fixing'; } else { tab.removeAttribute('title'); }
+      var count = (parts[id] || []).length;
+      tab.classList.toggle('flagged', count > 0);
+      if (count) { tab.title = count === 1 ? 'One thing here needs fixing' : count + ' things here need fixing'; } else { tab.removeAttribute('title'); }
+    });
+    tabParts.forEach(function (part) {
+      var all = parts[part.id] || [];
+      var written = own[part.id] || [];
+      var inside = all.length - written.length;
+      var key = all.length ? [all.length, inside].concat(written).join('|') : '';
+      var box = null;
+      for (var i = 0; i < part.children.length; i++) { if (part.children[i].classList.contains('part-flag')) { box = part.children[i]; } }
+      part.classList.toggle('flagged', all.length > 0);
+      if (!all.length) { if (box) { part.removeChild(box); } return; }
+      if (box && box.getAttribute('data-key') === key) { return; }
+      if (!box) {
+        box = el('div', { class: 'part-flag' });
+        var body = null;
+        for (var j = 0; j < part.children.length; j++) { if (part.children[j].classList.contains('part-body')) { body = part.children[j]; } }
+        part.insertBefore(box, body);
+      }
+      box.setAttribute('data-key', key);
+      box.textContent = '';
+      box.appendChild(el('p', { text: all.length === 1 ? 'One thing to fix in this part.' : all.length + ' things to fix in this part.' }));
+      var items = written.slice();
+      if (inside > 0) { items.push('See the red notes inside the ' + (part.id === 'sec-skills' ? 'skills' : 'passives') + ' below.'); }
+      if (items.length) { box.appendChild(el('ul', {}, items.map(function (text) { return el('li', { text: text }); }))); }
     });
   }
 
@@ -691,7 +714,7 @@
         inputs.forEach(function (input, i) { input.checked = i === rank; });
         cost.textContent = rank ? bp(R.ranks.costs[rank]) : '';
       });
-      return el('div', { class: 'rank-row' }, [pointAt(el('span', { class: 'rank-name chip-' + status }, [icon(status), E.capitalize(status)]), 'status', status), group, cost]);
+      return el('div', { class: 'rank-row' }, [pointAt(el('span', { class: 'rank-name' }, [icon(status), E.capitalize(status)]), 'status', status), group, cost]);
     });
     var tail = el('p', { class: 'note' });
     syncs.push(function (r) {
@@ -729,23 +752,59 @@
     ]);
   }
 
+  // The group tags the drop-down lists: the ones saved characters already use (tags.js, written from the bot's own data) and the suggestions in
+  // rules.js, once each. A tag is free text, so "Other" lets a player write one that is not listed.
+  var OTHER_TAG = '\u0000other';
+  function knownTags() {
+    var seen = {}, out = [];
+    [].concat(window.LUGIC_TAGS || [], R.tags.suggested || []).forEach(function (tag) {
+      var spelled = String(tag).split(/\s+/).filter(Boolean).join(' ');
+      if (spelled && !seen[spelled.toLowerCase()]) { seen[spelled.toLowerCase()] = true; out.push(spelled); }
+    });
+    return out.sort(function (a, b) { a = a.toLowerCase(); b = b.toLowerCase(); return a < b ? -1 : a > b ? 1 : 0; });
+  }
+
   function buildTags() {
-    var inputs = [];
+    var known = knownTags();
+    var slots = [];
+    var repeat = el('p', { class: 'note', role: 'status' });
+    function commit() {
+      state.tags = slots.map(function (slot) { return slot.value(); });
+      var seen = {};
+      var again = [];
+      state.tags.forEach(function (t, i) {
+        var key = String(t).split(/\s+/).filter(Boolean).join(' ').toLowerCase();
+        if (!key) { return; }
+        if (seen[key]) { again.push(i + 1); } else { seen[key] = true; }
+      });
+      repeat.textContent = again.length ? 'Tag ' + again.join(' and ') + ' repeats an earlier tag. The bot counts a tag once, so it is left out of the code.' : '';
+      update();
+    }
     for (var i = 0; i < R.tags.max; i++) {
       (function (i) {
-        var input = el('input', { type: 'text', maxlength: String(R.tags.maxLength), autocomplete: 'off', placeholder: i === 0 ? 'N Corp' : '' });
-        input.value = state.tags[i] || '';
-        input.addEventListener('input', function () {
-          var list = inputs.map(function (x) { return x.value; });
-          state.tags = list;
-          update();
-        });
-        inputs.push(input);
+        var start = String(state.tags[i] || '').split(/\s+/).filter(Boolean).join(' ');
+        var match = known.filter(function (tag) { return tag.toLowerCase() === start.toLowerCase(); })[0];
+        var mode = !start ? '' : (match || OTHER_TAG);
+        var typed = el('input', { type: 'text', maxlength: String(R.tags.maxLength), autocomplete: 'off', placeholder: 'Write the tag', 'aria-label': 'Tag ' + (i + 1) + ', written out' });
+        typed.value = match ? '' : start;
+        typed.hidden = mode !== OTHER_TAG;
+        typed.addEventListener('input', commit);
+        var options = [{ value: '', label: 'None' }]
+          .concat(known.map(function (tag) { return { value: tag, label: tag }; }))
+          .concat([{ value: OTHER_TAG, label: 'Other (write your own)' }]);
+        var pick = choice(options, mode, function (v) {
+          mode = v;
+          typed.hidden = mode !== OTHER_TAG;
+          commit();
+          if (mode === OTHER_TAG) { typed.focus(); }
+        }, { label: 'Tag ' + (i + 1) });
+        slots.push({ node: el('div', { class: 'tag-slot' }, [pick, typed]), value: function () { return mode === OTHER_TAG ? typed.value : mode; } });
       })(i);
     }
-    state.tags = inputs.map(function (x) { return x.value; });
-    return section('Group tags', 'Short labels for the groups your character belongs to. Passives can count them. Up to ' + R.tags.max + '.', [
-      el('div', { class: 'grid three' }, inputs.map(function (input, i) { return field('Tag ' + (i + 1), input); }))
+    state.tags = slots.map(function (slot) { return slot.value(); });
+    return section('Group tags', 'Short labels for the groups your character belongs to. Passives can count them. Pick one that already exists, or choose Other to write your own. Up to ' + R.tags.max + '.', [
+      el('div', { class: 'grid three' }, slots.map(function (slot, i) { return field('Tag ' + (i + 1), slot.node); })),
+      repeat
     ]);
   }
 
@@ -1520,29 +1579,57 @@
         while (skill.statuses.length < skill.coins) { skill.statuses.push(E.emptyCoin()); }
         renderSkills();
       });
-      var type = selectInput(R.skills.damageTypes.map(function (t) { return { value: t, label: E.capitalize(t) }; }), skill.type, function (v) { skill.type = v; });
+      // The attack type is three buttons with their pictures, right above the preview, so a change shows at once.
+      var typeName = nextId('attack-type');
+      var typeGroup = el('div', { class: 'segments type', role: 'radiogroup', 'aria-label': 'Attack type' });
+      R.skills.damageTypes.forEach(function (t) {
+        var input = el('input', { type: 'radio', name: typeName, id: nextId('t'), value: t });
+        input.checked = skill.type === t;
+        input.addEventListener('change', function () { if (input.checked) { skill.type = t; update(); } });
+        typeGroup.appendChild(el('label', { class: 'segment', for: input.id }, [input, el('span', {}, [icon(t), pointAt(el('span', { text: E.capitalize(t) }), 'damage', t)])]));
+      });
 
       var coinRows = [];
       for (var i = 0; i < skill.coins; i++) {
         (function (i) {
           if (!skill.statuses[i]) { skill.statuses[i] = E.emptyCoin(); }
           var coin = skill.statuses[i];
-          var pot = numberInput(coin.pot, 0, null, function (n) { coin.pot = n; });
+          // A status with no keyword (Haste, Fragile, Bind and so on) has one number, and it is the Potency: the Count box is not shown for it.
+          // The one number is written to both, which is what the bot reads whichever of the two it keeps.
+          var pot = numberInput(coin.pot, 0, null, function (n) {
+            coin.pot = n;
+            if (E.isKeywordless(coin.name)) { coin.cnt = n; cnt.value = String(n); }
+          });
           var cnt = numberInput(coin.cnt, 0, null, function (n) { coin.cnt = n; });
+          var cntBox = el('label', { class: 'mini' }, ['Count', cnt]);
+          function paintCoin() {
+            var plain = !!coin.name && E.isKeywordless(coin.name);
+            cntBox.hidden = plain;
+            pot.disabled = cnt.disabled = !coin.name;
+          }
           pot.setAttribute('aria-label', 'Coin ' + (i + 1) + ' potency');
           cnt.setAttribute('aria-label', 'Coin ' + (i + 1) + ' count');
+          if (coin.name && E.isKeywordless(coin.name)) {
+            var size = E.coinStrength(coin.name, coin.pot, coin.cnt);
+            coin.pot = coin.cnt = size;
+            pot.value = cnt.value = String(size);
+          }
           var status = choice(statusOptions(), coin.name, function (v) {
             coin.name = v;
-            if (v && !coin.pot && !coin.cnt) { coin.pot = 1; coin.cnt = 1; pot.value = '1'; cnt.value = '1'; }
-            pot.disabled = cnt.disabled = !v;
+            if (v && E.isKeywordless(v)) {
+              var size = E.coinStrength(v, coin.pot, coin.cnt) || 1;
+              coin.pot = coin.cnt = size;
+              pot.value = cnt.value = String(size);
+            } else if (v && !coin.pot && !coin.cnt) { coin.pot = 1; coin.cnt = 1; pot.value = '1'; cnt.value = '1'; }
+            paintCoin();
             update();
           }, { label: 'Coin ' + (i + 1) + ' status' });
-          pot.disabled = cnt.disabled = !coin.name;
+          paintCoin();
           coinRows.push(el('div', { class: 'coin-row' }, [
             el('span', { class: 'coin-no', text: 'Coin ' + (i + 1) }),
             status,
             el('label', { class: 'mini' }, ['Potency', pot]),
-            el('label', { class: 'mini' }, ['Count', cnt])
+            cntBox
           ]));
         })(i);
       }
@@ -1623,10 +1710,11 @@
             el('button', { type: 'button', class: 'btn quiet', text: 'Remove', onclick: function () { state.skills.splice(index, 1); renderSkills(); } })
           ])
         ]),
+        el('div', { class: 'skill-numbers' }, [field('Base Power', base), field('Coin Power', coinPower), field('Coins', coins)]),
+        el('div', { class: 'type-pick' }, [el('span', { class: 'label-like', text: 'Attack type' }), typeGroup]),
         preview,
         picture,
         border,
-        el('div', { class: 'grid four' }, [field('Base Power', base), field('Coin Power', coinPower), field('Coins', coins), field('Damage type', type)]),
         el('div', { class: 'coin-rows' }, coinRows),
         el('div', { class: 'field' }, [
           el('span', { class: 'label-like', text: 'Rule lines' }),

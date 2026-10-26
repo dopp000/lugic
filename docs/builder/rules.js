@@ -643,18 +643,18 @@
           "label": "The ally has the fastest, lowest... (ally timings)",
           "params": [
             {
-              "default": "Fastest SPeed",
+              "default": "Fastest Speed",
               "kind": "choice",
               "label": "Ally with the",
               "name": "selector",
               "options": [
                 {
-                  "label": "Fastest SPeed",
-                  "value": "Fastest SPeed"
+                  "label": "Fastest Speed",
+                  "value": "Fastest Speed"
                 },
                 {
-                  "label": "Slowest SPeed",
-                  "value": "Slowest SPeed"
+                  "label": "Slowest Speed",
+                  "value": "Slowest Speed"
                 },
                 {
                   "label": "Highest HP",
@@ -2002,8 +2002,8 @@
         }
       ],
       "selectors": [
-        "Fastest SPeed",
-        "Slowest SPeed",
+        "Fastest Speed",
+        "Slowest Speed",
         "Highest HP",
         "Lowest HP",
         "Highest HP Percent",
@@ -2641,7 +2641,7 @@
         }
       ]
     },
-    "potencyCount": "Potency is how strong, Count is how many times or how long. Gaining the same status again adds to both. Potency stops at 99.",
+    "potencyCount": "Potency is how strong, Count is how many times or how long. Gaining the same status again adds to both. Potency stops at 99. Statuses with no keyword (the up and down list) only have Potency.",
     "power": {
       "base": 6,
       "costs": [
@@ -2885,7 +2885,7 @@
         3
       ]
     },
-    "stackingNote": "Most statuses have two numbers. **Potency** is how strong it is. **Count** is how many times it can still happen, or how long it lasts. Gaining the same status again adds to both. Potency tops out at 99.\n\nSome statuses only last for the turn they land in and are wiped at turn end (Bind, Fragile and friends). Others stay until they run out. Each status page says which.\n\nYou usually can't see exact numbers on an enemy. The icons under a fighter's name hint at how dangerous their statuses and passives are.",
+    "stackingNote": "Most statuses have two numbers. **Potency** is how strong it is. **Count** is how many times it can still happen, or how long it lasts. Gaining the same status again adds to both. Potency tops out at 99.\n\nSome statuses only last for the turn they land in and are wiped at turn end (Bind, Fragile and friends). These have no keyword and only a **Potency**: the one number is how strong they are. Others stay until they run out. Each status page says which.\n\nYou usually can't see exact numbers on an enemy. The icons under a fighter's name hint at how dangerous their statuses and passives are.",
     "stagger": {
       "2": 5,
       "3": 7
@@ -2991,11 +2991,11 @@
         "tone": "neutral"
       },
       {
-        "body": "Each coin gains Final Power by the effect's **Count** for one turn. Gained on yourself.",
+        "body": "Each coin gains Final Power by the effect's **Potency** for one turn. Gained on yourself.",
         "group": "buff",
         "key": "power_up",
         "quick": {
-          "does": "+Count Power",
+          "does": "+Potency Power",
           "then": "Gone at turn end",
           "when": "Each coin"
         },
@@ -3004,11 +3004,11 @@
         "tone": "positive"
       },
       {
-        "body": "Every skill slot gains Speed by the effect's **Count** for one turn. Gained on yourself.",
+        "body": "Every skill slot gains Speed by the effect's **Potency** for one turn. Gained on yourself.",
         "group": "buff",
         "key": "haste",
         "quick": {
-          "does": "+Count Speed",
+          "does": "+Potency Speed",
           "then": "Gone at turn end",
           "when": "Each skill slot"
         },
@@ -3017,11 +3017,11 @@
         "tone": "positive"
       },
       {
-        "body": "Deal **10% more damage per Count** for one turn, up to 10 Count. Damage Up, Damage Down, Fragile and Protection add together into one number.",
+        "body": "Deal **10% more damage per Potency** for one turn, up to 10 Potency. Damage Up, Damage Down, Fragile and Protection add together into one number.",
         "group": "buff",
         "key": "damage_up",
         "quick": {
-          "does": "+10% per Count, up to 10",
+          "does": "+10% per Potency, up to 10",
           "then": "Gone at turn end",
           "when": "Damage you deal"
         },
@@ -3030,11 +3030,11 @@
         "tone": "positive"
       },
       {
-        "body": "Take **10% less damage per Count** for one turn, up to 10 Count.",
+        "body": "Take **10% less damage per Potency** for one turn, up to 10 Potency.",
         "group": "buff",
         "key": "protection",
         "quick": {
-          "does": "−10% per Count, up to 10",
+          "does": "−10% per Potency, up to 10",
           "then": "Gone at turn end",
           "when": "Damage you take"
         },
@@ -3069,11 +3069,11 @@
         "tone": "negative"
       },
       {
-        "body": "Take **10% more damage per Count** for one turn, up to 10 Count (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
+        "body": "Take **10% more damage per Potency** for one turn, up to 10 Potency (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
         "group": "debuff",
         "key": "fragile",
         "quick": {
-          "does": "+10% per Count, up to 10",
+          "does": "+10% per Potency, up to 10",
           "then": "Gone at turn end",
           "when": "Damage you take"
         },
@@ -3082,11 +3082,11 @@
         "tone": "negative"
       },
       {
-        "body": "Take **10% more damage per Count** for one turn, up to 10 Count (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
+        "body": "Take **10% more damage per Potency** for one turn, up to 10 Potency (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
         "group": "debuff",
         "key": "slash_fragility",
         "quick": {
-          "does": "+10% per Count, up to 10",
+          "does": "+10% per Potency, up to 10",
           "then": "Gone at turn end",
           "when": "Slash damage you take"
         },
@@ -3095,11 +3095,11 @@
         "tone": "negative"
       },
       {
-        "body": "Take **10% more damage per Count** for one turn, up to 10 Count (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
+        "body": "Take **10% more damage per Potency** for one turn, up to 10 Potency (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
         "group": "debuff",
         "key": "pierce_fragility",
         "quick": {
-          "does": "+10% per Count, up to 10",
+          "does": "+10% per Potency, up to 10",
           "then": "Gone at turn end",
           "when": "Pierce damage you take"
         },
@@ -3108,11 +3108,11 @@
         "tone": "negative"
       },
       {
-        "body": "Take **10% more damage per Count** for one turn, up to 10 Count (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
+        "body": "Take **10% more damage per Potency** for one turn, up to 10 Potency (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
         "group": "debuff",
         "key": "blunt_fragility",
         "quick": {
-          "does": "+10% per Count, up to 10",
+          "does": "+10% per Potency, up to 10",
           "then": "Gone at turn end",
           "when": "Blunt damage you take"
         },
@@ -3121,11 +3121,11 @@
         "tone": "negative"
       },
       {
-        "body": "Deal **10% less damage per Count** for one turn, up to 10 Count.",
+        "body": "Deal **10% less damage per Potency** for one turn, up to 10 Potency.",
         "group": "debuff",
         "key": "damage_down",
         "quick": {
-          "does": "−10% per Count, up to 10",
+          "does": "−10% per Potency, up to 10",
           "then": "Gone at turn end",
           "when": "Damage you deal"
         },
@@ -3134,11 +3134,11 @@
         "tone": "negative"
       },
       {
-        "body": "Fix the Power of the **first X coins** of each skill you use to 0 for one turn, where X is the effect's **Count**.",
+        "body": "Fix the Power of the **first X coins** of each skill you use to 0 for one turn, where X is the effect's **Potency**.",
         "group": "debuff",
         "key": "paralyze",
         "quick": {
-          "does": "First Count coins deal 0",
+          "does": "First Potency coins deal 0",
           "then": "Gone at turn end",
           "when": "Each skill you use"
         },
@@ -3177,9 +3177,9 @@
         "group": "other",
         "key": "panic",
         "quick": {
-          "does": "Can't act next turn",
+          "does": "Low Morale. Panic at −45: can't act next turn",
           "then": "Sanity resets to 0",
-          "when": "Sanity −45"
+          "when": "Sanity −30 and below, up to −45"
         },
         "summary": "What happens at very low Sanity.",
         "title": "Low Morale and Panic",
@@ -3215,7 +3215,18 @@
     ],
     "tags": {
       "max": 3,
-      "maxLength": 30
+      "maxLength": 30,
+      "suggested": [
+        "Blade Lineage",
+        "Dawn Office",
+        "Heishou",
+        "Kurokumo",
+        "Liu Association",
+        "N Corp",
+        "Seven Association",
+        "The Middle",
+        "The Ring"
+      ]
     },
     "wikiImages": {
       "bind": "https://limbuscompany.wiki.gg/images/Bind.png",

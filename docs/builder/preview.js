@@ -246,6 +246,10 @@
     var name = E.title(coin.name);
     var verb = BUFFS.indexOf(String(coin.name).toLowerCase()) >= 0 ? 'Gain' : 'Inflict';
     var pot = Math.floor(Number(coin.pot) || 0), cnt = Math.floor(Number(coin.cnt) || 0);
+    if (E.isKeywordless(coin.name)) {      // no keyword: one number, and it is the Potency
+      var strength = E.coinStrength(coin.name, pot, cnt);
+      return strength ? verb + ' ' + strength + ' ' + name : verb + ' ' + name;
+    }
     if (pot && cnt) { return verb + ' ' + name + ' Potency ' + pot + ', Count ' + cnt; }
     if (pot) { return verb + ' ' + pot + ' ' + name; }
     if (cnt) { return verb + ' +' + cnt + ' ' + name + ' Count'; }

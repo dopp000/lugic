@@ -130,6 +130,11 @@ def apply_status(current: StatusInstance | None, name: str, added_potency: int, 
     base_potency = current.potency if current else 0
     base_count = current.count if current else 0
 
+    if name in COUNT_TURN_STATUSES:
+        # These have no keyword: the one number a player gives is how strong they are, and the game calls it Potency.
+        # The bot keeps it in Count, so whichever of the two was written is the strength ("Gain 3 Haste" is +3 Speed).
+        added_count = max(added_count, added_potency)
+
     new_count = base_count + added_count
     new_potency = base_potency + added_potency
     if new_count > 0 and new_potency <= 0:

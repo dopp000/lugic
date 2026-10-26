@@ -6,14 +6,19 @@
   <title>Lugic character builder</title>
   <meta name="description" content="Build a Lugic character, see what it costs in Build Points as you go, and copy a code to paste into the Discord bot.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23fac400'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%237e6100' stroke-width='2'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=6c4a7c0626">
+  <link rel="stylesheet" href="style.css?v=c98dfe2db4">
 </head>
 <body>
   <h1 class="sr-only">Lugic character builder</h1>
   <nav class="tabs" id="nav" aria-label="Parts of the form"></nav>
 
   <main class="layout">
-    <div class="sheet" id="sheet"></div>
+    <div class="main-col">
+      <div class="sheet" id="sheet"></div>
+      <footer class="foot">
+        <p>Everything you type stays in your browser, pictures included: a skill picture is not part of the code and is never sent anywhere. The one thing the page fetches from elsewhere is the game icons, which are linked from the Limbus Company wiki (limbuscompany.wiki.gg) unless they were saved beside the page; like any picture on a web page, that tells the wiki the visitor's address, but not the page or anything entered on it. The code is the character written out as text; the bot reads it when you paste it into <code>/character import</code>. The bot checks the build again with its own rules, so what it says is final.</p>
+      </footer>
+    </div>
     <aside class="card" id="card" aria-label="Your character so far"></aside>
   </main>
 
@@ -35,14 +40,12 @@
   <a class="jump" id="jump" href="#card"></a>
 
   <noscript><p class="nojs">This page needs JavaScript. It does all its work in your browser and sends nothing you enter anywhere.</p></noscript>
-  <footer class="foot">
-    <p>Everything you type stays in your browser, pictures included: a skill picture is not part of the code and is never sent anywhere. The one thing the page fetches from elsewhere is the game icons, which are linked from the Limbus Company wiki (limbuscompany.wiki.gg) unless they were saved beside the page; like any picture on a web page, that tells the wiki the visitor's address, but not the page or anything entered on it. The code is the character written out as text; the bot reads it when you paste it into <code>/character import</code>. The bot checks the build again with its own rules, so what it says is final.</p>
-  </footer>
 
-  <script src="rules.js?v=7bb06c3abb"></script>
-  <script src="engine.js?v=2f5716ce79"></script>
-  <script src="preview.js?v=305ca75682"></script>
+  <script src="rules.js?v=38ede13ae5"></script>
+  <script src="tags.js?v=9597ef986b"></script>
+  <script src="engine.js?v=8ecce67f2b"></script>
+  <script src="preview.js?v=9ad9f5f5c8"></script>
   <script src="lines.js?v=a0dbc730c5"></script>
-  <script src="app.js?v=e4495fce02"></script>
+  <script src="app.js?v=4f0c9467e1"></script>
 </body>
 </html>

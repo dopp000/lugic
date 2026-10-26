@@ -1554,8 +1554,16 @@ pops them at turn end. They come in two flavours, matching the wiki:
 - `POTENCY_TURN_STATUSES` (bind, power_down): strength is Potency, Count is
   forced to 1 by `apply_status`.
 - `COUNT_TURN_STATUSES` (fragile, the type fragilities, damage_down,
-  paralyze): strength is Count, Potency is just 1. Fragile, type
-  fragilities and damage_down cap Count at 10 (`PERCENT_COUNT_STATUSES`).
+  paralyze, and the self buffs): the bot keeps the strength in Count, Potency
+  is just 1. Fragile, type fragilities and damage_down cap Count at 10
+  (`PERCENT_COUNT_STATUSES`). To a player these have no keyword and only a
+  **Potency** (the game's word, and what the help and the builder site say),
+  so `apply_status` uses `max(added_count, added_potency)` as the amount for
+  these: `Gain 3 Haste` (the line parser reads potency 3, count 1) and
+  `Gain 3 Haste Count` both give +3 Speed. `/battle setstatus` does the
+  same with the larger of its `potency` and `count` options. Storing it
+  under Count stays an internal detail; moving it to Potency would touch the
+  damage code, the turn-end tick and saved battles for no visible change.
 
 Hooks:
 - Bind: `Fighter.shift_slot_speeds(-potency)` when applied. Speeds are
