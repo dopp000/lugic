@@ -266,7 +266,7 @@
     coins.setAttribute('aria-label', m.coins + (m.coins === 1 ? ' coin' : ' coins'));
     for (var i = 0; i < m.coins; i++) {
       var c = node('span', 'pv-coin');
-      c.appendChild(icon('coin_heads'));
+      c.appendChild(icon('coin coin_heads'));
       coins.appendChild(c);
     }
     var banner = node('div', 'pv-banner', m.name);

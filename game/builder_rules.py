@@ -14,6 +14,7 @@ from game.character import NAME_MAX_LENGTH, STARTING_SPEED
 from game.character_import import AVATAR_MAX, PASSIVE_LINE_MAX, SKILL_LIMITS, VERSION as CODE_VERSION
 from game.conditions import MAX_TAG_LENGTH, MAX_TAGS, SKILL_FLAG_TAGS
 from game import line_spec
+from game import wiki_assets
 from game.help_content import STATUS_EFFECTS
 from game.passives import MAX_PASSIVE_LINES, MAX_PASSIVES, PASSIVE_KINDS
 from game.resistances import DAMAGE_TYPES, STATUS_RESISTANCE_TYPES
@@ -62,6 +63,58 @@ _TONES = {"poise": "positive", "charge": "neutral", "panic": "negative"}
 _FRAGILITY_NOTE = "Fragile, but only against {} hits. It adds to Fragile and to the other Fragility types."
 
 
+# The short form shown on the site's status list. Every status is read the same way, in the same three slots, so the pattern is learnable:
+# WHEN does it act, what DOES it do, and THEN what happens to it. The full wording stays in the bot's /help text (the "body" of each entry);
+# tests/test_builder_site.py checks that every number written here also appears in that full text, so the short form cannot drift.
+_QUICK = {
+    "burn": ("Turn end", "Take Potency damage", "Count −1"),
+    "bleed": ("You attack", "Take Potency damage per coin", "Count −1"),
+    "tremor": ("Tremor Burst hits you", "Stagger sooner, +Potency%", "Count −1"),
+    "rupture": ("A coin hits you", "Extra Potency damage, up to 10% of max HP", "Count −1"),
+    "sinking": ("Turn end", "Lose Potency Sanity", "Does not fade alone"),
+    "poise": ("Each coin", "5% Crit per Potency, a Crit deals 20% more", "Count −1 per Crit"),
+    "charge": ("You Consume it", "Spend it for a payoff", "Count −1 at turn end"),
+    "power_up": ("Each coin", "+Count Power", "Gone at turn end"),
+    "power_down": ("Each coin", "−Potency Power", "Gone at turn end"),
+    "haste": ("Each skill slot", "+Count Speed", "Gone at turn end"),
+    "bind": ("Each skill slot", "−Potency Speed", "Gone at turn end"),
+    "damage_up": ("Damage you deal", "+10% per Count, up to 10", "Gone at turn end"),
+    "damage_down": ("Damage you deal", "−10% per Count, up to 10", "Gone at turn end"),
+    "protection": ("Damage you take", "−10% per Count, up to 10", "Gone at turn end"),
+    "fragile": ("Damage you take", "+10% per Count, up to 10", "Gone at turn end"),
+    "paralyze": ("Each skill you use", "First Count coins deal 0", "Gone at turn end"),
+    "poison": ("Turn end", "Take Count damage", "Count halves"),
+    "immobilized": ("When you declare", "You can't act", "Ends after the round it stops you"),
+    "panic": ("Sanity −45", "Can't act next turn", "Sanity resets to 0"),
+}
+# Opposites sit side by side on the site, so learning one teaches the other. Each pair is one thing that can go up or down.
+_PAIRS = [
+    {"axis": "Coin Power", "up": "power_up", "down": "power_down"},
+    {"axis": "Speed", "up": "haste", "down": "bind"},
+    {"axis": "Damage you deal", "up": "damage_up", "down": "damage_down"},
+    {"axis": "Damage you take", "up": "protection", "down": "fragile", "downExtra": ["slash_fragility", "pierce_fragility", "blunt_fragility"]},
+]
+# What the colours say, in the common reading of each colour. The tone colours (what a status does to you) are the wiki's; the Sin colours are
+# also the wiki's, and the hint is why the colour suits the status: fire is red, blood is orange, a quake is a yellow warning, and so on.
+_COLOR_KEY = {
+    "tones": [
+        {"tone": "positive", "color": "Yellow", "means": "Helps you", "hint": "gold: reward, energy"},
+        {"tone": "negative", "color": "Red", "means": "Hurts you", "hint": "red: danger, blood, stop"},
+        {"tone": "neutral", "color": "Brown", "means": "Neither", "hint": "brown: plain, stored, waiting"},
+    ],
+    "sins": [
+        {"sin": "wrath", "status": "burn", "color": "Red", "hint": "fire, anger"},
+        {"sin": "lust", "status": "bleed", "color": "Orange", "hint": "blood, heat"},
+        {"sin": "sloth", "status": "tremor", "color": "Yellow", "hint": "caution, shaking ground"},
+        {"sin": "gluttony", "status": "rupture", "color": "Green", "hint": "bursting, rot"},
+        {"sin": "gloom", "status": "sinking", "color": "Teal", "hint": "cold, deep water"},
+        {"sin": "pride", "status": "poise", "color": "Blue", "hint": "calm, steady"},
+        {"sin": "envy", "status": "charge", "color": "Purple", "hint": "stored energy, jealousy"},
+    ],
+}
+_POTENCY_COUNT = "Potency is how strong, Count is how many times or how long. Gaining the same status again adds to both. Potency stops at 99."
+
+
 def status_guide() -> list[dict]:
     """One entry per status the builder knows, in the order a reader wants them: keywords, buffs, debuffs, other."""
     by_key = {e.key: e for e in STATUS_EFFECTS}
@@ -79,6 +132,11 @@ def status_guide() -> list[dict]:
         else:
             title, summary, body = entry.title, entry.summary, entry.body
         item = {"key": key, "title": title, "summary": summary, "body": body, "group": group, "tone": tone}
+        if key in _QUICK:
+            item["quick"] = dict(zip(("when", "does", "then"), _QUICK[key]))
+        elif key.endswith("_fragility"):
+            when, does, then = _QUICK["fragile"]
+            item["quick"] = {"when": f"{key[: -len('_fragility')].title()} damage you take", "does": does, "then": then}
         if key in _SIN_OF_KEYWORD:
             item["sin"] = _SIN_OF_KEYWORD[key]
         out.append(item)
@@ -130,6 +188,10 @@ def rules() -> dict:
         },
         "otherStatuses": list(OTHER_DEBUFF_STATUSES),
         "statusGuide": status_guide(),
+        "wikiImages": wiki_assets.remote_urls(),
+        "statusPairs": _PAIRS,
+        "colorKey": _COLOR_KEY,
+        "potencyCount": _POTENCY_COUNT,
         "stackingNote": next(e.body for e in STATUS_EFFECTS if e.key == "stacking"),
         "defense": {
             "archetypes": dict(bp.DEFENSE_ARCHETYPES), "max": bp.DEFENSE_MAX, "minSpeed": bp.DEFENSE_MIN_SPEED,

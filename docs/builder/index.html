@@ -9,28 +9,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="top">
-    <div class="top-inner">
-      <div>
-        <h1><span class="ico" data-icon="coin_heads" aria-hidden="true"></span>Lugic character builder</h1>
-        <p class="lede">Set up a character, watch the Build Points add up, then copy a code into Discord.</p>
-      </div>
-      <div class="top-actions">
-        <details class="loader" id="loader">
-          <summary>Load a code</summary>
-          <div class="loader-body">
-            <label for="loader-input">Paste a code from this page to keep editing that character.</label>
-            <textarea id="loader-input" rows="4" spellcheck="false" autocomplete="off"></textarea>
-            <div class="row">
-              <button type="button" class="btn" id="loader-go">Load</button>
-              <span id="loader-msg" class="msg" role="status"></span>
-            </div>
-          </div>
-        </details>
-        <button type="button" class="btn quiet" id="reset">Start over</button>
-      </div>
-    </div>
-  </header>
+  <h1 class="sr-only">Lugic character builder</h1>
   <nav class="tabs" id="nav" aria-label="Parts of the form"></nav>
 
   <main class="layout">
@@ -38,11 +17,26 @@
     <aside class="card" id="card" aria-label="Your character so far"></aside>
   </main>
 
+  <div class="tools" id="tools">
+    <details class="loader" id="loader">
+      <summary>Load a code</summary>
+      <div class="loader-body">
+        <label for="loader-input">Paste a code from this page to keep editing that character.</label>
+        <textarea id="loader-input" rows="4" spellcheck="false" autocomplete="off"></textarea>
+        <div class="row">
+          <button type="button" class="btn" id="loader-go">Load</button>
+          <span id="loader-msg" class="msg" role="status"></span>
+        </div>
+      </div>
+    </details>
+    <button type="button" class="btn quiet" id="reset">Start over</button>
+  </div>
+
   <a class="jump" id="jump" href="#card"></a>
 
-  <noscript><p class="nojs">This page needs JavaScript. It does all its work in your browser and sends nothing anywhere.</p></noscript>
+  <noscript><p class="nojs">This page needs JavaScript. It does all its work in your browser and sends nothing you enter anywhere.</p></noscript>
   <footer class="foot">
-    <p>Everything stays in your browser, pictures included: a skill picture is not part of the code and is never sent anywhere. The code is the character written out as text; the bot reads it when you paste it into <code>/character import</code>. The bot checks the build again with its own rules, so what it says is final.</p>
+    <p>Everything you type stays in your browser, pictures included: a skill picture is not part of the code and is never sent anywhere. The one thing the page fetches from elsewhere is the game icons, which are linked from the Limbus Company wiki (limbuscompany.wiki.gg) unless they were saved beside the page; like any picture on a web page, that tells the wiki the visitor's address, but not the page or anything entered on it. The code is the character written out as text; the bot reads it when you paste it into <code>/character import</code>. The bot checks the build again with its own rules, so what it says is final.</p>
   </footer>
 
   <script src="rules.js"></script>

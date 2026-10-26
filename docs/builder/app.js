@@ -10,6 +10,16 @@
   var SAVE_KEY = 'lugic-character-builder-v1';
   var ART_KEY = 'lugic-character-builder-pictures-v1';
   var MAX_COINS_SHOWN = 120;
+  // How wide the portrait shows on the card, as a share of the card. The picture always keeps its own shape; this only scales it.
+  // It belongs to this page, not to the character, so it is not in the code and the bot is never told.
+  var PORTRAIT_KEY = 'lugic-character-builder-portrait-v1';
+  var PORTRAIT_SIZES = [
+    { id: 'small', label: 'Small', percent: 40 },
+    { id: 'medium', label: 'Medium', percent: 60 },
+    { id: 'large', label: 'Large', percent: 80 },
+    { id: 'full', label: 'Full', percent: 100 }
+  ];
+  var portraitSize = loadPortraitSize();
 
   var state = loadSaved() || E.defaultState();
   var syncs = [];          // functions that repaint one thing when the review changes
@@ -19,34 +29,72 @@
   var resetArmed = false;
 
   // ---- icons -------------------------------------------------------------------------------------------------
-  // icons/index.json (made by `python -m game.emoji_icons`) maps a name such as "burn" to an image of the bot's emoji.
-  // Without it every icon slot stays empty and the page shows text only.
+  // A picture for a name such as "burn" can come from three places, tried in this order:
+  //   1. wiki/index.json   the wiki's game icons saved beside the page (`python -m game.wiki_assets`), fast and works offline
+  //   2. rules.js          the same icons linked straight from the Limbus Company wiki, so nothing has to be downloaded
+  //   3. icons/index.json  the bot's own emoji (`python -m game.emoji_icons`)
+  // If a picture does not load, the next one is tried; if the wiki refuses pictures from this page, linking is switched off for the
+  // rest of the visit. With none of them the slot stays empty and the page shows text only.
 
-  var iconFiles = {};
+  var botFiles = {};
+  var wikiFiles = {};
+  var wikiBroken = false;
 
   function icon(name) { return el('span', { class: 'ico', 'data-icon': name, 'aria-hidden': 'true' }); }
 
+  function iconCandidates(names) {
+    var out = [];
+    names.forEach(function (n) { if (wikiFiles[n]) { out.push({ src: wikiFiles[n], remote: false }); } });
+    if (!wikiBroken) { names.forEach(function (n) { if (R.wikiImages && R.wikiImages[n]) { out.push({ src: R.wikiImages[n], remote: true }); } }); }
+    names.forEach(function (n) { if (botFiles[n]) { out.push({ src: botFiles[n], remote: false }); } });
+    return out;
+  }
+
+  // A slot can name several icons, best first ("coin coin_heads").
   function fillIcons() {
     var slots = document.querySelectorAll('.ico[data-icon]');
-    for (var i = 0; i < slots.length; i++) {
-      var slot = slots[i];
-      var file = iconFiles[slot.getAttribute('data-icon')];
-      if (file && !slot.firstChild) {
-        var img = document.createElement('img');
-        img.alt = '';
-        img.src = file;
-        img.addEventListener('error', function () { this.parentNode.removeChild(this); });
-        slot.appendChild(img);
+    for (var i = 0; i < slots.length; i++) { fillSlot(slots[i]); }
+  }
+
+  function fillSlot(slot) {
+    if (slot.firstChild || slot.getAttribute('data-done')) { return; }
+    var names = slot.getAttribute('data-icon').split(' ');
+    if (!iconCandidates(names).length) { return; }   // nothing to show (yet)
+    var img = document.createElement('img');
+    img.alt = '';
+    img.referrerPolicy = 'no-referrer';   // the wiki never learns which page the picture is on
+    var tried = {};
+    // The list is read again at every step, because the lists of pictures may arrive after the first try.
+    function next() {
+      var list = iconCandidates(names);
+      for (var k = 0; k < list.length; k++) {
+        if (tried[list[k].src]) { continue; }
+        tried[list[k].src] = true;
+        img.setAttribute('data-remote', list[k].remote ? '1' : '');
+        img.src = list[k].src;
+        return;
       }
+      slot.setAttribute('data-done', '1');
+      if (img.parentNode) { img.parentNode.removeChild(img); }
     }
+    img.addEventListener('error', function () {
+      if (img.getAttribute('data-remote')) { wikiBroken = true; }
+      next();
+    });
+    slot.appendChild(img);
+    next();
   }
 
   function loadIcons() {
-    if (!window.fetch) { return; }
-    fetch('icons/index.json').then(function (r) { return r.ok ? r.json() : {}; }).then(function (map) {
-      iconFiles = map && typeof map === 'object' ? map : {};
+    if (!window.fetch) { fillIcons(); return; }
+    function read(url) { return fetch(url).then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; }); }
+    Promise.all([read('icons/index.json'), read('wiki/index.json')]).then(function (maps) {
+      botFiles = maps[0] && typeof maps[0] === 'object' ? maps[0] : {};
+      wikiFiles = maps[1] && typeof maps[1] === 'object' ? maps[1] : {};
+      var spent = document.querySelectorAll('.ico[data-done]');   // slots that ran out of pictures before these lists arrived
+      for (var i = 0; i < spent.length; i++) { spent[i].removeAttribute('data-done'); }
       fillIcons();
-    }).catch(function () { /* no icons folder: text only */ });
+    });
   }
 
   // ---- tiny DOM helpers ------------------------------------------------------------------------
@@ -162,8 +210,11 @@
   function savedTab() {
     try { return window.sessionStorage.getItem(TAB_KEY); } catch (e) { return null; }
   }
-  function rememberTab(id) {
+  // The address follows the tab only once the reader has picked one. Writing it while the page loads would make the browser
+  // scroll to that part as if a link had been followed, hiding the top of the page.
+  function rememberTab(id, userDriven) {
     try { window.sessionStorage.setItem(TAB_KEY, id); } catch (e) { /* private window: the tab is just not remembered */ }
+    if (!userDriven) { return; }
     try { if (window.history && history.replaceState) { history.replaceState(null, '', '#' + id); } } catch (e) { /* ignore */ }
   }
 
@@ -177,7 +228,7 @@
       tab.tabIndex = on ? 0 : -1;
       if (on && userDriven && tab.scrollIntoView) { tab.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
     });
-    rememberTab(id);
+    rememberTab(id, userDriven);
     if (userDriven) {
       var nav = document.getElementById('nav');
       var top = document.getElementById('sheet').getBoundingClientRect().top + window.pageYOffset - nav.offsetHeight - 12;
@@ -247,7 +298,28 @@
       el('div', { class: 'grid two' }, [
         field('Name', name, 'A new name. A character that already exists cannot be imported over.'),
         field('Portrait link (optional)', avatar, 'A direct link to an image, starting with https://.')
-      ])
+      ]),
+      portraitSizeControl()
+    ]);
+  }
+
+  // Fixed steps, so the card looks the same for everyone: the picture keeps its own shape and only its width changes.
+  function portraitSizeControl() {
+    var group = el('div', { class: 'segments wide', role: 'radiogroup', 'aria-label': 'Portrait size' });
+    PORTRAIT_SIZES.forEach(function (option) {
+      var input = el('input', { type: 'radio', name: 'portrait-size', value: option.id, id: nextId('portrait') });
+      input.checked = option.id === portraitSize;
+      input.addEventListener('change', function () {
+        portraitSize = option.id;
+        try { window.localStorage.setItem(PORTRAIT_KEY, portraitSize); } catch (e) { /* not kept in this browser */ }
+        paintPortraitSize();
+      });
+      group.appendChild(el('label', { class: 'segment', for: input.id, title: option.percent + '% of the card' }, [input, el('span', { text: option.label })]));
+    });
+    return el('div', { class: 'field portrait-size' }, [
+      el('span', { class: 'label-like', text: 'Portrait size on the card' }),
+      group,
+      el('p', { class: 'note', text: 'The picture keeps its own shape, so a tall one stays tall. This only changes how wide it shows here; the bot is not told.' })
     ]);
   }
 
@@ -1159,57 +1231,125 @@
     return frag;
   }
 
-  var GROUP_TITLES = { keyword: 'Keyword statuses', buff: 'Buffs', debuff: 'Debuffs', other: 'Other' };
-  var TONE_TITLES = { positive: 'Positive', negative: 'Negative', neutral: 'Neutral' };
-
+  // The status list reads the same way for every status: WHEN it acts, what it DOES, THEN what happens to it. Colour says the rest
+  // (see colourKey). The bot's full wording sits in one fold-out at the end, so the page itself stays short.
   function buildReference() {
-    var legend = el('div', { class: 'legend' }, [
-      el('h3', { text: 'What the colours mean' }),
-      el('p', { class: 'note', text: 'These are the colours the Limbus Company wiki uses. In a skill preview the tag at the start of a line is coloured by when it happens, and a status by what kind of effect it is.' }),
-      el('ul', { class: 'legend-list' }, [
-        legendItem('pv-tag pv-use', '[On Use]', 'when the skill is used'),
-        legendItem('pv-tag pv-hit', '[On Hit]', 'every other timing: a hit, a crit, the start or end of a turn'),
-        legendItem('pv-tag pv-clashwin', '[Clash Win]', 'the clash was won'),
-        legendItem('pv-tag pv-clashlose', '[Clash Lose]', 'the clash was lost'),
-        legendItem('pv-tag pv-flag', '[Counter]', 'a skill type tag, such as Guard or Evade'),
-        legendItem('pv-word pv-tone-positive', 'Poise', 'a positive effect (yellow)'),
-        legendItem('pv-word pv-tone-negative', 'Burn', 'a negative effect (red)'),
-        legendItem('pv-word pv-tone-neutral', 'Charge', 'a neutral effect (brown)')
-      ]),
-      el('h3', { text: 'Resistances' }),
-      el('ul', { class: 'legend-list' }, [
-        legendItem('res-tag res-fatal', 'Fatal x1.5 or more', 'takes far more damage'),
-        legendItem('res-tag res-weak', 'Weak x1.25', 'takes more damage'),
-        legendItem('res-tag res-normal', 'Normal x1', 'takes the usual damage'),
-        legendItem('res-tag res-endure', 'Endure x0.75', 'takes less damage'),
-        legendItem('res-tag res-ineffective', 'Ineffective x0.5', 'takes half damage')
-      ]),
-      el('p', { class: 'note', text: 'The Sin colours on the frames and name plates come from the wiki too. Envy was on neither page checked, so its purple is a guess.' })
-    ]);
-    var groups = {};
-    R.statusGuide.forEach(function (s) { (groups[s.group] = groups[s.group] || []).push(s); });
-    var kids = [legend, el('div', { class: 'ref-intro' }, [richText(R.stackingNote)])];
-    Object.keys(GROUP_TITLES).forEach(function (g) {
-      if (!groups[g]) { return; }
-      kids.push(el('h3', { text: GROUP_TITLES[g] }));
-      kids.push(el('div', { class: 'status-grid' }, groups[g].map(statusCard)));
+    var byKey = {};
+    R.statusGuide.forEach(function (s) { byKey[s.key] = s; });
+    var paired = {};
+    R.statusPairs.forEach(function (p) { [p.up, p.down].concat(p.downExtra || []).forEach(function (k) { paired[k] = true; }); });
+    var keywords = R.statusGuide.filter(function (s) { return s.group === 'keyword'; });
+    var others = R.statusGuide.filter(function (s) { return s.group !== 'keyword' && !paired[s.key]; });
+
+    var kids = [
+      colourKey(),
+      el('p', { class: 'st-rule', text: R.potencyCount }),
+      el('h3', { text: 'Keyword statuses' }),
+      statusTable(keywords),
+      el('h3', { text: 'Up and down, this turn only' }),
+      el('p', { class: 'note', text: 'Each row is one thing that can go up (yellow) or down (red). Everything here is gone at turn end.' }),
+      pairTable(byKey),
+      el('h3', { text: 'Other statuses' }),
+      statusTable(others),
+      fullRules(R.statusGuide.filter(function (s) { return !/_fragility$/.test(s.key); }))
+    ];
+    return section('Status effects', 'Every status is read the same way: when it acts, what it does, then what happens to it.', kids);
+  }
+
+  function colourKey() {
+    var key = R.colorKey;
+    var tones = key.tones.map(function (t) {
+      return el('li', { class: 'ck-item tone-' + t.tone }, [
+        el('i', { class: 'ck-swatch', 'aria-hidden': 'true' }),
+        el('span', {}, [el('b', { text: t.color }), ' ' + t.means]),
+        el('span', { class: 'ck-hint', text: t.hint })
+      ]);
     });
-    return section('Status effects', 'Every status the bot knows, in the bot\'s own words. Skills hand them out on a coin or in a trigger line.', kids);
+    var sins = key.sins.map(function (s) {
+      return el('li', { class: 'ck-item pv-sin-' + s.sin }, [
+        el('i', { class: 'ck-swatch', 'aria-hidden': 'true' }),
+        el('span', {}, [icon('sin_' + s.sin), el('b', { text: s.color }), ' ', icon(s.status), E.capitalize(s.status)]),
+        el('span', { class: 'ck-hint', text: s.hint })
+      ]);
+    });
+    return el('div', { class: 'legend' }, [
+      el('h3', { text: 'What the colours say' }),
+      el('p', { class: 'note', text: 'The name of a status is coloured by what it does to you.' }),
+      el('ul', { class: 'ck-list' }, tones),
+      el('p', { class: 'note', text: 'The small chip beside a keyword status is coloured by its Sin, and each colour suits the status.' }),
+      el('ul', { class: 'ck-list' }, sins),
+      el('details', { class: 'st-more' }, [
+        el('summary', { text: 'Colours in the skill preview and resistances' }),
+        el('ul', { class: 'legend-list' }, [
+          legendItem('pv-tag pv-use', '[On Use]', 'when the skill is used'),
+          legendItem('pv-tag pv-hit', '[On Hit]', 'every other timing'),
+          legendItem('pv-tag pv-clashwin', '[Clash Win]', 'the clash was won'),
+          legendItem('pv-tag pv-clashlose', '[Clash Lose]', 'the clash was lost'),
+          legendItem('pv-tag pv-flag', '[Counter]', 'a skill type tag, such as Guard or Evade'),
+          legendItem('res-tag res-fatal', 'Fatal x1.5 or more', 'takes far more damage'),
+          legendItem('res-tag res-weak', 'Weak x1.25', 'takes more damage'),
+          legendItem('res-tag res-normal', 'Normal x1', 'takes the usual damage'),
+          legendItem('res-tag res-endure', 'Endure x0.75', 'takes less damage'),
+          legendItem('res-tag res-ineffective', 'Ineffective x0.5', 'takes half damage')
+        ])
+      ])
+    ]);
   }
 
   function legendItem(cls, sample, what) {
     return el('li', {}, [el('span', { class: cls, text: sample }), ' ' + what]);
   }
 
-  function statusCard(s) {
-    var name = el('span', { class: 'st-name tone-' + s.tone }, [icon(s.key), s.title]);
-    var chips = el('span', { class: 'st-chips' }, [el('span', { class: 'st-tone tone-' + s.tone, text: TONE_TITLES[s.tone] })]);
-    if (s.sin) { chips.appendChild(el('span', { class: 'st-sin pv-sin-' + s.sin, text: E.capitalize(s.sin) })); }
-    return el('article', { class: 'status-card' + (s.sin ? ' pv-sin-' + s.sin : '') }, [
-      el('div', { class: 'st-head' }, [name, chips]),
-      el('p', { class: 'st-sum', text: s.summary }),
-      el('details', { class: 'st-more' }, [el('summary', { text: 'How it works' }), el('div', {}, [richText(s.body)])])
+  function statusName(s) { return el('span', { class: 'st-name tone-' + s.tone }, [icon(s.key), s.title]); }
+
+  // One row per status: name (and Sin chip), then the same three slots every time.
+  function statusTable(list) {
+    var head = el('tr', {}, ['Status', 'When', 'Does', 'Then'].map(function (h) { return el('th', { scope: 'col', text: h }); }));
+    var rows = list.map(function (s) {
+      var first = el('th', { scope: 'row', class: 'st-first' }, [statusName(s)]);
+      if (s.sin) { first.appendChild(el('span', { class: 'st-sin' }, [icon('sin_' + s.sin), E.capitalize(s.sin)])); }
+      return el('tr', { class: 'st-row' + (s.sin ? ' pv-sin-' + s.sin : '') }, [
+        first,
+        el('td', { 'data-label': 'When', text: s.quick.when }),
+        el('td', { 'data-label': 'Does', text: s.quick.does }),
+        el('td', { 'data-label': 'Then', text: s.quick.then })
+      ]);
+    });
+    return el('div', { class: 'st-scroll' }, [el('table', { class: 'st-table' }, [el('thead', {}, [head]), el('tbody', {}, rows)])]);
+  }
+
+  // Opposites side by side: learn one, and you know the other.
+  function pairTable(byKey) {
+    var head = el('tr', {}, [
+      el('th', { scope: 'col', text: 'Of' }),
+      el('th', { scope: 'col', class: 'st-up', text: 'Up' }),
+      el('th', { scope: 'col', class: 'st-down', text: 'Down' })
     ]);
+    var rows = R.statusPairs.map(function (p) {
+      return el('tr', { class: 'st-row' }, [
+        el('th', { scope: 'row', class: 'st-first', text: p.axis }),
+        pairCell(byKey[p.up], 'Up', []),
+        pairCell(byKey[p.down], 'Down', (p.downExtra || []).map(function (k) { return byKey[k]; }))
+      ]);
+    });
+    return el('div', { class: 'st-scroll' }, [el('table', { class: 'st-table st-pairs' }, [el('thead', {}, [head]), el('tbody', {}, rows)])]);
+  }
+
+  function pairCell(s, side, extra) {
+    var cell = el('td', { 'data-label': side }, [statusName(s), el('span', { class: 'st-does', text: s.quick.does })]);
+    if (extra.length) {
+      var line = el('span', { class: 'st-extra' }, ['Same, one damage type: ']);
+      extra.forEach(function (x, i) { line.appendChild(el('span', { class: 'st-name tone-' + x.tone }, [icon(x.key), x.title.replace(' Fragility', '')])); if (i < extra.length - 1) { line.appendChild(document.createTextNode(' ')); } });
+      cell.appendChild(line);
+    }
+    return cell;
+  }
+
+  function fullRules(list) {
+    var body = el('div', { class: 'st-full-body' }, list.map(function (s) {
+      return el('div', { class: 'st-full-item' }, [el('h4', {}, [statusName(s)]), richText(s.body)]);
+    }));
+    return el('details', { class: 'st-full' }, [el('summary', { text: 'Full rules, in the same words as /help in Discord' }), body]);
   }
 
   // ---- the card -----------------------------------------------------------------------------------------
@@ -1220,8 +1360,8 @@
     var card = document.getElementById('card');
     card.textContent = '';
     var portraitImg = el('img', { alt: '', referrerpolicy: 'no-referrer', hidden: true });
-    portraitImg.addEventListener('error', function () { portraitImg.hidden = true; cardParts.initial.hidden = false; });
-    portraitImg.addEventListener('load', function () { portraitImg.hidden = false; cardParts.initial.hidden = true; });
+    portraitImg.addEventListener('error', function () { portraitImg.hidden = true; cardParts.initial.hidden = false; cardParts.portrait.classList.add('empty'); });
+    portraitImg.addEventListener('load', function () { portraitImg.hidden = false; cardParts.initial.hidden = true; cardParts.portrait.classList.remove('empty'); });
     cardParts.img = portraitImg;
     cardParts.initial = el('span', { class: 'initial', 'aria-hidden': 'true', text: '?' });
     cardParts.level = el('span', { class: 'level' });
@@ -1243,7 +1383,8 @@
     cardParts.copy.addEventListener('click', copyCode);
     cardParts.jump = document.getElementById('jump');
 
-    card.appendChild(el('div', { class: 'portrait' }, [cardParts.initial, portraitImg, cardParts.level]));
+    cardParts.portrait = el('div', { class: 'portrait empty' }, [cardParts.initial, portraitImg, cardParts.level]);
+    card.appendChild(cardParts.portrait);
     card.appendChild(el('div', { class: 'plate' }, [cardParts.name, cardParts.sub]));
     card.appendChild(el('div', { class: 'budget' }, [cardParts.coins, cardParts.bpText]));
     card.appendChild(cardParts.stats);
@@ -1256,6 +1397,9 @@
       cardParts.codeInfo,
       cardParts.steps
     ]));
+    // "Load a code" and "Start over" live under the code, where a code is made and used.
+    var tools = document.getElementById('tools');
+    if (tools) { card.appendChild(tools); }
   }
 
   function statLine(label, value, iconName) { return [el('dt', {}, [iconName ? icon(iconName) : null, label]), el('dd', { text: value })]; }
@@ -1274,6 +1418,7 @@
       cardParts.img.removeAttribute('src');
       cardParts.img.hidden = true;
       cardParts.initial.hidden = false;
+      cardParts.portrait.classList.add('empty');
     }
     var skills = state.skills.length, passives = state.passives.length;
     cardParts.sub.textContent = skills + (skills === 1 ? ' skill' : ' skills') + (passives ? ', ' + passives + (passives === 1 ? ' passive' : ' passives') : '');
@@ -1386,6 +1531,19 @@
 
   // ---- saving -------------------------------------------------------------------------------------------------------
 
+  function loadPortraitSize() {
+    try {
+      var id = window.localStorage.getItem(PORTRAIT_KEY);
+      if (PORTRAIT_SIZES.some(function (o) { return o.id === id; })) { return id; }
+    } catch (e) { /* no storage: the default is used */ }
+    return 'full';
+  }
+  function paintPortraitSize() {
+    var option = PORTRAIT_SIZES.filter(function (o) { return o.id === portraitSize; })[0] || PORTRAIT_SIZES[PORTRAIT_SIZES.length - 1];
+    var card = document.getElementById('card');
+    if (card) { card.style.setProperty('--pw', option.percent + '%'); }
+  }
+
   function loadSaved() {
     try {
       var text = window.localStorage.getItem(SAVE_KEY);
@@ -1426,7 +1584,7 @@
     resetButton.textContent = 'Start over';
   }
 
-  // ---- header buttons -----------------------------------------------------------------------------------------------------
+  // ---- load and start over -----------------------------------------------------------------------------------------------------
 
   var resetButton = document.getElementById('reset');
   resetButton.addEventListener('click', function () {
@@ -1457,6 +1615,7 @@
   });
 
   buildCard();
+  paintPortraitSize();
   build();
   update();
   loadIcons();

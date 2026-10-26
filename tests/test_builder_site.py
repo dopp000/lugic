@@ -222,6 +222,53 @@ class StatusGuide(unittest.TestCase):
         self.assertNotIn("sin", by_key["haste"])
 
 
+class StatusShortForm(unittest.TestCase):
+    """The site shows each status in three short slots (when, does, then). They must stay short, and must not say anything the full text does not."""
+
+    def setUp(self):
+        self.rules = builder_rules.rules()
+        self.guide = {s["key"]: s for s in self.rules["statusGuide"]}
+
+    def test_every_status_has_the_three_short_slots(self):
+        for key, status in self.guide.items():
+            with self.subTest(status=key):
+                self.assertEqual(sorted(status["quick"]), ["does", "then", "when"])
+                for slot, text in status["quick"].items():
+                    self.assertTrue(text.strip(), slot)
+                    self.assertLessEqual(len(text), 48, f"{key} {slot} is too long to scan")
+
+    def test_every_number_in_the_short_form_is_in_the_full_text(self):
+        for key, status in self.guide.items():
+            full = set(re.findall(r"\d+", status["summary"] + " " + status["body"]))
+            for slot, text in status["quick"].items():
+                for number in re.findall(r"\d+", text):
+                    with self.subTest(status=key, slot=slot, number=number):
+                        self.assertIn(number, full)
+
+    def test_each_status_is_listed_once_as_keyword_pair_or_other(self):
+        pair_keys = []
+        for pair in self.rules["statusPairs"]:
+            pair_keys += [pair["up"], pair["down"]] + pair.get("downExtra", [])
+            self.assertEqual(self.guide[pair["up"]]["tone"], "positive", pair)
+            self.assertEqual(self.guide[pair["down"]]["tone"], "negative", pair)
+        self.assertEqual(len(pair_keys), len(set(pair_keys)))
+        for key in pair_keys:
+            self.assertIn(key, self.guide)
+            self.assertNotEqual(self.guide[key]["group"], "keyword")
+
+    def test_the_colour_key_covers_every_tone_and_every_keyword_sin(self):
+        key = self.rules["colorKey"]
+        self.assertEqual({t["tone"] for t in key["tones"]}, {"positive", "negative", "neutral"})
+        self.assertEqual({s["status"]: s["sin"] for s in key["sins"]},
+                         {k: self.guide[k]["sin"] for k, s in self.guide.items() if s["group"] == "keyword"})
+        for entry in key["tones"] + key["sins"]:
+            self.assertTrue(entry["color"] and entry["hint"], entry)
+
+    def test_the_potency_and_count_line_agrees_with_the_bot(self):
+        self.assertIn("99", self.rules["potencyCount"])
+        self.assertIn("99", self.rules["stackingNote"])
+
+
 class SkillExamples(unittest.TestCase):
     def test_every_example_skill_is_a_valid_build_for_a_starting_character(self):
         for item in builder_rules.SKILL_EXAMPLES:
@@ -417,6 +464,55 @@ class WikiLook(unittest.TestCase):
         for needed in ("aria-selected", "aria-controls", "ArrowRight", "ArrowLeft", "Home", "End", "hashchange"):
             self.assertIn(needed, self.app, needed)
         self.assertIn('.tab[aria-selected="true"]', self.css)
+
+
+class PageShape(unittest.TestCase):
+    """What the page is made of: no header, a portrait that keeps its shape, and the wiki's font shipped with it."""
+
+    @classmethod
+    def setUpClass(cls):
+        folder = os.path.join(ROOT, "docs", "builder")
+
+        def read(name):
+            with open(os.path.join(folder, name), encoding="utf-8") as handle:
+                return handle.read()
+
+        cls.folder, cls.html, cls.css, cls.app, cls.engine = folder, read("index.html"), read("style.css"), read("app.js"), read("engine.js")
+
+    def test_the_page_has_no_header_and_keeps_load_and_start_over(self):
+        self.assertNotIn("<header", self.html)
+        self.assertIn('<h1 class="sr-only">', self.html)      # still named for screen readers and the browser tab
+        for needed in ('id="loader"', 'id="loader-go"', 'id="reset"', 'id="tools"'):
+            self.assertIn(needed, self.html)
+        self.assertIn("getElementById('tools')", self.app)    # moved under the code in the card
+        self.assertLess(self.html.index('<nav class="tabs"'), self.html.index('<main class="layout"'))
+
+    def test_the_portrait_keeps_the_pictures_own_shape(self):
+        rule = re.search(r"\.portrait img \{([^}]*)\}", self.css).group(1)
+        self.assertIn("height: auto", rule)
+        self.assertNotIn("cover", rule)
+        self.assertIn("var(--pw", rule)
+
+    def test_the_portrait_sizes_are_fixed_steps(self):
+        steps = re.findall(r"\{ id: '(\w+)', label: '(\w+)', percent: (\d+) \}", self.app)
+        self.assertEqual([(i, l) for i, l, _ in steps], [("small", "Small"), ("medium", "Medium"), ("large", "Large"), ("full", "Full")])
+        percents = [int(p) for _, _, p in steps]
+        self.assertEqual(percents, sorted(percents))
+        self.assertEqual(percents[-1], 100)
+        self.assertNotIn("portrait", re.search(r"function toSpec\(.*?\n  \}", self.engine, re.S).group(0))   # not part of the code
+
+    def test_the_wiki_font_ships_with_the_page(self):
+        for name in ("nunito-latin.woff2", "nunito-latin-ext.woff2", "Nunito-OFL.txt"):
+            self.assertGreater(os.path.getsize(os.path.join(self.folder, "fonts", name)), 1000, name)
+        self.assertIn("fonts/nunito-latin.woff2", self.css)
+        self.assertRegex(self.css, r'--font:\s*"Nunito"')
+
+    def test_missing_icon_folders_do_not_break_the_page(self):
+        # both lists are optional: a failed fetch becomes an empty list, and a slot can name a fallback ("coin coin_heads")
+        self.assertIn("icons/index.json", self.app)
+        self.assertIn("wiki/index.json", self.app)
+        self.assertIn(".catch(function () { return {}; })", self.app)
+        self.assertIn("split(' ')", self.app)
 
 
 class Templates(unittest.TestCase):

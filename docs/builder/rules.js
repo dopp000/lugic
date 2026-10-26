@@ -6,6 +6,72 @@
       "single": 0.4
     },
     "codeVersion": 1,
+    "colorKey": {
+      "sins": [
+        {
+          "color": "Red",
+          "hint": "fire, anger",
+          "sin": "wrath",
+          "status": "burn"
+        },
+        {
+          "color": "Orange",
+          "hint": "blood, heat",
+          "sin": "lust",
+          "status": "bleed"
+        },
+        {
+          "color": "Yellow",
+          "hint": "caution, shaking ground",
+          "sin": "sloth",
+          "status": "tremor"
+        },
+        {
+          "color": "Green",
+          "hint": "bursting, rot",
+          "sin": "gluttony",
+          "status": "rupture"
+        },
+        {
+          "color": "Teal",
+          "hint": "cold, deep water",
+          "sin": "gloom",
+          "status": "sinking"
+        },
+        {
+          "color": "Blue",
+          "hint": "calm, steady",
+          "sin": "pride",
+          "status": "poise"
+        },
+        {
+          "color": "Purple",
+          "hint": "stored energy, jealousy",
+          "sin": "envy",
+          "status": "charge"
+        }
+      ],
+      "tones": [
+        {
+          "color": "Yellow",
+          "hint": "gold: reward, energy",
+          "means": "Helps you",
+          "tone": "positive"
+        },
+        {
+          "color": "Red",
+          "hint": "red: danger, blood, stop",
+          "means": "Hurts you",
+          "tone": "negative"
+        },
+        {
+          "color": "Brown",
+          "hint": "brown: plain, stored, waiting",
+          "means": "Neither",
+          "tone": "neutral"
+        }
+      ]
+    },
     "defense": {
       "archetypes": {
         "clashable_counter": 7,
@@ -2588,6 +2654,7 @@
         }
       ]
     },
+    "potencyCount": "Potency is how strong, Count is how many times or how long. Gaining the same status again adds to both. Potency stops at 99.",
     "power": {
       "base": 6,
       "costs": [
@@ -2842,6 +2909,11 @@
         "body": "At the end of the turn, take fixed damage by the effect's **Potency**, then reduce its **Count** by 1. At 0 Count it is gone. Shield soaks the damage first.",
         "group": "keyword",
         "key": "burn",
+        "quick": {
+          "does": "Take Potency damage",
+          "then": "Count −1",
+          "when": "Turn end"
+        },
         "sin": "wrath",
         "summary": "Damage to you at turn end, then it fades.",
         "title": "Burn",
@@ -2851,6 +2923,11 @@
         "body": "When using an attack skill, take fixed damage by the effect's **Potency** for every coin in that skill, then reduce its **Count** by 1. Defense skills (Guard, Counter and so on) don't count as attacking.",
         "group": "keyword",
         "key": "bleed",
+        "quick": {
+          "does": "Take Potency damage per coin",
+          "then": "Count −1",
+          "when": "You attack"
+        },
         "sin": "lust",
         "summary": "Hurts you whenever you attack, then it fades.",
         "title": "Bleed",
@@ -2860,6 +2937,11 @@
         "body": "Tremor does nothing alone. When a skill with a **[Tremor Burst]** line hits a target holding Tremor, raise the target's Stagger thresholds by the effect's **Potency** in percentage points, so they Stagger sooner. Then reduce its **Count** by 1.",
         "group": "keyword",
         "key": "tremor",
+        "quick": {
+          "does": "Stagger sooner, +Potency%",
+          "then": "Count −1",
+          "when": "Tremor Burst hits you"
+        },
         "sin": "sloth",
         "summary": "Tremor Burst makes the target easier to Stagger.",
         "title": "Tremor",
@@ -2869,6 +2951,11 @@
         "body": "When hit by a coin, take extra fixed damage by the effect's **Potency**, then reduce its **Count** by 1. The extra damage is capped at 10% of your max HP per coin, so a huge stack can't one-shot you.",
         "group": "keyword",
         "key": "rupture",
+        "quick": {
+          "does": "Extra Potency damage, up to 10% of max HP",
+          "then": "Count −1",
+          "when": "A coin hits you"
+        },
         "sin": "gluttony",
         "summary": "Hits on you deal extra fixed damage.",
         "title": "Rupture",
@@ -2878,6 +2965,11 @@
         "body": "At the end of the turn, lose Sanity by the effect's **Potency**. It does not fade on its own. Low Sanity makes coins land tails more often and can lead to Low Morale and Panic.",
         "group": "keyword",
         "key": "sinking",
+        "quick": {
+          "does": "Lose Potency Sanity",
+          "then": "Does not fade alone",
+          "when": "Turn end"
+        },
         "sin": "gloom",
         "summary": "Drains your Sanity at turn end.",
         "title": "Sinking",
@@ -2887,6 +2979,11 @@
         "body": "Each coin has a **5% Crit chance per Potency** (up to 100%). A Crit deals **20% more damage** and reduces its **Count** by 1. Poise is gained on yourself.",
         "group": "keyword",
         "key": "poise",
+        "quick": {
+          "does": "5% Crit per Potency, a Crit deals 20% more",
+          "then": "Count −1 per Crit",
+          "when": "Each coin"
+        },
         "sin": "pride",
         "summary": "Chance to Crit.",
         "title": "Poise",
@@ -2896,6 +2993,11 @@
         "body": "Charge does nothing by itself. Skills and passives give it to you, and a **Consume** line spends it for a payoff, for example `Consume 3 Charge: Coin Power +2`. Count goes up to 20. At the end of the turn, reduce its **Count** by 1.",
         "group": "keyword",
         "key": "charge",
+        "quick": {
+          "does": "Spend it for a payoff",
+          "then": "Count −1 at turn end",
+          "when": "You Consume it"
+        },
         "sin": "envy",
         "summary": "A stored resource you spend with Consume.",
         "title": "Charge",
@@ -2905,6 +3007,11 @@
         "body": "Each coin gains Final Power by the effect's **Count** for one turn. Gained on yourself.",
         "group": "buff",
         "key": "power_up",
+        "quick": {
+          "does": "+Count Power",
+          "then": "Gone at turn end",
+          "when": "Each coin"
+        },
         "summary": "Stronger coins this turn.",
         "title": "Power Up",
         "tone": "positive"
@@ -2913,6 +3020,11 @@
         "body": "Every skill slot gains Speed by the effect's **Count** for one turn. Gained on yourself.",
         "group": "buff",
         "key": "haste",
+        "quick": {
+          "does": "+Count Speed",
+          "then": "Gone at turn end",
+          "when": "Each skill slot"
+        },
         "summary": "Faster this turn.",
         "title": "Haste",
         "tone": "positive"
@@ -2921,6 +3033,11 @@
         "body": "Deal **10% more damage per Count** for one turn, up to 10 Count. Damage Up, Damage Down, Fragile and Protection add together into one number.",
         "group": "buff",
         "key": "damage_up",
+        "quick": {
+          "does": "+10% per Count, up to 10",
+          "then": "Gone at turn end",
+          "when": "Damage you deal"
+        },
         "summary": "You deal more damage this turn.",
         "title": "Damage Up",
         "tone": "positive"
@@ -2929,6 +3046,11 @@
         "body": "Take **10% less damage per Count** for one turn, up to 10 Count.",
         "group": "buff",
         "key": "protection",
+        "quick": {
+          "does": "−10% per Count, up to 10",
+          "then": "Gone at turn end",
+          "when": "Damage you take"
+        },
         "summary": "You take less damage this turn.",
         "title": "Protection",
         "tone": "positive"
@@ -2937,6 +3059,11 @@
         "body": "Every skill slot loses Speed by the effect's **Potency** for one turn, down to a minimum of 0. It is wiped at turn end.",
         "group": "debuff",
         "key": "bind",
+        "quick": {
+          "does": "−Potency Speed",
+          "then": "Gone at turn end",
+          "when": "Each skill slot"
+        },
         "summary": "Makes you slower this turn.",
         "title": "Bind",
         "tone": "negative"
@@ -2945,6 +3072,11 @@
         "body": "Each coin loses Final Power by the effect's **Potency** for one turn, down to a minimum of 0.",
         "group": "debuff",
         "key": "power_down",
+        "quick": {
+          "does": "−Potency Power",
+          "then": "Gone at turn end",
+          "when": "Each coin"
+        },
         "summary": "Weakens every coin this turn.",
         "title": "Power Down",
         "tone": "negative"
@@ -2953,6 +3085,11 @@
         "body": "Take **10% more damage per Count** for one turn, up to 10 Count (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
         "group": "debuff",
         "key": "fragile",
+        "quick": {
+          "does": "+10% per Count, up to 10",
+          "then": "Gone at turn end",
+          "when": "Damage you take"
+        },
         "summary": "You take more damage this turn.",
         "title": "Fragile",
         "tone": "negative"
@@ -2961,6 +3098,11 @@
         "body": "Take **10% more damage per Count** for one turn, up to 10 Count (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
         "group": "debuff",
         "key": "slash_fragility",
+        "quick": {
+          "does": "+10% per Count, up to 10",
+          "then": "Gone at turn end",
+          "when": "Slash damage you take"
+        },
         "summary": "Fragile, but only against Slash hits. It adds to Fragile and to the other Fragility types.",
         "title": "Slash Fragility",
         "tone": "negative"
@@ -2969,6 +3111,11 @@
         "body": "Take **10% more damage per Count** for one turn, up to 10 Count (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
         "group": "debuff",
         "key": "pierce_fragility",
+        "quick": {
+          "does": "+10% per Count, up to 10",
+          "then": "Gone at turn end",
+          "when": "Pierce damage you take"
+        },
         "summary": "Fragile, but only against Pierce hits. It adds to Fragile and to the other Fragility types.",
         "title": "Pierce Fragility",
         "tone": "negative"
@@ -2977,6 +3124,11 @@
         "body": "Take **10% more damage per Count** for one turn, up to 10 Count (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
         "group": "debuff",
         "key": "blunt_fragility",
+        "quick": {
+          "does": "+10% per Count, up to 10",
+          "then": "Gone at turn end",
+          "when": "Blunt damage you take"
+        },
         "summary": "Fragile, but only against Blunt hits. It adds to Fragile and to the other Fragility types.",
         "title": "Blunt Fragility",
         "tone": "negative"
@@ -2985,6 +3137,11 @@
         "body": "Deal **10% less damage per Count** for one turn, up to 10 Count.",
         "group": "debuff",
         "key": "damage_down",
+        "quick": {
+          "does": "−10% per Count, up to 10",
+          "then": "Gone at turn end",
+          "when": "Damage you deal"
+        },
         "summary": "You deal less damage this turn.",
         "title": "Damage Down",
         "tone": "negative"
@@ -2993,6 +3150,11 @@
         "body": "Fix the Power of the **first X coins** of each skill you use to 0 for one turn, where X is the effect's **Count**.",
         "group": "debuff",
         "key": "paralyze",
+        "quick": {
+          "does": "First Count coins deal 0",
+          "then": "Gone at turn end",
+          "when": "Each skill you use"
+        },
         "summary": "Your first coins deal nothing this turn.",
         "title": "Paralyze",
         "tone": "negative"
@@ -3001,6 +3163,11 @@
         "body": "At the end of the turn, take fixed damage by the effect's **Count**, then **halve** the Count. It carries over across turns until it reaches 0.",
         "group": "debuff",
         "key": "poison",
+        "quick": {
+          "does": "Take Count damage",
+          "then": "Count halves",
+          "when": "Turn end"
+        },
         "summary": "Damage at turn end, then it halves.",
         "title": "Poison",
         "tone": "negative"
@@ -3009,6 +3176,11 @@
         "body": "You can't declare any skills, and anything you already declared is dropped when combat starts. It wears off after the round it stops you. If you get Immobilized during combat, you sit out the next round instead.",
         "group": "debuff",
         "key": "immobilized",
+        "quick": {
+          "does": "You can't act",
+          "then": "Ends after the round it stops you",
+          "when": "When you declare"
+        },
         "summary": "You can't act.",
         "title": "Immobilized",
         "tone": "negative"
@@ -3017,14 +3189,96 @@
         "body": "At **-30 Sanity** you are on **Low Morale**. It has no effect on its own, but some characters have skills that care about it. At **-45 Sanity** you **Panic**: you can't act next turn, then your Sanity resets to 0.",
         "group": "other",
         "key": "panic",
+        "quick": {
+          "does": "Can't act next turn",
+          "then": "Sanity resets to 0",
+          "when": "Sanity −45"
+        },
         "summary": "What happens at very low Sanity.",
         "title": "Low Morale and Panic",
         "tone": "negative"
       }
     ],
+    "statusPairs": [
+      {
+        "axis": "Coin Power",
+        "down": "power_down",
+        "up": "power_up"
+      },
+      {
+        "axis": "Speed",
+        "down": "bind",
+        "up": "haste"
+      },
+      {
+        "axis": "Damage you deal",
+        "down": "damage_down",
+        "up": "damage_up"
+      },
+      {
+        "axis": "Damage you take",
+        "down": "fragile",
+        "downExtra": [
+          "slash_fragility",
+          "pierce_fragility",
+          "blunt_fragility"
+        ],
+        "up": "protection"
+      }
+    ],
     "tags": {
       "max": 3,
       "maxLength": 30
+    },
+    "wikiImages": {
+      "bind": "https://limbuscompany.wiki.gg/images/Bind.png",
+      "bleed": "https://limbuscompany.wiki.gg/images/Bleed.png",
+      "blunt": "https://limbuscompany.wiki.gg/images/Blunt.png",
+      "blunt_fragility": "https://limbuscompany.wiki.gg/images/Blunt_Fragility.png",
+      "burn": "https://limbuscompany.wiki.gg/images/Burn.png",
+      "charge": "https://limbuscompany.wiki.gg/images/Charge.png",
+      "coin": "https://limbuscompany.wiki.gg/images/Coin.png",
+      "damage_down": "https://limbuscompany.wiki.gg/images/Damage_Down.png",
+      "damage_up": "https://limbuscompany.wiki.gg/images/Damage_Up.png",
+      "defense": "https://limbuscompany.wiki.gg/images/Defense.png",
+      "defense_level_down": "https://limbuscompany.wiki.gg/images/Defense_Level_Down.png",
+      "defense_level_up": "https://limbuscompany.wiki.gg/images/Defense_Level_Up.png",
+      "evade": "https://limbuscompany.wiki.gg/images/Evade.png",
+      "fragile": "https://limbuscompany.wiki.gg/images/Fragile.png",
+      "haste": "https://limbuscompany.wiki.gg/images/Haste.png",
+      "hp": "https://limbuscompany.wiki.gg/images/HP.png",
+      "immobilized": "https://limbuscompany.wiki.gg/images/Immobilized.png",
+      "offense_level_down": "https://limbuscompany.wiki.gg/images/Offense_Level_Down.png",
+      "offense_level_up": "https://limbuscompany.wiki.gg/images/Offense_Level_Up.png",
+      "panic": "https://limbuscompany.wiki.gg/images/General_Panic.png",
+      "paralyze": "https://limbuscompany.wiki.gg/images/Paralyze.png",
+      "pierce": "https://limbuscompany.wiki.gg/images/Pierce.png",
+      "pierce_fragility": "https://limbuscompany.wiki.gg/images/Pierce_Fragility.png",
+      "poise": "https://limbuscompany.wiki.gg/images/Poise.png",
+      "poison": "https://limbuscompany.wiki.gg/images/Poison.png",
+      "power_down": "https://limbuscompany.wiki.gg/images/Power_Down.png",
+      "power_up": "https://limbuscompany.wiki.gg/images/Power_Up.png",
+      "protection": "https://limbuscompany.wiki.gg/images/Protection.png",
+      "rupture": "https://limbuscompany.wiki.gg/images/Rupture.png",
+      "sanity": "https://limbuscompany.wiki.gg/images/Sanity.png",
+      "sin_envy": "https://limbuscompany.wiki.gg/images/LcbSinEnvy.png",
+      "sin_gloom": "https://limbuscompany.wiki.gg/images/LcbSinGloom.png",
+      "sin_gluttony": "https://limbuscompany.wiki.gg/images/LcbSinGluttony.png",
+      "sin_lust": "https://limbuscompany.wiki.gg/images/LcbSinLust.png",
+      "sin_pride": "https://limbuscompany.wiki.gg/images/LcbSinPride.png",
+      "sin_sloth": "https://limbuscompany.wiki.gg/images/LcbSinSloth.png",
+      "sin_wrath": "https://limbuscompany.wiki.gg/images/LcbSinWrath.png",
+      "sinking": "https://limbuscompany.wiki.gg/images/Sinking.png",
+      "skill_attack": "https://limbuscompany.wiki.gg/images/SkillAttack.png",
+      "skill_defense": "https://limbuscompany.wiki.gg/images/SkillDefense.png",
+      "slash": "https://limbuscompany.wiki.gg/images/Slash.png",
+      "slash_fragility": "https://limbuscompany.wiki.gg/images/Slash_Fragility.png",
+      "speed": "https://limbuscompany.wiki.gg/images/SPEED.png",
+      "tier_1": "https://limbuscompany.wiki.gg/images/Tier1.png",
+      "tier_2": "https://limbuscompany.wiki.gg/images/Tier2.png",
+      "tier_3": "https://limbuscompany.wiki.gg/images/Tier3.png",
+      "tier_4": "https://limbuscompany.wiki.gg/images/Tier4.png",
+      "tremor": "https://limbuscompany.wiki.gg/images/Tremor.png"
     }
   };
   if (typeof module === 'object' && module.exports) { module.exports = rules; }

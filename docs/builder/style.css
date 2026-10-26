@@ -1,4 +1,17 @@
 /* Lugic character builder. Limbus-style palette and one font family; colours are defined once in :root below. */
+
+/* The wiki's own body font is Nunito (named in its page head); it is an open font (SIL OFL, licence in fonts/), so it ships with the page.
+   Two files cover Latin and Latin extended; anything else falls back to the system font. */
+@font-face {
+  font-family: "Nunito"; font-style: normal; font-weight: 200 1000; font-display: swap;
+  src: url("fonts/nunito-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Nunito"; font-style: normal; font-weight: 200 1000; font-display: swap;
+  src: url("fonts/nunito-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 :root {
   color-scheme: dark;
   /* One place for every colour. The WIKI values below were read off the Limbus Company wiki's own pages (inline styles on the
@@ -52,8 +65,8 @@
   --positive-text: #ffd24a;
   --negative-text: #ff6a5c;
   --neutral-text: #c08a56;
-  /* one family everywhere; only the code box is monospaced */
-  --font: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* one family everywhere (the wiki's Nunito, with system fonts behind it); only the code box is monospaced */
+  --font: "Nunito", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
   --gutter: 16px;
 }
 
@@ -78,36 +91,29 @@ p { margin: 0; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 [hidden] { display: none !important; }
 
-/* ---- header -------------------------------------------------------------------------------- */
-.top { border-bottom: 1px solid var(--rule); background: linear-gradient(var(--panel), var(--ink)); position: relative; }
-.top::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 3px;
-  background: linear-gradient(90deg, var(--sin-wrath) 0 14.28%, var(--sin-lust) 0 28.56%, var(--sin-sloth) 0 42.84%, var(--sin-gluttony) 0 57.12%, var(--sin-gloom) 0 71.4%, var(--sin-pride) 0 85.68%, var(--sin-envy) 0); }
-.top h1 { display: flex; align-items: center; gap: 10px; }
-.top-inner {
-  max-width: 1180px; margin: 0 auto; padding: 20px var(--gutter);
-  display: flex; gap: 16px 32px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap;
-}
-.lede { color: var(--mist); margin-top: 4px; max-width: 46ch; }
-.top-actions { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
-
-.loader { position: relative; }
+/* ---- load a code and start over (they sit under the code in the card) ------------------------ */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; padding: 0 18px 18px; }
+.loader { flex: 0 0 auto; }
+.loader[open] { flex: 1 1 100%; }
 .loader summary {
   list-style: none; cursor: pointer; padding: 8px 14px; border: 1px solid var(--rule); border-radius: 6px;
   background: var(--panel); color: var(--text); min-height: 40px; display: inline-flex; align-items: center;
 }
 .loader summary::-webkit-details-marker { display: none; }
 .loader[open] summary { border-color: var(--gold-deep); }
-.loader-body {
-  position: absolute; right: 0; z-index: 5; width: min(420px, calc(100vw - 2 * var(--gutter))); margin-top: 8px;
-  padding: 14px; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px;
-  display: grid; gap: 10px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
-}
+.loader-body { margin-top: 8px; padding: 14px; background: var(--well); border: 1px solid var(--rule); border-radius: 8px; display: grid; gap: 10px; }
 .loader-body label { color: var(--mist); font-size: 0.92rem; }
+.lede { color: var(--mist); }
 
 /* ---- tabs: one part of the form at a time ----------------------------------------------------------- */
 .tabs {
-  position: sticky; top: 0; z-index: 6; display: flex; gap: 2px; overflow-x: auto; padding: 0 var(--gutter);
-  background: rgba(16, 13, 13, 0.95); border-bottom: 2px solid var(--wiki-bar); scrollbar-width: none;
+  position: sticky; top: 0; z-index: 6; display: flex; gap: 2px; overflow-x: auto; padding: 3px var(--gutter) 0;
+  background:
+    linear-gradient(90deg, var(--sin-wrath) 0 14.28%, var(--sin-lust) 0 28.56%, var(--sin-sloth) 0 42.84%, var(--sin-gluttony) 0 57.12%, var(--sin-gloom) 0 71.4%, var(--sin-pride) 0 85.68%, var(--sin-envy) 0) top / 100% 3px no-repeat,
+    rgba(16, 13, 13, 0.95);
+  border-bottom: 2px solid var(--wiki-bar); scrollbar-width: none;
+  min-height: 50px;   /* kept from the first paint, so filling in the tabs does not push the page down and make the browser scroll it */
 }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
@@ -270,6 +276,9 @@ input[type="range"]::-moz-range-thumb {
 .segment input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
 .segment span { display: grid; place-items: center; width: 40px; height: 40px; background: var(--well); color: var(--mist); border-left: 1px solid var(--rule); }
 .segment:first-child span { border-left: 0; }
+.segments.wide .segment span { width: auto; min-width: 64px; padding: 0 14px; font-size: 0.9rem; }
+.label-like { color: var(--mist); font-size: 0.92rem; }
+.portrait-size { display: grid; gap: 6px; margin-top: 12px; }
 .segment input:checked + span { background: var(--gold); color: var(--on-gold); font-weight: 700; }
 .segment input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: -3px; }
 .chip-burn { border-left-color: var(--sin-wrath); }
@@ -350,12 +359,14 @@ input[type="range"]::-moz-range-thumb {
 .msg.bad { color: var(--alert); }
 
 /* ---- the character card ------------------------------------------------------------------- */
+/* the picture keeps its own shape; --pw (set from the size choice on the Identity tab) is how much of the card's width it takes */
 .portrait {
-  position: relative; height: 190px; border-radius: 12px 12px 0 0; overflow: hidden;
+  position: relative; border-radius: 12px 12px 0 0; overflow: hidden;
   background: radial-gradient(120% 90% at 50% 0%, #3b2f2f, #151111 70%);
   display: grid; place-items: center;
 }
-.portrait img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.portrait.empty { height: 190px; }
+.portrait img { display: block; width: var(--pw, 100%); height: auto; max-height: min(70vh, 640px); object-fit: contain; }
 .initial { font-family: var(--font); font-weight: 700; font-size: 5rem; color: rgba(238, 206, 164, 0.3); }
 .level {
   position: absolute; top: 12px; left: 12px; padding: 2px 10px; border-radius: 999px; background: rgba(16, 13, 13, 0.85);
@@ -413,14 +424,13 @@ input[type="range"]::-moz-range-thumb {
 @media (max-width: 920px) {
   .layout { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .card { position: static; max-height: none; }   /* below the form: the tabs come first, and the bar at the bottom jumps here */
-  .portrait { height: 160px; }
+  .portrait.empty { height: 160px; }
   body { padding-bottom: 56px; }
   .jump {
     display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; padding: 14px var(--gutter); text-align: center;
     background: var(--panel); border-top: 1px solid var(--gold-deep); color: var(--gold); text-decoration: none; font-weight: 600;
   }
   .jump.bad { color: var(--alert); }
-  .loader-body { right: auto; left: 0; }
 }
 @media (max-width: 620px) {
   .grid.three, .grid.four, .grid.two, .passive-head { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
@@ -441,22 +451,56 @@ input[type="range"]::-moz-range-thumb {
 /* ---- status list and colour key ------------------------------------------------------------ */
 .legend { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid var(--rule); border-radius: 10px; background: rgba(21, 17, 17, 0.8); }
 .legend h3 { margin: 0; }
-.legend-list { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px 16px; font-size: 0.92rem; }
+.legend .note { margin: 4px 0 0; }
+.legend-list { margin: 8px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px 16px; font-size: 0.92rem; }
 .legend-list li { color: var(--mist); }
-.ref-intro { color: var(--mist); max-width: 70ch; }
-.ref-p { margin: 0 0 8px; }
-.status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.status-card { --sin: var(--rule); display: grid; gap: 6px; align-content: start; padding: 12px 14px; border: 1px solid var(--rule); border-left: 4px solid var(--sin); border-radius: 8px; background: rgba(21, 17, 17, 0.85); }
-.st-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; justify-content: space-between; }
-.st-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 1.02rem; }
+/* the colour key: a swatch, the colour word, what it means, and one short hint */
+.ck-list { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.ck-item { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 0 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 8px; background: rgba(16, 13, 13, 0.7); }
+.ck-swatch { width: 14px; height: 14px; border-radius: 50%; background: var(--swatch, var(--sin, var(--rule))); box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5); }
+.ck-hint { grid-column: 2; color: var(--mist); font-size: 0.82rem; }
+.ck-item .ico { margin: 0 3px 0 2px; vertical-align: -0.25em; }
+.ck-item.tone-positive { --swatch: var(--wiki-positive); } .ck-item.tone-negative { --swatch: var(--wiki-negative); } .ck-item.tone-neutral { --swatch: var(--wiki-neutral); }
+.ck-item.tone-positive b { color: var(--wiki-positive); } .ck-item.tone-negative b { color: var(--negative-text); } .ck-item.tone-neutral b { color: var(--neutral-text); }
+.st-rule { margin: 0; padding: 8px 12px; border-left: 3px solid var(--wiki-positive); background: rgba(21, 17, 17, 0.7); color: var(--text); }
+
+/* the status tables: the same columns every time, so the eye learns where to look */
+.st-scroll { overflow-x: auto; }
+.st-table { width: 100%; border-collapse: collapse; font-size: 0.94rem; }
+.st-table th, .st-table td { text-align: left; padding: 7px 10px; vertical-align: top; border-bottom: 1px solid var(--rule); }
+.st-table thead th { color: var(--mist); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; border-bottom: 2px solid var(--wiki-bar); white-space: nowrap; }
+.st-table thead th.st-up { color: var(--positive-text); } .st-table thead th.st-down { color: var(--negative-text); }
+.st-table tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+.st-first { white-space: nowrap; font-weight: 700; }
+.st-row.pv-sin-wrath .st-first, .st-row.pv-sin-lust .st-first, .st-row.pv-sin-sloth .st-first, .st-row.pv-sin-gluttony .st-first,
+.st-row.pv-sin-gloom .st-first, .st-row.pv-sin-pride .st-first, .st-row.pv-sin-envy .st-first { border-left: 4px solid var(--sin); }
+.st-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
 .st-name.tone-positive { color: var(--wiki-positive); } .st-name.tone-negative { color: var(--wiki-negative); } .st-name.tone-neutral { color: var(--wiki-neutral); }
-.st-chips { display: inline-flex; gap: 6px; }
-.st-tone, .st-sin { padding: 0 8px; border-radius: 999px; border: 1px solid var(--rule); font-size: 0.74rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--mist); }
-.st-tone.tone-positive { color: var(--positive-text); border-color: var(--wiki-positive); } .st-tone.tone-negative { color: var(--negative-text); border-color: var(--wiki-negative); } .st-tone.tone-neutral { color: var(--neutral-text); border-color: var(--wiki-neutral); }
-.st-sin { color: var(--text); border-color: var(--sin); }
-.st-sum { margin: 0; color: var(--text); }
+.st-sin { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--sin); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text); }
+.st-sin .ico img { width: 1.05em; height: 1.05em; }
+.st-pairs td { min-width: 190px; }
+.st-does { display: block; color: var(--text); font-weight: 400; margin-top: 2px; }
+.st-extra { display: block; margin-top: 4px; color: var(--mist); font-size: 0.84rem; }
+.st-extra .st-name { font-size: 0.84rem; margin-right: 2px; }
 .st-more summary { cursor: pointer; color: var(--mist); font-size: 0.88rem; min-height: 32px; display: flex; align-items: center; }
-.st-more div { padding-top: 6px; font-size: 0.92rem; color: var(--mist); }
+.st-full { border: 1px solid var(--rule); border-radius: 8px; background: rgba(21, 17, 17, 0.6); padding: 0 12px; }
+.st-full summary { cursor: pointer; color: var(--mist); min-height: 40px; display: flex; align-items: center; }
+.st-full-body { display: grid; gap: 10px; padding: 4px 0 12px; font-size: 0.92rem; color: var(--mist); }
+.st-full-item h4 { margin: 0 0 2px; font-size: 0.95rem; }
+.st-full-item .ref-p { margin: 0 0 4px; }
+.ref-p { margin: 0 0 8px; }
+@media (max-width: 620px) {
+  /* a narrow screen turns each row into a small card; the labels stay, so the pattern is still there */
+  .st-table, .st-table tbody, .st-table tr, .st-table td, .st-table th { display: block; }
+  .st-table thead { display: none; }
+  .st-table tr { padding: 8px 0; border-bottom: 1px solid var(--rule); }
+  .st-table th, .st-table td { border: 0; padding: 2px 4px; }
+  .st-table td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 3.6em; margin-right: 8px; color: var(--mist); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .st-pairs td { min-width: 0; }
+  .st-pairs td .st-name { margin-right: 6px; }
+  .st-pairs td .st-does { display: inline; }
+  .st-first { white-space: normal; }
+}
 
 /* resistances, in the wiki's words and colours */
 .res-tag { font-weight: 700; font-size: 0.9rem; }
