@@ -34,6 +34,13 @@
     return isInt(n) ? n : fallback;
   }
   function clamp(value, low, high) { return Math.min(Math.max(value, low), high); }
+  // The flavour text of a passive as it is kept in the code: line breaks made plain, each line trimmed, empty lines dropped, at most
+  // R.limits.passiveFlavour letters. '' for nothing. game/passives.py has the same function (clean_flavour) and a test feeds both the same texts.
+  function cleanFlavour(text) {
+    if (typeof text !== 'string') { return ''; }
+    var lines = text.replace(/\r\n?/g, '\n').trim().split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+    return lines.join('\n').slice(0, R.limits.passiveFlavour);
+  }
   function unique(list) { return list.filter(function (item, index) { return list.indexOf(item) === index; }); }
   function sum(list) { return list.reduce(function (a, b) { return a + b; }, 0); }
 
@@ -426,6 +433,9 @@
       lines.forEach(function (l) {
         if (l.length > R.limits.passiveLine) { list.push('A rule line is longer than ' + R.limits.passiveLine + ' characters.'); }
       });
+      if (typeof p.flavour === 'string' && p.flavour.trim().length > R.limits.passiveFlavour) {
+        list.push('The flavour text is longer than ' + R.limits.passiveFlavour + ' characters.');
+      }
       return list;
     });
     var passiveCount = [];
@@ -579,10 +589,13 @@
     var tags = (state.tags || []).map(function (t) { return t.split(/\s+/).filter(Boolean).join(' '); }).filter(Boolean);
     if (tags.length) { spec.tags = tags; }
     var passives = (state.passives || []).map(function (p) {
-      return {
+      var out = {
         name: String(p.name || '').trim(), kind: p.kind || 'passive', cost: intOr(p.cost, 1),
         lines: (p.lines || []).map(function (l) { return String(l).trim(); }).filter(Boolean)
       };
+      var flavour = cleanFlavour(p.flavour);
+      if (flavour) { out.flavour = flavour; }
+      return out;
     });
     if (passives.length) { spec.passives = passives; }
     if ((state.skills || []).length) { spec.skills = state.skills.map(skillToRaw); }
@@ -612,7 +625,7 @@
     if (Array.isArray(spec.tags)) { state.tags = spec.tags.map(String); }
     if (Array.isArray(spec.passives)) {
       state.passives = spec.passives.map(function (p) {
-        return { name: String(p.name || ''), kind: p.kind === 'support' ? 'support' : 'passive', cost: intOr(p.cost, 1), lines: (p.lines || []).map(String) };
+        return { name: String(p.name || ''), kind: p.kind === 'support' ? 'support' : 'passive', cost: intOr(p.cost, 1), lines: (p.lines || []).map(String), flavour: cleanFlavour(p.flavour) };
       });
     }
     if (Array.isArray(spec.skills)) { state.skills = spec.skills.map(rawToSkill); }
@@ -677,7 +690,7 @@
   return {
     rules: R, defaultState: defaultState, newSkill: newSkill, emptyCoin: emptyCoin,
     checkBuild: checkBuild, review: review, needsApproval: needsApproval,
-    toSpec: toSpec, fromSpec: fromSpec, encode: encode, decode: decode,
+    toSpec: toSpec, fromSpec: fromSpec, encode: encode, decode: decode, cleanFlavour: cleanFlavour,
     readTriggers: readTriggers, skillToRaw: skillToRaw, rawToSkill: rawToSkill,
     skillRankProblems: skillRankProblems, skillPowerProblem: skillPowerProblem, coinGrants: coinGrants,
     levelFor: levelFor, nextLevelAt: nextLevelAt, hpCost: hpCost, powerCost: powerCost, speedCost: speedCost,

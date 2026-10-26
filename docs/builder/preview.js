@@ -23,8 +23,33 @@
   // 1 to 3: more coins, a fancier frame.
   function tierFor(coins) { return coins >= 4 ? 3 : coins === 3 ? 2 : 1; }
 
-  // Which frame a skill gets: defense if it carries a defense tag, else the Sin of the status it leans on most.
+  // The frames that can be picked by hand, in the order the picker shows them: [{ sin, tier, label, file }]. Defense first, then the seven Sins.
+  var FRAME_LABELS = { def: 'Defense', wrath: 'Wrath', lust: 'Lust', sloth: 'Sloth', gluttony: 'Gluttony', gloom: 'Gloom', pride: 'Pride', envy: 'Envy' };
+  var FRAME_ORDER = ['def', 'wrath', 'lust', 'sloth', 'gluttony', 'gloom', 'pride', 'envy'];
+  function frameChoices() {
+    var out = [];
+    FRAME_ORDER.forEach(function (sin) {
+      (FRAME_TIERS[sin] || []).forEach(function (tier) {
+        out.push({ sin: sin, tier: tier, label: FRAME_LABELS[sin] + ' ' + tier, file: 'borders/' + sin + tier + '.png' });
+      });
+    });
+    return out;
+  }
+  // A frame picked by hand ({ sin, tier } on the skill), or null when the skill has none or it names a frame that does not exist.
+  // sin 'none' is the plain ring.
+  function pickedFrame(skill) {
+    var f = skill && skill.frame;
+    if (!f || typeof f !== 'object') { return null; }
+    if (f.sin === 'none') { return { sin: null, tier: 0, file: null, picked: true }; }
+    var tier = Math.floor(Number(f.tier));
+    if ((FRAME_TIERS[f.sin] || []).indexOf(tier) < 0) { return null; }
+    return { sin: f.sin, tier: tier, file: 'borders/' + f.sin + tier + '.png', picked: true };
+  }
+
+  // Which frame a skill gets: the one the player picked, else defense if it carries a defense tag, else the Sin of the status it leans on most.
   function frameOf(skill, coins, flagKeys) {
+    var chosen = pickedFrame(skill);
+    if (chosen) { return chosen; }
     var tier = tierFor(coins);
     var sin = null;
     if (DEFENSE_FLAGS.some(function (k) { return flagKeys.indexOf(k) >= 0; })) { sin = 'def'; tier = 1; }
@@ -47,7 +72,14 @@
     var have = FRAME_TIERS[sin] || [];
     var best = null;
     have.forEach(function (n) { if (n <= tier && (best === null || n > best)) { best = n; } });
-    return { sin: sin, tier: tier, file: best === null ? null : 'borders/' + sin + best + '.png' };
+    return { sin: sin, tier: best === null ? tier : best, file: best === null ? null : 'borders/' + sin + best + '.png' };
+  }
+
+  // The frame the page would pick on its own, whatever the player picked by hand.
+  function autoFrame(skill) {
+    var copy = {};
+    Object.keys(skill || {}).forEach(function (k) { if (k !== 'frame') { copy[k] = skill[k]; } });
+    return model(copy).frame;
   }
 
   // ---- words worth colouring ---------------------------------------------------------------------------------
@@ -163,23 +195,47 @@
   }
 
   // ---- what an underlined word says ----------------------------------------------------------------------------
-  // { title, icon, tone?, text, slots? } or null. A status says what the status list says (its sentence, then WHEN / DOES / THEN);
-  // damage types and stats use the glossary; a skill-type tag uses the picker's help line. kind is 'status', 'damage', 'stat' or 'flag'.
+  // { title, icon?, tone?, cls?, lines: [text], flavour? } or null. It is laid out like the wiki's own hover box: the name with its picture, then one
+  // "- line" for each thing it does. A status uses the bot's own text for it (the same text the status list has), split at the full stops, so the box
+  // and the bot cannot disagree; damage types and stats use the glossary; a timing uses the picker's help line; a skill-type tag its help.
+  // **word** in a line is bold. kind is 'status', 'damage', 'stat', 'flag' or 'timing'.
   var STAT_TITLES = { hp: 'HP' };
+  function sentences(text) {
+    // a full stop, a space and then a capital (or the start of **bold**, `code`, [Tag] or (...)) ends a sentence; "10% more" or "0.5x" does not
+    var out = [];
+    var rest = String(text).trim();
+    var end = /[.!?]\s+(?=[A-Z*`\[(])/;
+    var m;
+    while ((m = end.exec(rest)) !== null) {
+      out.push(rest.slice(0, m.index + 1).trim());
+      rest = rest.slice(m.index + m[0].length);
+    }
+    if (rest.trim()) { out.push(rest.trim()); }
+    return out;
+  }
+  function timingNamed(key) {
+    var found = null;
+    ((R.lines && R.lines.timings) || []).forEach(function (t) { if (t.key.toLowerCase() === String(key).toLowerCase()) { found = t; } });
+    return found;
+  }
   function definition(kind, key) {
     if (kind === 'status') {
       var s = (R.statusGuide || []).filter(function (x) { return x.key === key; })[0];
-      return s ? { title: s.title, icon: s.key, tone: s.tone, text: s.summary, slots: s.quick || null } : null;
+      return s ? { title: s.title, icon: s.key, tone: s.tone, lines: sentences(s.body) } : null;
     }
     if (kind === 'damage' || kind === 'stat') {
       var text = (R.glossary || {})[key];
-      return text ? { title: kind === 'damage' ? E.capitalize(key) : (STAT_TITLES[key] || E.title(key)), icon: key, text: text } : null;
+      return text ? { title: kind === 'damage' ? E.capitalize(key) : (STAT_TITLES[key] || E.title(key)), icon: key, lines: sentences(text) } : null;
     }
     if (kind === 'flag') {
       var canon = R.skills.flagTags[key] || key.replace(/ /g, '_');
       var help = R.lines.flagHelp || {};
       var name = Object.keys(help).filter(function (k) { return k.toLowerCase().replace(/ /g, '_') === canon; })[0];
-      return name ? { title: key.split(' ').map(E.capitalize).join(' '), tone: 'neutral', text: help[name] } : null;
+      return name ? { title: '[' + key.split(' ').map(E.capitalize).join(' ') + ']', cls: 'flag', lines: sentences(help[name]) } : null;
+    }
+    if (kind === 'timing') {
+      var t = timingNamed(key);
+      return t ? { title: '[' + t.key + ']', cls: timingClass(t.key), lines: sentences(t.help) } : null;
     }
     return null;
   }
@@ -232,11 +288,13 @@
 
   // ---- the picture inside the frame ----------------------------------------------------------------------------
   // art = { src, a (width / height), x, y, zoom }. At zoom 1 the picture just covers the frame's opening; x and y move it,
-  // as a fraction of the opening's size. Everything is relative, so the same numbers work at any size.
-  function clampArt(art) {
+  // as a fraction of the opening's width and height. Everything is relative, so the same numbers work at any size.
+  // `open` is the opening's width / height: 1 for a skill's roundish opening (the default), or the shape of a portrait frame.
+  function clampArt(art, open) {
+    var o = open > 0 ? open : 1;
     var a = art.a > 0 ? art.a : 1;
     var zoom = Math.min(ART_MAX_ZOOM, Math.max(1, Number(art.zoom) || 1));
-    var w = Math.max(1, a) * zoom, h = Math.max(1, 1 / a) * zoom;
+    var w = Math.max(1, a / o) * zoom, h = Math.max(1, o / a) * zoom;
     var maxX = Math.max(0, (w - 1) / 2), maxY = Math.max(0, (h - 1) / 2);
     return {
       src: art.src, a: a, zoom: zoom,
@@ -246,8 +304,8 @@
     };
   }
   // CSS percentages for the picture inside its opening.
-  function artStyle(art) {
-    var c = clampArt(art);
+  function artStyle(art, open) {
+    var c = clampArt(art, open);
     return { width: c.w * 100, height: c.h * 100, left: (0.5 - c.w / 2 + c.x) * 100, top: (0.5 - c.h / 2 + c.y) * 100 };
   }
   var ART_MAX_ZOOM = 4;
@@ -267,18 +325,19 @@
     return n;
   }
   // An underlined word can be pointed at for its definition; app.js shows it (see "definitions on hover" there). A word with no
-  // definition is not made pointable.
-  function pointable(n, kind, key) {
+  // definition is not made pointable. A word can also take the keyboard focus (focusable, the default) so the box shows for it too;
+  // a tag or a word in running text does not, so the page does not fill up with tab stops.
+  function pointable(n, kind, key, focusable) {
     if (!definition(kind, key)) { return n; }
     n.setAttribute('data-tip-kind', kind);
     n.setAttribute('data-tip-key', key);
-    n.setAttribute('tabindex', '0');
+    if (focusable !== false) { n.setAttribute('tabindex', '0'); }
     return n;
   }
   function roman(n) { return ['I', 'II', 'III', 'IV', 'V', 'VI'][n - 1] || String(n); }
 
-  function applyArt(img, art) {
-    var s = artStyle(art);
+  function applyArt(img, art, open) {
+    var s = artStyle(art, open);
     img.style.width = s.width + '%';
     img.style.height = s.height + '%';
     img.style.left = s.left + '%';
@@ -330,7 +389,8 @@
     tokens.forEach(function (t) {
       if (t.kind === 'tag') {
         var tag = node('span', 'pv-tag pv-' + t.cls, t.text);
-        if (t.cls === 'flag') { pointable(tag, 'flag', t.text.slice(1, -1).trim().toLowerCase()); }
+        var tagKey = t.text.slice(1, -1).trim().toLowerCase();
+        if (t.cls === 'flag') { pointable(tag, 'flag', tagKey); } else { pointable(tag, 'timing', tagKey, false); }
         into.appendChild(tag);
         into.appendChild(document.createTextNode(' '));
       }
@@ -344,6 +404,104 @@
         into.appendChild(span);
       }
     });
+  }
+
+  // ---- coloured words in running text ----------------------------------------------------------------------------
+  // Help lines, warnings and notes mention timings ("[On Kill]", "Before Use") and statuses. They take the colour and the hover they have in a
+  // rule line. Matching is exact on purpose: a timing is only found as the picker spells it, and a status as its title, so ordinary words are
+  // left alone. It reads the same lists as the rest of the page (the picker's timings, the status vocabulary), so nothing is listed twice.
+  var proseFind = null;
+  function getProse() {
+    if (proseFind) { return proseFind; }
+    function esc(t) { return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+    function longestFirst(list) { return list.slice().sort(function (a, b) { return b.length - a.length; }); }
+    var timings = ((R.lines && R.lines.timings) || []).map(function (t) { return t.key; });
+    var statuses = {};
+    var v = getVocab();
+    Object.keys(v.words).forEach(function (w) { if (v.words[w].kind === 'status') { statuses[E.title(v.words[w].key)] = v.words[w].key; } });
+    var names = Object.keys(statuses);
+    proseFind = {
+      statuses: statuses,
+      pattern: new RegExp('(\\[[^\\]\\n]{1,40}\\])|\\b(' + longestFirst(timings).map(esc).join('|') + ')\\b|\\b(' + longestFirst(names).map(esc).join('|') + ')\\b', 'g')
+    };
+    return proseFind;
+  }
+
+  // Splits running text into plain text, timings (bracketed or bare), skill-type tags and statuses: [{ kind: 'text'|'tag'|'timing'|'status', text, ... }].
+  function proseTokens(text) {
+    var f = getProse();
+    var out = [];
+    var last = 0;
+    var m;
+    var src = String(text === undefined || text === null ? '' : text);
+    f.pattern.lastIndex = 0;
+    while ((m = f.pattern.exec(src)) !== null) {
+      var token = null;
+      if (m[1]) {
+        var inner = m[1].slice(1, -1).trim();
+        if (timingNamed(inner)) { token = { kind: 'tag', text: m[1], cls: timingClass(inner), key: inner.toLowerCase() }; }
+        else if (Object.prototype.hasOwnProperty.call(R.skills.flagTags, inner.toLowerCase())) { token = { kind: 'tag', text: m[1], cls: 'flag', key: inner.toLowerCase() }; }
+      } else if (m[2]) { token = { kind: 'timing', text: m[2], cls: timingClass(m[2]), key: m[2].toLowerCase() }; }
+      else if (m[3]) { token = { kind: 'status', text: m[3], key: f.statuses[m[3]] }; }
+      if (!token) { continue; }
+      if (m.index > last) { out.push({ kind: 'text', text: src.slice(last, m.index) }); }
+      out.push(token);
+      last = m.index + m[0].length;
+    }
+    if (last < src.length) { out.push({ kind: 'text', text: src.slice(last) }); }
+    return out;
+  }
+
+  // Puts the text into `into` (an element or a fragment) with the timings and statuses coloured and pointable.
+  function renderProse(text, into) {
+    proseTokens(text).forEach(function (t) {
+      if (t.kind === 'text') { into.appendChild(document.createTextNode(t.text)); }
+      else if (t.kind === 'status') {
+        var tone = toneOf(t.key);
+        into.appendChild(pointable(node('span', 'pv-word pv-w-status pv-tone-' + tone, t.text), 'status', t.key, false));
+      } else {
+        var tag = node('span', 'pv-tag pv-' + t.cls, t.text);
+        pointable(tag, t.cls === 'flag' ? 'flag' : 'timing', t.key, false);
+        into.appendChild(tag);
+      }
+    });
+    return into;
+  }
+
+  // ---- a passive, laid out like the wiki's --------------------------------------------------------------------
+  // A name plate in the wiki's brown, the price, the rule lines, and, when the player wrote one, a flavour text: the brown italic line the wiki
+  // uses for the story behind a passive. A Support Passive gets the wiki's label bar above it. The flavour is part of the code, and the bot
+  // shows it in italics on the character sheet.
+  var FLAVOUR_MAX = R.limits.passiveFlavour;
+  // The flavour as paragraphs, one for each line the player wrote ([] when there is none). The cutting is engine.js's, the same one the code uses.
+  function flavourOf(text) {
+    var all = E.cleanFlavour(text);
+    return all ? all.split('\n') : [];
+  }
+  function passiveModel(p) {
+    var cost = Math.floor(Number(p.cost));
+    return {
+      name: String(p.name || '').trim() || 'Unnamed passive',
+      kind: p.kind === 'support' ? 'support' : 'passive',
+      cost: cost >= 0 ? cost : 0,
+      lines: (Array.isArray(p.lines) ? p.lines : []).map(function (l) { return String(l).trim(); }).filter(Boolean).map(function (l) { return tokenize(l); }),
+      flavour: flavourOf(p.flavour)
+    };
+  }
+  function renderPassive(p) {
+    var m = passiveModel(p);
+    var box = node('div', 'pp pp-' + m.kind);
+    if (m.kind === 'support') { box.appendChild(node('div', 'pp-kind', 'Support Passive')); }
+    box.appendChild(node('div', 'pp-name', m.name));
+    box.appendChild(node('p', 'pp-cost', m.cost + (m.cost === 1 ? ' Passive Point' : ' Passive Points')));
+    if (!m.lines.length) { box.appendChild(node('p', 'pv-line pv-none', 'No rule lines yet')); }
+    m.lines.forEach(function (tokens) {
+      var line = node('p', 'pv-line');
+      renderTokens(tokens, line);
+      box.appendChild(line);
+    });
+    m.flavour.forEach(function (text) { box.appendChild(node('p', 'pp-flavour', text)); });
+    return box;
   }
 
   // index is the skill's place in the list (0 for the first); it only decides the title on the bar.
@@ -401,5 +559,5 @@
     return box;
   }
 
-  return { tokenize: tokenize, definition: definition, renderTokens: renderTokens, model: model, render: render, timingClass: timingClass, statusSentence: statusSentence, toneOf: toneOf, frameTiers: FRAME_TIERS, emblem: emblem, applyArt: applyArt, clampArt: clampArt, artStyle: artStyle, maxZoom: ART_MAX_ZOOM };
+  return { passiveModel: passiveModel, renderPassive: renderPassive, flavourOf: flavourOf, flavourMax: FLAVOUR_MAX, tokenize: tokenize, proseTokens: proseTokens, renderProse: renderProse, definition: definition, frameChoices: frameChoices, frameLabels: FRAME_LABELS, autoFrame: autoFrame, ring: ring, renderTokens: renderTokens, model: model, render: render, timingClass: timingClass, statusSentence: statusSentence, toneOf: toneOf, frameTiers: FRAME_TIERS, emblem: emblem, applyArt: applyArt, clampArt: clampArt, artStyle: artStyle, maxZoom: ART_MAX_ZOOM };
 });

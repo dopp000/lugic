@@ -161,6 +161,25 @@ html { scroll-padding-top: 56px; }
 .pv-ring { position: absolute; inset: 0; width: 100%; height: 100%; }
 .pv-ring polygon { fill: none; stroke: var(--sin); stroke-width: 14; stroke-linejoin: round; }
 
+/* the border picker: what the skill has now, and every frame there is */
+.frame-picker { border: 1px solid var(--rule); border-radius: 8px; background: rgba(21, 17, 17, 0.6); }
+.frame-picker > summary { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 12px; cursor: pointer; color: var(--text); list-style: none; }
+.frame-picker > summary::-webkit-details-marker { display: none; }
+.frame-picker > summary::after { content: ""; margin-left: auto; width: 7px; height: 7px; border-right: 2px solid var(--mist); border-bottom: 2px solid var(--mist); transform: rotate(45deg); }
+.frame-picker[open] > summary::after { transform: rotate(-135deg); }
+.frame-picker[open] > summary { border-bottom: 1px solid var(--rule); }
+.frame-thumb { position: relative; display: block; width: 44px; height: 44px; flex: none; padding: 0; border: 0; background: none; }
+.frame-thumb img, .frame-thumb .pv-ring { position: absolute; inset: 0; width: 100%; height: 100%; }
+.frame-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; padding: 12px; }
+.frame-opt {
+  display: grid; justify-items: center; gap: 4px; padding: 8px 4px 6px; background: #000; border: 1px solid var(--rule); border-radius: 8px;
+  color: var(--mist); font: inherit; font-size: 0.78rem; cursor: pointer;
+}
+.frame-opt .frame-thumb { width: 52px; height: 52px; }
+.frame-opt:hover { border-color: var(--gold-deep); }
+.frame-opt[aria-checked="true"] { border-color: var(--gold); color: var(--gold); background: rgba(250, 196, 0, 0.1); }
+.frame-note { padding: 0 12px 12px; }
+
 /* adding and adjusting a skill picture */
 .stack.tight { gap: 8px; }
 .art-row { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
@@ -213,6 +232,21 @@ html { scroll-padding-top: 56px; }
 .pv-w-damage { color: var(--wiki-cream); }
 /* a status is coloured by what kind of effect it is, not by its own colour; a phrase that helps (Heal 5 HP) or hurts (Lose 5 Sanity) is coloured the same way */
 .pv-tone-positive { color: var(--wiki-positive); } .pv-tone-negative { color: var(--wiki-negative); } .pv-tone-neutral { color: var(--wiki-neutral); }
+/* a passive, laid out like the wiki's: the brown name plate, the price, the rule lines, then the flavour text in brown italics */
+.pp { background: #000; border: 1px solid #604026; border-radius: 6px; padding: 10px 14px 12px; display: grid; gap: 6px; font-size: 0.95rem; line-height: 1.45; }
+.pp-kind { margin: 0 -8px 2px; padding: 2px 8px; border-radius: 4px; background: var(--sin-none); color: #fff; font-weight: 700; text-align: center; letter-spacing: 0.03em; }
+.pp-name {
+  width: fit-content; max-width: 100%; padding: 4px 2.4em 4px 12px; font-weight: 800; font-size: 1.1rem; color: var(--wiki-cream); overflow-wrap: anywhere;
+  text-shadow: 2px 2px 2px #000, 0 -0.5px #000, -0.5px 0 #000, 0.5px 0 #000;
+  background-color: var(--sin-none-dark);
+  background-image:
+    linear-gradient(290deg, transparent 2.5em, var(--sin-none) 2.5em, var(--sin-none) 2.65em, transparent 2.65em, transparent 2.8em, var(--sin-none) 2.8em, var(--sin-none) 2.95em, transparent 2.95em, transparent 3.1em, var(--sin-none) 3.1em, var(--sin-none) 3.25em, transparent 3.25em, transparent 3.4em, var(--sin-none) 3.4em),
+    linear-gradient(255deg, transparent 1.5em, var(--sin-none-dark) 1.5em);
+}
+.pp-cost { margin: 0; color: var(--wiki-brown-text); font-weight: 700; font-size: 0.9rem; }
+.pp-flavour { margin: 4px 0 0; font-style: italic; color: var(--wiki-brown-text); overflow-wrap: anywhere; }
+.pp-flavour + .pp-flavour { margin-top: -4px; }
+.pp-wrap { min-width: 0; }
 [data-tip-kind] { cursor: help; }
 @media (min-width: 1000px) { .pv { padding: 14px 16px; } }
 
@@ -288,6 +322,7 @@ input[type="range"]::-moz-range-thumb {
 .segments.wide .segment span { width: auto; min-width: 64px; padding: 0 14px; font-size: 0.9rem; }
 .label-like { color: var(--mist); font-size: 0.92rem; }
 .portrait-size { display: grid; gap: 6px; margin-top: 12px; }
+.portrait-size .label-like:not(:first-child) { margin-top: 10px; }
 .segment input:checked + span { background: var(--gold); color: var(--on-gold); font-weight: 700; }
 .segment input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: -3px; }
 .chip-burn { border-left-color: var(--sin-wrath); }
@@ -335,8 +370,8 @@ input[type="range"]::-moz-range-thumb {
 .rule-no { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--wiki-cream); color: #000; font-size: 0.8rem; font-weight: 700; flex: none; }
 .rule-title { font-weight: 600; }
 .rule-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 8px 10px; align-items: end; }
-.rule-fields > select { grid-column: 1 / -1; }
-.rule-fields > select + select { grid-column: auto; }
+.rule-fields > .choice { grid-column: 1 / -1; }
+.rule-fields > .choice + .choice { grid-column: auto; }
 .rule-result { display: grid; gap: 8px; padding-top: 12px; border-top: 1px dashed var(--rule); }
 .rule-preview { display: block; padding: 10px 12px; background: var(--well); border: 1px solid var(--rule); border-radius: 6px; font-family: var(--font); line-height: 1.5; overflow-wrap: anywhere; }
 .rule-problem { margin: 0; padding: 8px 12px; border-left: 3px solid var(--alert); background: rgba(255, 122, 107, 0.09); color: #ffd5cf; font-size: 0.92rem; }
@@ -368,15 +403,29 @@ input[type="range"]::-moz-range-thumb {
 .msg.bad { color: var(--alert); }
 
 /* ---- the character card ------------------------------------------------------------------- */
-/* The picture is only ever resized: --pw (the size choice on the Identity tab) is its width as a share of the frame, the height follows from
-   the picture's own shape, and nothing is cropped, zoomed or stretched. The frame has a little padding so even Full shows every corner. */
+/* The picture is only ever resized by the size choice: --pw (the size choice on the Identity tab) is its width as a share of the frame, and the
+   frame has the picture's own shape (--ar), so nothing is cropped, zoomed or stretched. Only when the player picks another shape, or moves and
+   zooms the picture, does the frame cut it. The frame has a little padding so even Full shows every corner. */
 .portrait {
   position: relative; border-radius: 12px 12px 0 0; padding: 14px;
   background: radial-gradient(120% 90% at 50% 0%, #3b2f2f, #151111 70%);
   display: grid; justify-items: center;
 }
 .portrait.empty { height: 190px; padding: 0; place-items: center; }
-.portrait img { display: block; width: var(--pw, 100%); max-width: 100%; height: auto; }
+.portrait.empty .portrait-frame { display: none; }
+.portrait-frame { position: relative; overflow: hidden; width: var(--pw, 100%); max-width: 100%; aspect-ratio: var(--ar, 1); }
+.portrait-frame img { position: absolute; display: block; max-width: none; user-select: none; -webkit-user-drag: none; }
+/* moving and zooming the portrait: the same frame, drawn bigger, in the form */
+.portrait-editor { grid-template-columns: auto minmax(0, 1fr); }
+.portrait-stage { padding: 12px; touch-action: none; cursor: grab; border-radius: 12px; outline-offset: -2px; user-select: none; }
+.portrait-stage:active { cursor: grabbing; }
+.portrait-stage-frame { position: relative; overflow: hidden; width: min(280px, 70vw); aspect-ratio: var(--ar, 1); background: #050404; border: 1px solid var(--rule); }
+.portrait-stage-frame img { position: absolute; display: block; max-width: none; -webkit-user-drag: none; pointer-events: none; }
+@media (max-width: 620px) {
+  .portrait-editor { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+  .segments.wide { flex-wrap: wrap; width: 100%; }
+  .segments.wide .segment { flex: 1 1 auto; }
+}
 .initial { font-family: var(--font); font-weight: 700; font-size: 5rem; color: rgba(238, 206, 164, 0.3); }
 .level {
   display: inline-block; margin-bottom: 6px; padding: 2px 10px; border-radius: 999px; background: rgba(16, 13, 13, 0.85);
@@ -449,7 +498,7 @@ input[type="range"]::-moz-range-thumb {
   .rank-row { grid-template-columns: minmax(0, 1fr); }
   .coin-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .coin-no { grid-column: 1 / -1; }
-  .coin-row select { grid-column: 1 / -1; }
+  .coin-row .choice { grid-column: 1 / -1; }
   .quick { grid-template-columns: minmax(0, 1fr); }
   .item-head { grid-template-columns: minmax(0, 1fr); }
   h1 { font-size: 1.45rem; }
@@ -516,22 +565,49 @@ input[type="range"]::-moz-range-thumb {
 .res-endure { color: var(--res-endure); } .res-ineffective { color: var(--res-ineffective); }
 .legend h3 + .legend-list { margin-bottom: 4px; }
 
-/* a choice that helps or hurts shows in the wiki's yellow or red, in the list and once chosen */
-select[data-tone="positive"], option[data-tone="positive"] { color: var(--positive-text); }
-select[data-tone="negative"], option[data-tone="negative"] { color: var(--negative-text); }
-select[data-tone="neutral"], option[data-tone="neutral"] { color: var(--neutral-text); }
-
-/* ---- definitions on hover ------------------------------------------------------------------ */
-.tip {
-  position: fixed; z-index: 30; left: 0; top: 0; max-width: min(320px, calc(100vw - 16px)); padding: 10px 12px; pointer-events: none;
-  background: #000; border: 1px solid var(--wiki-bar); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6); font-size: 0.9rem; line-height: 1.4;
+/* ---- drop-down lists: each choice in its own colour, with its picture, and its definition on hover ---------------------- */
+/* A status is yellow (helps), red (hurts) or brown (neither), the way the wiki sorts it; a timing has its tag colour (On Use blue, Clash Win orange,
+   Clash Lose red, every other timing green). The list opens from a button that looks like the page's other fields. */
+.choice { position: relative; min-width: 0; }
+.choice-btn {
+  position: relative; width: 100%; min-height: 42px; padding: 8px 32px 8px 10px; display: flex; align-items: center; gap: 8px; text-align: left;
+  background: var(--well); color: var(--text); border: 1px solid var(--rule); border-radius: 6px; font: inherit; cursor: pointer;
 }
-.tip-title { display: flex; align-items: center; gap: 6px; font-weight: 700; color: var(--bold); }
-.tip-title.tone-positive { color: var(--wiki-positive); } .tip-title.tone-negative { color: var(--wiki-negative); } .tip-title.tone-neutral { color: var(--wiki-neutral); }
-.tip-text { margin-top: 2px; color: var(--text); }
-.tip-slots { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--rule); }
-.tip-slots dt { align-self: center; color: var(--mist); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; }
-.tip-slots dd { margin: 0; }
+.choice-btn:hover:not(:disabled) { border-color: var(--gold-deep); }
+.choice-btn[aria-expanded="true"] { border-color: var(--gold); }
+.choice-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.choice-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.choice-caret { position: absolute; right: 13px; top: 50%; width: 7px; height: 7px; margin-top: -6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); opacity: 0.7; }
+.choice-menu {
+  position: fixed; z-index: 20; margin: 0; padding: 4px 0; list-style: none; overflow-y: auto; overscroll-behavior: contain;
+  background: #000; border: 1px solid #604026; border-radius: 4px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65); font-size: 0.95rem;
+  scrollbar-width: thin; scrollbar-color: var(--rule) transparent;
+}
+.choice-group { padding: 9px 12px 3px; color: var(--mist); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.choice-opt { display: flex; align-items: center; gap: 8px; padding: 6px 12px; min-height: 34px; cursor: pointer; color: var(--text); }
+.choice-opt.active { background: rgba(255, 255, 255, 0.1); }
+.choice-opt[aria-selected="true"]::after { content: "\2713"; margin-left: auto; padding-left: 12px; opacity: 0.7; }
+@media (pointer: coarse) { .choice-opt { min-height: 44px; } }
+.ch-positive { color: var(--positive-text); } .ch-negative { color: var(--negative-text); } .ch-neutral { color: var(--neutral-text); }
+.choice-btn[class*="ch-"], .choice-btn[class*="pv-"], .choice-opt[class*="ch-"], .choice-opt[class*="pv-"] { font-weight: 600; }
+/* the timing colours again, after the rules above, so a timing in a list or a hover box keeps its tag colour */
+.choice-btn.pv-use, .choice-opt.pv-use, .tip-title.pv-use { color: var(--wiki-tag-use); }
+.choice-btn.pv-hit, .choice-opt.pv-hit, .tip-title.pv-hit { color: var(--wiki-tag-hit); }
+.choice-btn.pv-clashwin, .choice-opt.pv-clashwin, .tip-title.pv-clashwin { color: var(--wiki-tag-clash-win); }
+.choice-btn.pv-clashlose, .choice-opt.pv-clashlose, .tip-title.pv-clashlose { color: var(--negative-text); }
+.tip-title.pv-flag { color: var(--neutral-text); }
+
+/* ---- definitions on hover: the wiki's own hover box (black, brown border, cream text, a "- line" for each thing it does) ---- */
+.tip {
+  position: fixed; z-index: 30; left: 0; top: 0; width: max-content; max-width: min(420px, calc(100vw - 16px)); padding: 6px 11px 8px; pointer-events: none;
+  background: rgba(0, 0, 0, 0.95); border: 1px solid #604026; border-radius: 3px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+  font-size: 0.92rem; line-height: 1.45; color: var(--wiki-cream);
+}
+.tip-title { display: flex; align-items: center; gap: 6.5px; margin: 2px 0 4px; font-size: 1.3rem; font-weight: 700; letter-spacing: 0.04em; line-height: 1.1; color: var(--wiki-cream); }
+.tip-title .ico img { width: 25px; height: 25px; }
+.tip-line { position: relative; margin: 0; padding-left: 13px; }
+.tip-line::before { content: "-"; position: absolute; left: 0; }
+.tip-flavour { margin: 9px 0 0; font-style: italic; color: var(--wiki-brown-text); }
 
 /* ---- bold is white (last, so it wins over the colours set above; a name that carries a tone colour keeps it) ---- */
 strong, b, h1, h2, h3, h4, .cardname, .rank-name, .rule-title, .pv-base, .pv-damage, .st-first { color: var(--bold); }

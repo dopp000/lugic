@@ -72,6 +72,19 @@ def character_from_spec(data: dict):
     return c
 
 
+# Flavour texts that stress the cleaning: Windows line breaks, blank lines, padding, very long, emoji, markdown, nothing at all.
+FLAVOURS = [
+    "A prayer said so often\nthat it stopped being a request.",
+    "  padded  \r\n\r\n  and\r  split  \n\n\n",
+    "x" * 900,
+    "line one\n" + "y" * 395 + "\nline three",
+    "Émile 夜 \U0001F339 *stars* _under_ ~~gone~~ `code` > quote",
+    "   \n \r\n  ",
+    "",
+]
+SPEC_FLAVOURS = [FLAVOURS[i] for i in (0, 1, 4, 5, 6)]      # the ones the bot accepts as they are (the others are too long until they are cut)
+
+
 def random_spec(rng: random.Random, index: int) -> dict:
     """A build shaped like a real code but with numbers that are often wrong, so the problems get compared too."""
     spec: dict = {"v": 1, "name": f"Case {index}", "pools": {
@@ -105,7 +118,7 @@ def random_spec(rng: random.Random, index: int) -> dict:
     if rng.random() < 0.3:
         spec["passives"] = [
             {"name": f"Passive {i}", "kind": rng.choice(["passive", "support"]), "cost": rng.randint(1, 6),
-             "lines": ["[Combat Start] Gain 2 Protection"]}
+             "lines": ["[Combat Start] Gain 2 Protection"], **({"flavour": SPEC_FLAVOURS[(index + i) % len(SPEC_FLAVOURS)]} if (index + i) % 3 else {})}
             for i in range(rng.randint(1, 3))
         ]
     skills = []
@@ -151,6 +164,7 @@ class SiteAgreesWithBot(unittest.TestCase):
             "specs": cls.specs,
             "encode": [cls.specs[1], cls.unicode_spec],
             "decode": [cls.plain_code, cls.packed_code, "LUGIC1Z.not-a-real-code", "hello"],
+            "flavours": FLAVOURS + [None, 5, ["a"], "a\u00a0b\n\u00a0c"],
         })
 
     def test_prices_and_problems_match_check_build(self):
@@ -189,6 +203,34 @@ class SiteAgreesWithBot(unittest.TestCase):
         self.assertEqual(packed["spec"], self.unicode_spec)
         self.assertIn("error", junk)
         self.assertIn("error", hello)
+
+    def test_flavour_text_is_cleaned_the_same_on_the_site_and_in_the_bot(self):
+        from game.passives import PASSIVE_FLAVOUR_MAX, clean_flavour
+        texts = FLAVOURS + [None, 5, ["a"], "a\u00a0b\n\u00a0c"]
+        for text, site in zip(texts, self.js["cleaned"]):
+            with self.subTest(text=str(text)[:30]):
+                self.assertEqual(clean_flavour(text), site)
+                self.assertLessEqual(len(site), PASSIVE_FLAVOUR_MAX)
+        self.assertEqual(self.js["cleaned"][0], "A prayer said so often\nthat it stopped being a request.")
+        self.assertEqual(self.js["cleaned"][1], "padded\nand\nsplit")
+        self.assertEqual(len(self.js["cleaned"][2]), PASSIVE_FLAVOUR_MAX)
+        self.assertEqual(self.js["cleaned"][5], "")
+
+    def test_the_flavour_text_the_site_exports_is_what_the_bot_reads(self):
+        from game.passives import clean_flavour
+        seen = 0
+        for spec, got in zip(self.specs, self.js["checks"]):
+            for sent, exported in zip(spec.get("passives") or [], got["toSpec"].get("passives") or []):
+                with self.subTest(spec=spec["name"], passive=sent["name"]):
+                    wanted = clean_flavour(sent.get("flavour"))
+                    self.assertEqual(exported.get("flavour", ""), wanted)
+                    self.assertEqual("flavour" in exported, bool(wanted))      # no flavour, no key: the code stays as small as it was
+                    seen += 1
+            parsed, error = read_spec(got["toSpec"])
+            self.assertIsNone(error)
+            for sent, read in zip(spec.get("passives") or [], parsed.params.get("passives") or []):
+                self.assertEqual(read.get("flavour", ""), clean_flavour(sent.get("flavour")))
+        self.assertGreater(seen, 40)           # the generator really did give passives flavour texts
 
     def test_needs_admin_flag_matches_the_bot(self):
         # The site tells the player whether an admin will have to answer. It has to say what the bot will do.
@@ -418,15 +460,102 @@ class Preview(unittest.TestCase):
         asks += [["stat", k] for k in ("hp", "speed", "sanity", "offense_level", "defense_level")]
         flags = [k for k in rules["skills"]["flagTags"] if k != "supermove"]           # the picker has no help line for Supermove
         asks += [["flag", k] for k in flags]
+        asks += [["timing", t["key"]] for t in rules["lines"]["timings"]]
         found = self.run_preview([], [], definitions=asks)["definitions"]
         for (kind, key), d in zip(asks, found):
             with self.subTest(kind=kind, key=key):
                 self.assertIsNotNone(d)
-                self.assertTrue(d["title"] and d["text"])
-        by_key = {key: d for (kind, key), d in zip(asks, found) if kind == "status"}
-        self.assertEqual(by_key["burn"]["slots"], {"when": "Turn end", "does": "Take Potency damage", "then": "Count −1"})
-        self.assertEqual(by_key["burn"]["tone"], "negative")
-        self.assertEqual(self.run_preview([], [], definitions=[["status", "nope"], ["flag", "supermove"]])["definitions"], [None, None])
+                self.assertTrue(d["title"])
+                self.assertTrue(d["lines"])            # the box is a list of "- line"s, like the wiki's
+                for line in d["lines"]:
+                    self.assertRegex(line, r"^[A-Z0-9*`\[(]")      # whole sentences, never a piece cut off mid-sentence (a lower-case start would be one)
+        by_key = {(kind, key): d for (kind, key), d in zip(asks, found)}
+        burn = by_key[("status", "burn")]
+        body = next(s["body"] for s in rules["statusGuide"] if s["key"] == "burn")
+        self.assertEqual(" ".join(burn["lines"]), body)          # the bot's own text, only cut into lines
+        self.assertEqual((burn["title"], burn["icon"], burn["tone"]), ("Burn", "burn", "negative"))
+        self.assertEqual(by_key[("status", "poise")]["tone"], "positive")
+        self.assertEqual(by_key[("timing", "On Use")]["cls"], "use")
+        self.assertEqual(by_key[("timing", "On Use")]["title"], "[On Use]")
+        self.assertEqual(by_key[("timing", "Clash Win")]["cls"], "clashwin")
+        self.assertEqual(by_key[("timing", "Clash Lose")]["cls"], "clashlose")
+        self.assertEqual(by_key[("timing", "Before Attack")]["cls"], "hit")
+        self.assertEqual((by_key[("flag", "counter")]["title"], by_key[("flag", "counter")]["cls"]), ("[Counter]", "flag"))
+        self.assertEqual(self.run_preview([], [], definitions=[["status", "nope"], ["flag", "supermove"], ["timing", "nope"]])["definitions"], [None, None, None])
+
+    def test_a_timing_or_status_in_running_text_is_found_and_coloured(self):
+        text = ("This changes the hit before the coins are tossed, so at [On Kill] it would do nothing. "
+                "Use Before Use, On Use, Clash Start or Before Attack (or Coin Start). Poise needs a Poise rank; Burn hurts.")
+        tokens = self.run_preview([], [], prose=[text])["prose"][0]
+        self.assertEqual("".join(t["text"] for t in tokens), text)            # nothing lost, nothing added
+        found = [(t["kind"], t["text"], t.get("cls")) for t in tokens if t["kind"] != "text"]
+        self.assertEqual(found, [
+            ("tag", "[On Kill]", "hit"), ("timing", "Before Use", "hit"), ("timing", "On Use", "use"), ("timing", "Clash Start", "hit"),
+            ("timing", "Before Attack", "hit"), ("timing", "Coin Start", "hit"),
+            ("status", "Poise", None), ("status", "Poise", None), ("status", "Burn", None),
+        ])
+        self.assertEqual([t["key"] for t in tokens if t["kind"] == "status"], ["poise", "poise", "burn"])
+        self.assertEqual([t["key"] for t in tokens if t["kind"] == "tag"], ["on kill"])
+
+    def test_running_text_leaves_ordinary_words_and_unknown_brackets_alone(self):
+        text = "The unit is on fire, so Burning is not a status, but burn is a word. [Not A Tag] and [x] stay plain; [Counter] is a skill-type tag."
+        tokens = self.run_preview([], [], prose=[text])["prose"][0]
+        self.assertEqual("".join(t["text"] for t in tokens), text)
+        found = [(t["kind"], t["text"]) for t in tokens if t["kind"] != "text"]
+        self.assertEqual(found, [("tag", "[Counter]")])          # only the real tag: a lower-case word or a longer word is not a status
+        self.assertEqual([t["cls"] for t in tokens if t["kind"] == "tag"], ["flag"])
+        self.assertEqual(self.run_preview([], [], prose=["", None])["prose"], [[], []])
+
+    def test_a_frame_picked_by_hand_beats_the_automatic_one(self):
+        def skill(frame=None):
+            item = {"name": "S", "base": 4, "coin": 2, "coins": 2, "type": "slash", "statuses": [{"name": "burn", "pot": 1, "cnt": 1}, {"name": "", "pot": 0, "cnt": 0}], "triggers": ""}
+            if frame is not None:
+                item["frame"] = frame
+            return item
+        skills = [skill(), skill({"sin": "envy", "tier": 3}), skill({"sin": "none"}), skill({"sin": "sloth", "tier": 3}), skill({"sin": "nope", "tier": "x"}), skill({"sin": "def", "tier": 1})]
+        out = self.run_preview([], skills)
+        auto, envy3, plain, no_such_tier, nonsense, defense = [m["frame"] for m in out["models"]]
+        self.assertEqual(auto, {"sin": "wrath", "tier": 1, "file": "borders/wrath1.png"})
+        self.assertEqual(envy3, {"sin": "envy", "tier": 3, "file": "borders/envy3.png", "picked": True})
+        self.assertEqual((plain["sin"], plain["file"], plain["picked"]), (None, None, True))      # the plain ring
+        self.assertEqual(defense["file"], "borders/def1.png")
+        self.assertEqual(no_such_tier, auto)         # Sloth has no tier 3, and a made-up frame is no frame: the automatic one shows
+        self.assertEqual(nonsense, auto)
+        self.assertEqual(out["autoFrames"], [m["frame"] for m in out["models"][:1]] * 6)      # the automatic frame ignores whatever was picked
+
+    def test_a_passive_is_laid_out_with_its_lines_and_an_optional_flavour_text(self):
+        passives = [
+            {"name": "Grace of God", "kind": "support", "cost": 2, "lines": ["[Combat Start] Gain 2 Protection", "", "  [On Hit] Inflict 1 Burn  "], "flavour": "A prayer said so often\nthat it stopped being a request."},
+            {"name": "  ", "kind": "nonsense", "cost": "x", "lines": None},
+            {"name": "Plain", "kind": "passive", "cost": 1, "lines": ["[Turn End] Heal 5 HP"], "flavour": "   "},
+        ]
+        support, odd, plain = self.run_preview([], [], passives=passives)["passives"]
+        self.assertEqual((support["name"], support["kind"], support["cost"]), ("Grace of God", "support", 2))
+        self.assertEqual(len(support["lines"]), 2)                  # an empty line is not a line
+        self.assertEqual(support["lines"][0][0], {"kind": "tag", "text": "[Combat Start]", "cls": "hit"})
+        self.assertIn({"kind": "status", "key": "protection", "text": "Protection"}, support["lines"][0])
+        self.assertEqual(support["flavour"], ["A prayer said so often", "that it stopped being a request."])      # one paragraph for each line written
+        self.assertEqual((odd["name"], odd["kind"], odd["cost"], odd["lines"], odd["flavour"]), ("Unnamed passive", "passive", 0, [], []))
+        self.assertEqual(plain["flavour"], [])                       # blank is no flavour at all, so nothing is drawn
+
+    def test_flavour_text_is_trimmed_and_cut_to_its_limit(self):
+        limit = self.run_preview([], [])["flavourMax"]
+        self.assertEqual(limit, 400)
+        out = self.run_preview([], [], flavours=["  one  ", "a\r\nb\r\n\r\nc", "x" * 1000, "", None, "\n\n"])["flavours"]
+        self.assertEqual(out[0], ["one"])
+        self.assertEqual(out[1], ["a", "b", "c"])           # Windows line breaks too, and an empty line is dropped
+        self.assertEqual(out[2], ["x" * limit])
+        self.assertEqual(out[3:], [[], [], []])
+
+    def test_every_frame_can_be_picked_and_the_list_matches_the_images(self):
+        choices = self.run_preview([], [])["frameChoices"]
+        on_disk = set(os.listdir(os.path.join(ROOT, "docs", "builder", "borders")))
+        self.assertEqual({c["file"].split("/")[1] for c in choices}, on_disk)
+        self.assertEqual(len(choices), len(on_disk))
+        self.assertEqual(choices[0], {"sin": "def", "tier": 1, "label": "Defense 1", "file": "borders/def1.png"})      # defense first, then the Sins
+        self.assertEqual([c["label"] for c in choices if c["sin"] == "envy"], ["Envy 1", "Envy 2", "Envy 3"])
+        self.assertEqual([c["label"] for c in choices if c["sin"] == "pride"], ["Pride 1", "Pride 2", "Pride 3"])
+        self.assertEqual([c["sin"] for c in choices if c["tier"] == 1], ["def", "wrath", "lust", "sloth", "gluttony", "gloom", "pride", "envy"])
 
     def test_every_status_name_is_recognised(self):
         rules = builder_rules.rules()
@@ -505,6 +634,38 @@ class Preview(unittest.TestCase):
         self.assertEqual((wild["clamped"]["zoom"], wild["clamped"]["x"], wild["clamped"]["y"]), (4, 1.5, -1.5))   # never past the edge
         self.assertEqual(junk["clamped"]["zoom"], 1)
         self.assertEqual((junk["clamped"]["x"], junk["clamped"]["y"]), (0, 0))
+
+    def test_a_picture_shown_whole_in_its_own_shape_is_only_ever_resized(self):
+        # the portrait's opening has the picture's own shape: zoom 1 shows all of it, edge to edge, whatever its shape
+        def arts(*items):
+            done = subprocess.run([NODE, os.path.join(ROOT, "tests", "preview_check.js")], input=json.dumps({"lines": [], "skills": [], "arts": list(items)}),
+                                  capture_output=True, text=True, check=True)
+            return json.loads(done.stdout)["arts"]
+        shapes = [0.2, 0.375, 0.75, 1, 1.333, 2, 3.5]
+        for shape, out in zip(shapes, arts(*[{"src": "x", "a": a, "x": 0, "y": 0, "zoom": 1, "open": a} for a in shapes])):
+            with self.subTest(shape=shape):
+                self.assertEqual(out["style"], {"width": 100, "height": 100, "left": 0, "top": 0})
+                self.assertEqual((out["clamped"]["x"], out["clamped"]["y"]), (0, 0))
+
+    def test_another_shape_cuts_the_picture_and_zoom_and_move_choose_what_shows(self):
+        def arts(*items):
+            done = subprocess.run([NODE, os.path.join(ROOT, "tests", "preview_check.js")], input=json.dumps({"lines": [], "skills": [], "arts": list(items)}),
+                                  capture_output=True, text=True, check=True)
+            return json.loads(done.stdout)["arts"]
+        wide_in_tall, tall_in_wide, zoomed, dragged = arts(
+            {"src": "x", "a": 2, "x": 0, "y": 0, "zoom": 1, "open": 0.75},       # a wide picture in a 3:4 opening: fills the height, the sides are cut
+            {"src": "x", "a": 0.5, "x": 0, "y": 0, "zoom": 1, "open": 2},        # a tall picture in a wide opening: fills the width, top and bottom are cut
+            {"src": "x", "a": 0.375, "x": 0, "y": 0, "zoom": 2, "open": 0.375},  # the same shape, zoomed in: twice the size, the middle shows
+            {"src": "x", "a": 2, "x": 99, "y": 99, "zoom": 1, "open": 0.75},     # dragged far past the edge: stops at the edge
+        )
+        self.assertAlmostEqual(wide_in_tall["style"]["width"], 100 * 2 / 0.75)
+        self.assertEqual((wide_in_tall["style"]["height"], wide_in_tall["style"]["top"]), (100, 0))
+        self.assertAlmostEqual(wide_in_tall["style"]["left"], 50 - 50 * 2 / 0.75)
+        self.assertEqual((tall_in_wide["style"]["width"], tall_in_wide["style"]["left"]), (100, 0))
+        self.assertAlmostEqual(tall_in_wide["style"]["height"], 100 * 2 / 0.5)      # 100 * (opening shape / picture shape) = 400
+        self.assertEqual(zoomed["style"], {"width": 200, "height": 200, "left": -50, "top": -50})
+        self.assertAlmostEqual(dragged["clamped"]["x"], (2 / 0.75 - 1) / 2)       # it can move only as far as the picture reaches
+        self.assertEqual(dragged["clamped"]["y"], 0)                              # and not at all where the picture already fits
 
     def test_an_empty_or_odd_skill_still_gives_a_model(self):
         skill = {"name": "  ", "base": "x", "coin": None, "coins": 99, "type": "pierce", "statuses": [], "triggers": None}
@@ -595,18 +756,76 @@ class PageShape(unittest.TestCase):
         self.assertIn("getElementById('tools')", self.app)    # moved under the code in the card
         self.assertLess(self.html.index('<nav class="tabs"'), self.html.index('<main class="layout"'))
 
-    def test_the_portrait_is_only_ever_resized(self):
-        # width from the size choice, height from the picture's own shape: no crop, no zoom, no stretch, no height cap, nothing hides a corner
-        rule = re.search(r"\.portrait img \{([^}]*)\}", self.css).group(1)
-        self.assertIn("height: auto", rule)
-        self.assertIn("var(--pw", rule)
-        for forbidden in ("object-fit", "max-height", "min-height", "transform", "scale", "aspect-ratio", "clip"):
-            self.assertNotIn(forbidden, rule, forbidden)
-        frame = re.search(r"\n\.portrait \{([^}]*)\}", self.css).group(1)
-        self.assertNotIn("overflow", frame)
+    def test_the_portrait_size_choice_only_ever_resizes(self):
+        # width from the size choice, height from the picture's own shape: with the Original shape and no zoom nothing is cropped, zoomed or stretched
+        frame = re.search(r"\n\.portrait-frame \{([^}]*)\}", self.css).group(1)
+        self.assertIn("width: var(--pw", frame)
+        self.assertIn("aspect-ratio: var(--ar", frame)
+        for forbidden in ("object-fit", "max-height", "min-height", "transform", "scale"):
+            self.assertNotIn(forbidden, frame, forbidden)
         self.assertNotIn("object-fit", " ".join(re.findall(r"[^\n]*\.portrait[^\n]*", self.css)))
+        paint = re.search(r"function paintPortraitSize\(\) \{.*?\n  \}", self.app, re.S).group(0)
+        self.assertEqual(re.findall(r"setProperty\('(--[\w-]+)'", paint), ["--pw"])      # the size choice sets the width and nothing else
         self.assertIn("class: 'plate' }, [cardParts.level", self.app)          # the Lv label sits under the picture, not on it
         self.assertNotIn("portraitImg, cardParts.level", self.app)
+
+    def test_the_portrait_can_be_reshaped_moved_and_zoomed_and_starts_whole(self):
+        shapes = re.search(r"var PORTRAIT_SHAPES = \[(.*?)\];", self.app, re.S).group(1)
+        self.assertEqual(re.findall(r"id: '(\w+)'", shapes), ["original", "square", "tall", "wide", "banner"])
+        self.assertIn("id: 'original', label: 'Original', ratio: null", shapes)       # Original has no shape of its own: the picture's
+        start = re.search(r"var fit = \{([^}]*)\};", self.app).group(1)
+        self.assertIn("shape: 'original'", start)
+        self.assertIn("zoom: 1", start)
+        self.assertRegex(start, r"x: 0, y: 0")
+        # the opening is the picture's own shape unless a shape is picked, and the picture is placed in it by the same maths the skill pictures use
+        self.assertIn("return shape && shape.ratio ? shape.ratio : own;", self.app)
+        self.assertIn("window.LugicPreview.applyArt(img, { a: img.naturalWidth / img.naturalHeight, x: portraitFit.x, y: portraitFit.y, zoom: portraitFit.zoom }, o);", self.app)
+        for needed in ("pointerdown", "wheel", "ArrowLeft", "ArrowUp", "touch-action"):
+            self.assertIn(needed, self.app + self.css, needed)
+        self.assertIn("another picture: start from the middle", self.app)          # a new picture is not placed by the old picture's numbers
+        self.assertIn(".portrait-editor", self.css)
+        self.assertIn("PORTRAIT_FIT_KEY", self.app)
+
+    def test_the_portrait_and_the_skill_borders_are_not_part_of_the_code(self):
+        spec = subprocess.run([NODE, "-e", (
+            "const E=require('./docs/builder/engine.js'); const st=E.defaultState(); st.name='A';"
+            "st.avatar='https://example.test/a.png'; st.skills=[Object.assign(E.newSkill(0),{name:'S',frame:{sin:'envy',tier:3},art:{src:'x',a:1,x:0,y:0,zoom:2}})];"
+            "st.passives=[{name:'P',kind:'passive',cost:1,lines:['[Turn End] Heal 5 HP']}];"
+            "process.stdout.write(JSON.stringify(E.toSpec(st)));")], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+        for word in ("frame", "envy", "portrait", "zoom", '"art"'):
+            self.assertNotIn(word, spec, word)
+        self.assertIn('"passives"', spec)
+        to_spec = re.search(r"function toSpec\(.*?\n  \}", self.engine, re.S).group(0)
+        for word in ("portrait", "frame", "PORTRAIT"):
+            self.assertNotIn(word, to_spec, word)
+
+    def test_a_passive_can_have_a_flavour_text_that_goes_into_the_code(self):
+        for needed in ("Flavour text (optional)", "R.limits.passiveFlavour", "p.flavour = flavour.value", "window.LugicPreview.renderPassive(p)"):
+            self.assertIn(needed, self.app, needed)
+        self.assertNotIn("FLAVOUR_KEY", self.app)          # not kept on the side any more: it is in the saved build and in the code
+        self.assertNotIn("carryFlavours", self.app)
+        to_spec = re.search(r"function toSpec\(.*?\n  \}", self.engine, re.S).group(0)
+        self.assertIn("cleanFlavour(p.flavour)", to_spec)
+        rule = re.search(r"\n\.pp-flavour \{([^}]*)\}", self.css).group(1)
+        self.assertIn("font-style: italic", rule)          # brown and italic, as on the wiki
+        self.assertIn("var(--wiki-brown-text)", rule)
+        self.assertEqual(re.search(r"--wiki-brown-text:\s*(#[0-9a-fA-F]{6})", self.css).group(1).lower(), "#a16a3b")
+        self.assertIn(".tip-flavour", self.css)           # the hover box has the same line for a status that has a story
+
+    def test_a_flavour_text_survives_the_code_the_save_and_a_reload_on_the_site(self):
+        out = subprocess.run([NODE, "-e", (
+            "const E=require('./docs/builder/engine.js'); (async()=>{"
+            "const st=E.defaultState(); st.name='A';"
+            "st.passives=[{name:'P',kind:'support',cost:1,lines:['[Turn End] Heal 5 HP'],flavour:'  line one \\r\\n\\r\\n line two '},{name:'Q',kind:'passive',cost:1,lines:['[Turn End] Heal 5 HP']}];"
+            "const code=await E.encode(E.toSpec(st)); const back=E.fromSpec((await E.decode(code)).spec);"
+            "const long=E.defaultState(); long.passives=[{name:'L',kind:'passive',cost:1,lines:['[Turn End] Heal 5 HP'],flavour:'z'.repeat(500)}];"
+            "process.stdout.write(JSON.stringify({back:back.passives.map(p=>p.flavour), spec:E.toSpec(st).passives.map(p=>Object.keys(p)), problems:E.review(long).perPassive[0]}));"
+            "})()")], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+        got = json.loads(out)
+        self.assertEqual(got["back"], ["line one\nline two", ""])
+        self.assertIn("flavour", got["spec"][0])
+        self.assertNotIn("flavour", got["spec"][1])
+        self.assertEqual(got["problems"], ["The flavour text is longer than 400 characters."])      # a pasted text that is too long is named
 
     def test_the_portrait_sizes_are_fixed_steps(self):
         steps = re.findall(r"\{ id: '(\w+)', label: '(\w+)', percent: (\d+) \}", self.app)
@@ -641,15 +860,51 @@ class PageShape(unittest.TestCase):
         code = re.search(r"\ncode \{([^}]*)\}", self.css).group(1)
         self.assertNotIn("--gold", code)
 
-    def test_underlined_words_show_their_definition(self):
-        for needed in ("role: 'tooltip'", "pointerover", "focusin", "Escape", "LugicPreview.definition", "aria-describedby"):
+    def test_underlined_words_show_their_definition_in_the_wikis_hover_box(self):
+        for needed in ("role: 'tooltip'", "pointerover", "focusin", "Escape", "LugicPreview.definition", "aria-describedby", "tip-title", "tip-line", "tip-flavour"):
             self.assertIn(needed, self.app, needed)
-        self.assertIn(".tip {", self.css)
-        for needed in ("'data-tone': item.tone", "tone: statusTone(o.value)", "tone: e.tone", "tone: c.tone"):      # the picker's choices carry their tone too
+        box = re.search(r"\n\.tip \{([^}]*)\}", self.css).group(1)
+        self.assertIn("pointer-events: none", box)                 # the box never takes the pointer, so it cannot flicker
+        self.assertIn("border: 1px solid #604026", box)           # the wiki's black box with a brown edge and cream text
+        self.assertIn("var(--wiki-cream)", box)
+        self.assertRegex(self.css, r'\.tip-line::before \{ content: "-"')    # every line starts with "- "
+        self.assertRegex(self.css, r"\.tip-flavour \{[^}]*font-style: italic")
+        self.assertIn(".tip-title .ico img { width: 25px; height: 25px; }", self.css)
+
+    def test_a_status_or_timing_can_be_pointed_at_wherever_it_is_named(self):
+        # not only in the skill card: the pickers' lists, the coin's status list, the checking messages, the status chips and the rank names
+        for needed in ("function prose(text)", "function pointAt(node, kind, key)", "function inlineRich(into, text)", "function statusChoice(value, label)",
+                       "tip: { kind: 'status', key: key }", "tip: { kind: 'timing', key: ", "pointAt(button, current.tip.kind, current.tip.key)",
+                       "if (item.tip) { pointAt(li, item.tip.kind, item.tip.key); }"):
             self.assertIn(needed, self.app, needed)
+        self.assertGreaterEqual(self.app.count("prose("), 6)       # warnings, notes, problems, rule help are all run through it
+
+    def test_lists_are_a_dropdown_that_colours_its_choices(self):
+        for needed in ("function choice(options, value, onChange, settings)", "role: 'listbox'", "role: 'option'", "role: 'combobox'", "aria-activedescendant", "aria-expanded",
+                       "'ArrowDown'", "'PageDown'", "'Home'", "'End'", "'Escape'", "typeahead", "choiceColour", "tone: statusTone(", "tone: e.tone", "tone: c.tone", "cls: window.LugicPreview.timingClass(t.key)"):
+            self.assertIn(needed, self.app, needed)
+        self.assertIn("return choice(options, value, onChange, settings);", self.app)      # the picker's lists and the coin status list use it
         for tone in ("positive", "negative", "neutral"):
-            self.assertIn(f'select[data-tone="{tone}"]', self.css)
-        self.assertIn("pointer-events: none", re.search(r"\n\.tip \{([^}]*)\}", self.css).group(1))   # the box never takes the pointer, so it cannot flicker
+            self.assertRegex(self.css, r"\.ch-" + tone + r" \{ color: var\(--" + tone + r"-text\); \}")
+        for cls, colour in (("use", "use"), ("hit", "hit"), ("clashwin", "clash-win")):
+            self.assertIn(f".choice-opt.pv-{cls}", self.css)
+            self.assertIn(f"var(--wiki-tag-{colour})", self.css)
+        self.assertIn(".choice-opt.pv-clashlose", self.css)
+        self.assertNotIn('select[data-tone', self.css)       # the old native-list colouring is gone with the native list
+
+    def test_the_skill_border_can_be_picked_by_hand_and_stays_on_the_device(self):
+        for needed in ("function frameControls(skill, changed)", "P.frameChoices().forEach", "'Plain ring'", "'Automatic'", "role: 'radiogroup'", "'aria-checked'",
+                       "FRAME_KEY = 'lugic-character-builder-frames-v1'", "border.refresh()", "delete skill.frame"):
+            self.assertIn(needed, self.app, needed)
+        for needed in (".frame-picker", ".frame-grid", ".frame-opt", '.frame-opt[aria-checked="true"]'):
+            self.assertIn(needed, self.css, needed)
+        self.assertIn("frame", re.search(r"function frameControls.*?\n  \}", self.app, re.S).group(0))
+
+    def test_no_script_uses_a_lookbehind_pattern(self):
+        # older Safari cannot even parse one, and then the whole page is dead
+        for name in ("app.js", "preview.js", "engine.js", "lines.js"):
+            with open(os.path.join(self.folder, name), encoding="utf-8") as handle:
+                self.assertNotRegex(handle.read(), r"\(\?<[=!]", name)
 
     def test_missing_icon_folders_do_not_break_the_page(self):
         # both lists are optional: a failed fetch becomes an empty list, and a slot can name a fallback ("coin coin_heads")

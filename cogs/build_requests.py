@@ -21,7 +21,7 @@ from game.build_requests import (
     get_request, get_review_channel, has_open_duplicate, list_requests, open_count, save_request,
     set_review_channel, try_change,
 )
-from game.passives import parse_passive, tag_warnings
+from game.passives import PASSIVE_FLAVOUR_MAX, clean_flavour, parse_passive, tag_warnings
 from cogs.build_check import run_build
 from cogs.character import _parse_resistance_tokens, dm_owner, is_admin
 
@@ -349,11 +349,13 @@ class RequestCog(commands.GroupCog, name="request"):
         line_1="First rule, e.g. [On Use] If the target has any Burn, Deal +10% damage (see /help)",
         line_2="Second rule (optional)", line_3="Third rule (optional)",
         reason="Where it comes from and why",
+        flavour="The story behind it, shown in italics on the character sheet (optional)",
     )
     async def passive(
         self, interaction: discord.Interaction, name: str, passive_name: str,
         kind: app_commands.Choice[str], cost: app_commands.Range[int, 1, 6], line_1: str, reason: str,
         line_2: str | None = None, line_3: str | None = None,
+        flavour: app_commands.Range[str, 1, PASSIVE_FLAVOUR_MAX] | None = None,
     ):
         title = passive_name.strip()
         if not title or len(title) > 40:
@@ -361,6 +363,8 @@ class RequestCog(commands.GroupCog, name="request"):
             return
         lines = [l.strip() for l in (line_1, line_2, line_3) if l and l.strip()]
         params = {"name": title, "kind": kind.value, "lines": lines, "cost": cost, "note": ""}
+        if clean_flavour(flavour):
+            params["flavour"] = clean_flavour(flavour)
         await self._submit(interaction, name, "passive", params, reason)
 
     # ---- the player's own ---------------------------------------------

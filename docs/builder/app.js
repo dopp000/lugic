@@ -9,6 +9,7 @@
   var R = E.rules;
   var SAVE_KEY = 'lugic-character-builder-v1';
   var ART_KEY = 'lugic-character-builder-pictures-v1';
+  var FRAME_KEY = 'lugic-character-builder-frames-v1';   // the borders picked by hand, one slot per skill, beside the pictures
   var MAX_COINS_SHOWN = 120;
   // How wide the portrait shows on the card, as a share of the card. The picture always keeps its own shape; this only scales it.
   // It belongs to this page, not to the character, so it is not in the code and the bot is never told.
@@ -20,6 +21,17 @@
     { id: 'full', label: 'Full', percent: 100 }
   ];
   var portraitSize = loadPortraitSize();
+  // Which part of the picture shows, and in what shape. Original keeps the picture whole in its own shape (only its size changes); the other
+  // shapes cut it to that shape, and the player moves and zooms it to choose which part shows. Also local to this browser, never in the code.
+  var PORTRAIT_FIT_KEY = 'lugic-character-builder-portrait-fit-v1';
+  var PORTRAIT_SHAPES = [
+    { id: 'original', label: 'Original', ratio: null },
+    { id: 'square', label: 'Square', ratio: 1 },
+    { id: 'tall', label: 'Tall 3:4', ratio: 3 / 4 },
+    { id: 'wide', label: 'Wide 4:3', ratio: 4 / 3 },
+    { id: 'banner', label: 'Banner 16:9', ratio: 16 / 9 }
+  ];
+  var portraitFit = loadPortraitFit();
 
   var state = loadSaved() || E.defaultState();
   var syncs = [];          // functions that repaint one thing when the review changes
@@ -176,11 +188,40 @@
   }
   function paintIssues(list, items) {
     list.textContent = '';
-    items.forEach(function (text) { list.appendChild(el('li', { text: text })); });
+    items.forEach(function (text) { list.appendChild(el('li', {}, [prose(text)])); });
     list.hidden = !items.length;
   }
 
   function bp(n) { return n + ' BP'; }
+
+  // ---- coloured words in running text, and words that can be pointed at ---------------------------------------------
+  // A warning, a help line or a note that mentions a timing ("[On Kill]", "Before Use") or a status shows it in the colour it has in a rule line,
+  // and says what it is on hover. Everything else in the text stays as written. Returns a fragment.
+  function prose(text) {
+    var frag = document.createDocumentFragment();
+    window.LugicPreview.renderProse(text, frag);
+    return frag;
+  }
+  // The name the status guide uses for a status as the picker spells it: "Power Up" is power_up.
+  function statusKey(name) { return String(name).toLowerCase().replace(/\s+/g, '_'); }
+  // Lets the hover box describe this node, when there is something to say about it.
+  function pointAt(node, kind, key) {
+    if (window.LugicPreview.definition(kind, key)) {
+      node.setAttribute('data-tip-kind', kind);
+      node.setAttribute('data-tip-key', key);
+    }
+    return node;
+  }
+  // **bold** and `code` only; every piece goes in as text, never as markup.
+  function inlineRich(into, text) {
+    String(text).split(/(\*\*[^*]+\*\*|`[^`]+`)/).forEach(function (bit) {
+      if (!bit) { return; }
+      if (bit.slice(0, 2) === '**') { into.appendChild(el('strong', { text: bit.slice(2, -2) })); }
+      else if (bit.charAt(0) === '`') { into.appendChild(el('code', { text: bit.slice(1, -1) })); }
+      else { into.appendChild(document.createTextNode(bit)); }
+    });
+    return into;
+  }
 
   // ---- the form -----------------------------------------------------------------------------------
 
@@ -303,7 +344,8 @@
     ]);
   }
 
-  // Fixed steps, so the card looks the same for everyone: the picture keeps its own shape and only its width changes.
+  // Size: fixed steps, so the card looks the same for everyone; the picture keeps its own shape and only its width changes.
+  // Shape and Move and zoom: optional, for a picture that needs cutting down to its best part. Original leaves the picture whole.
   function portraitSizeControl() {
     var group = el('div', { class: 'segments wide', role: 'radiogroup', 'aria-label': 'Portrait size' });
     PORTRAIT_SIZES.forEach(function (option) {
@@ -316,10 +358,116 @@
       });
       group.appendChild(el('label', { class: 'segment', for: input.id, title: option.percent + '% of the card' }, [input, el('span', { text: option.label })]));
     });
+
+    var shapes = el('div', { class: 'segments wide', role: 'radiogroup', 'aria-label': 'Portrait shape' });
+    PORTRAIT_SHAPES.forEach(function (option) {
+      var input = el('input', { type: 'radio', name: 'portrait-shape', value: option.id, id: nextId('shape') });
+      input.checked = option.id === portraitFit.shape;
+      input.addEventListener('change', function () {
+        portraitFit.shape = option.id;
+        portraitFit.x = 0; portraitFit.y = 0;     // a different opening: start from the middle
+        savePortraitFit();
+        paintPortrait();
+        redraw();
+      });
+      shapes.appendChild(el('label', { class: 'segment', for: input.id }, [input, el('span', { text: option.label })]));
+    });
+
+    var move = el('button', { type: 'button', class: 'btn', text: 'Move and zoom' });
+    var reset = el('button', { type: 'button', class: 'btn quiet', text: 'Reset' });
+    var hint = el('span', { class: 'msg bad', role: 'status' });
+    var editor = el('div', { class: 'art-editor portrait-editor', hidden: true });
+    var row = el('div', { class: 'art-row' }, [move, reset, hint]);
+
+    function ready() { return !!cardParts.img && !cardParts.img.hidden && cardParts.img.naturalWidth > 0; }
+    function sync() {
+      var ok = ready();
+      move.disabled = reset.disabled = !ok;
+      hint.textContent = ok ? '' : 'Add a portrait link above first.';
+      if (!ok) { editor.hidden = true; editor.textContent = ''; }
+    }
+    function redraw() { if (!editor.hidden) { open(); } }
+
+    function art() { return { a: cardParts.img.naturalWidth / cardParts.img.naturalHeight, x: portraitFit.x, y: portraitFit.y, zoom: portraitFit.zoom }; }
+
+    function open() {
+      var P = window.LugicPreview;
+      if (!ready()) { return; }
+      editor.textContent = '';
+      editor.hidden = false;
+      var o = portraitOpening();
+      var frame = el('div', { class: 'portrait-stage-frame' });
+      frame.style.setProperty('--ar', String(o));
+      var img = el('img', { alt: '', draggable: 'false', referrerpolicy: 'no-referrer', src: cardParts.img.currentSrc || cardParts.img.src });
+      frame.appendChild(img);
+      var stage = el('div', { class: 'portrait-stage', tabindex: '0', role: 'group', 'aria-label': 'Drag to move the picture. Arrow keys move it, plus and minus zoom.' }, [frame]);
+      var zoom = el('input', { type: 'range', min: '1', max: String(P.maxZoom), step: '0.01', 'aria-label': 'Zoom' });
+      zoom.value = String(portraitFit.zoom);
+      var done = el('button', { type: 'button', class: 'btn primary', text: 'Done' });
+
+      function paint() {
+        var c = P.clampArt(art(), o);
+        portraitFit.x = c.x; portraitFit.y = c.y; portraitFit.zoom = c.zoom;
+        P.applyArt(img, art(), o);
+        zoom.value = String(portraitFit.zoom);
+        paintPortrait();
+        savePortraitFit();
+      }
+      var drag = null;
+      stage.addEventListener('pointerdown', function (e) {
+        drag = { x: e.clientX, y: e.clientY };
+        try { stage.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
+        e.preventDefault();
+      });
+      stage.addEventListener('pointermove', function (e) {
+        if (!drag) { return; }
+        var box = frame.getBoundingClientRect();
+        portraitFit.x += (e.clientX - drag.x) / box.width;
+        portraitFit.y += (e.clientY - drag.y) / box.height;
+        drag = { x: e.clientX, y: e.clientY };
+        paint();
+      });
+      function stop() { drag = null; }
+      stage.addEventListener('pointerup', stop);
+      stage.addEventListener('pointercancel', stop);
+      stage.addEventListener('wheel', function (e) { e.preventDefault(); portraitFit.zoom += e.deltaY < 0 ? 0.08 : -0.08; paint(); }, { passive: false });
+      stage.addEventListener('keydown', function (e) {
+        var step = 0.02, handled = true;
+        if (e.key === 'ArrowLeft') { portraitFit.x -= step; } else if (e.key === 'ArrowRight') { portraitFit.x += step; }
+        else if (e.key === 'ArrowUp') { portraitFit.y -= step; } else if (e.key === 'ArrowDown') { portraitFit.y += step; }
+        else if (e.key === '+' || e.key === '=') { portraitFit.zoom += 0.1; } else if (e.key === '-') { portraitFit.zoom -= 0.1; }
+        else { handled = false; }
+        if (handled) { e.preventDefault(); paint(); }
+      });
+      zoom.addEventListener('input', function () { portraitFit.zoom = parseFloat(zoom.value); paint(); });
+      done.addEventListener('click', function () { editor.hidden = true; editor.textContent = ''; });
+      editor.appendChild(stage);
+      editor.appendChild(el('div', { class: 'art-controls' }, [
+        el('p', { class: 'note', text: 'Drag the picture to move it. Scroll or use the slider to zoom. The card shows the same thing.' }),
+        el('label', {}, ['Zoom', zoom]),
+        el('div', { class: 'row' }, [done])
+      ]));
+      P.applyArt(img, art(), o);
+    }
+
+    move.addEventListener('click', function () { if (editor.hidden) { open(); } else { editor.hidden = true; editor.textContent = ''; } });
+    reset.addEventListener('click', function () {
+      portraitFit.x = 0; portraitFit.y = 0; portraitFit.zoom = 1;
+      savePortraitFit();
+      paintPortrait();
+      redraw();
+    });
+    portraitControlsSync = sync;
+    sync();
     return el('div', { class: 'field portrait-size' }, [
       el('span', { class: 'label-like', text: 'Portrait size on the card' }),
       group,
-      el('p', { class: 'note', text: 'Only the size changes. The picture is never cropped, zoomed or reshaped, so a tall one stays tall. The bot is not told.' })
+      el('p', { class: 'note', text: 'Size only makes the picture bigger or smaller. It is never cropped, zoomed or reshaped by it, so a tall one stays tall.' }),
+      el('span', { class: 'label-like', text: 'Portrait shape' }),
+      shapes,
+      el('p', { class: 'note', text: 'Original keeps the picture whole. Any other shape cuts the picture to that shape, and Move and zoom picks which part shows.' }),
+      row, editor,
+      el('p', { class: 'note', text: 'Size, shape and position stay in this browser. The bot is not told.' })
     ]);
   }
 
@@ -499,7 +647,7 @@
         inputs.forEach(function (input, i) { input.checked = i === rank; });
         cost.textContent = rank ? bp(R.ranks.costs[rank]) : '';
       });
-      return el('div', { class: 'rank-row' }, [el('span', { class: 'rank-name chip-' + status }, [icon(status), E.capitalize(status)]), group, cost]);
+      return el('div', { class: 'rank-row' }, [pointAt(el('span', { class: 'rank-name chip-' + status }, [icon(status), E.capitalize(status)]), 'status', status), group, cost]);
     });
     var tail = el('p', { class: 'note' });
     syncs.push(function (r) {
@@ -565,32 +713,207 @@
 
   var LN = window.LugicLines;
 
-  // A choice can carry a tone (positive, negative): it shows in the wiki's yellow or red in the list and, once chosen, in the box.
-  function plainSelect(options, value, onChange) {
-    var select = el('select');
-    function option(item) { return el('option', { value: item.value, text: item.label, 'data-tone': item.tone }); }
-    function paintTone() {
-      var chosen = select.options[select.selectedIndex];
-      var tone = chosen ? chosen.getAttribute('data-tone') : null;
-      if (tone) { select.setAttribute('data-tone', tone); } else { select.removeAttribute('data-tone'); }
-    }
-    options.forEach(function (o) {
-      if (o.group) {
-        var group = el('optgroup', { label: o.group });
-        o.items.forEach(function (item) { group.appendChild(option(item)); });
-        select.appendChild(group);
-      } else { select.appendChild(option(o)); }
-    });
-    select.value = String(value);
-    paintTone();
-    select.addEventListener('change', function () { paintTone(); onChange(select.value); });
-    return select;
+  // ---- drop-down lists with colour, pictures and definitions ------------------------------------------------------
+  // The rule picker's lists and the coin status list are not the browser's own <select>. Each choice shows in its own colour (a status in the
+  // wiki's yellow, red or brown, a timing in its tag colour), with its picture, and says what it is when the pointer rests on it, the way an
+  // underlined word does. It works from the keyboard like a select (arrows, Home, End, Enter, Escape, the first letters of a choice) and by touch.
+  //
+  // options: [{ value, label, tone?, cls?, icon?, tip?: { kind, key } }] or [{ group, items: [...] }]. Returns the element; .value reads or sets
+  // the choice and .disabled turns it off. onChange(value) is called when the reader picks something different.
+  var openMenu = null;     // { close() } while a list is open; only one is open at a time
+
+  function choiceColour(item) {
+    if (!item) { return ''; }
+    if (item.cls) { return ' pv-' + item.cls; }
+    return item.tone ? ' ch-' + item.tone : '';
   }
 
-  // The tone of a status, by the name the picker lists it under ("Power Up").
+  function choice(options, value, onChange, settings) {
+    settings = settings || {};
+    var items = [];
+    options.forEach(function (o) { if (o.group) { o.items.forEach(function (i) { items.push(i); }); } else { items.push(o); } });
+    function find(v) { return items.filter(function (i) { return i.value === String(v); })[0] || items[0] || null; }
+    var current = find(value);
+
+    var button = el('button', { type: 'button', class: 'choice-btn', role: 'combobox', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', 'aria-label': settings.label });
+    var root = el('div', { class: 'choice' }, [button]);
+    var menu = null;
+    var opts = [];           // the <li> of each choice while the list is open
+    var active = -1;
+    var typed = '';
+    var typedAt = 0;
+    var listeners = [];
+
+    function paint() {
+      button.textContent = '';
+      button.className = 'choice-btn' + choiceColour(current);
+      if (current && current.icon) { button.appendChild(icon(current.icon)); }
+      button.appendChild(el('span', { class: 'choice-label', text: current ? current.label : '' }));
+      button.appendChild(el('span', { class: 'choice-caret', 'aria-hidden': 'true' }));
+      button.removeAttribute('data-tip-kind');
+      button.removeAttribute('data-tip-key');
+      if (current && current.tip) { pointAt(button, current.tip.kind, current.tip.key); }   // pointing at the closed list says what the chosen one is
+      fillIcons();
+    }
+
+    function setActive(index, speak) {
+      if (index < 0 || index >= opts.length) { return; }
+      if (active >= 0 && opts[active]) { opts[active].classList.remove('active'); }
+      active = index;
+      var li = opts[index];
+      li.classList.add('active');
+      button.setAttribute('aria-activedescendant', li.id);
+      // scroll the choice into view inside the list without moving the page
+      var top = li.offsetTop, bottom = top + li.offsetHeight;
+      if (top < menu.scrollTop) { menu.scrollTop = top - 4; } else if (bottom > menu.scrollTop + menu.clientHeight) { menu.scrollTop = bottom - menu.clientHeight + 4; }
+      if (speak) { if (li.getAttribute('data-tip-kind')) { showTip(li); } else { hideTip(); } }
+    }
+
+    var anchor = null;       // where the button was when the list opened
+
+    function position() {
+      var r = button.getBoundingClientRect();
+      anchor = r;
+      var vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+      var below = vh - r.bottom - 10, above = r.top - 10;
+      var up = below < 220 && above > below;
+      menu.style.minWidth = Math.max(r.width, 200) + 'px';
+      menu.style.maxHeight = Math.max(140, Math.min(380, up ? above : below)) + 'px';
+      menu.style.left = Math.round(Math.max(8, Math.min(r.left, vw - menu.offsetWidth - 8))) + 'px';
+      if (up) { menu.style.top = 'auto'; menu.style.bottom = Math.round(vh - r.top + 2) + 'px'; }
+      else { menu.style.bottom = 'auto'; menu.style.top = Math.round(r.bottom + 2) + 'px'; }
+    }
+
+    function close() {
+      if (!menu) { return; }
+      listeners.forEach(function (l) { l[0].removeEventListener(l[1], l[2], l[3]); });
+      listeners = [];
+      menu.remove();
+      menu = null;
+      opts = [];
+      active = -1;
+      button.setAttribute('aria-expanded', 'false');
+      button.removeAttribute('aria-controls');
+      button.removeAttribute('aria-activedescendant');
+      if (openMenu && openMenu.root === root) { openMenu = null; }
+      hideTip();
+    }
+
+    function choose(item) {
+      var changed = !current || item.value !== current.value;
+      current = item;
+      paint();
+      close();
+      if (changed) { onChange(item.value); }
+    }
+
+    function listen(target, type, fn, capture) { target.addEventListener(type, fn, capture); listeners.push([target, type, fn, capture]); }
+
+    function open() {
+      if (button.disabled) { return; }
+      if (openMenu) { openMenu.close(); }
+      hideTip();
+      menu = el('ul', { class: 'choice-menu', role: 'listbox', id: nextId('menu'), tabindex: '-1' });
+      function add(item) {
+        var li = el('li', { class: 'choice-opt' + choiceColour(item), role: 'option', id: nextId('opt'), 'aria-selected': item === current ? 'true' : 'false' }, [
+          item.icon ? icon(item.icon) : null, el('span', { text: item.label })
+        ]);
+        if (item.tip) { pointAt(li, item.tip.kind, item.tip.key); }
+        li._item = item;
+        li._label = item.label;
+        li.addEventListener('pointermove', function () { var at = opts.indexOf(li); if (at !== active) { setActive(at, false); } });
+        li.addEventListener('click', function (e) { e.stopPropagation(); choose(item); });
+        opts.push(li);
+        menu.appendChild(li);
+      }
+      options.forEach(function (o) {
+        if (o.group) { menu.appendChild(el('li', { class: 'choice-group', role: 'presentation', text: o.group })); o.items.forEach(add); } else { add(o); }
+      });
+      menu.addEventListener('pointerdown', function (e) { e.preventDefault(); });   // the button keeps the focus
+      document.body.appendChild(menu);
+      position();
+      button.setAttribute('aria-expanded', 'true');
+      button.setAttribute('aria-controls', menu.id);
+      fillIcons();
+      var chosen = opts.map(function (li) { return li.getAttribute('aria-selected') === 'true'; }).indexOf(true);
+      setActive(chosen >= 0 ? chosen : 0, false);
+      menu.scrollTop = Math.max(0, opts[active].offsetTop - 60);
+      listen(document, 'pointerdown', function (e) { if (!menu.contains(e.target) && !button.contains(e.target)) { close(); } }, true);
+      // the page scrolled the button away from the list: close, like a select does. A scroll that did not move the button (one still on its way
+      // from before the list opened) or one inside the list itself is ignored.
+      listen(document, 'scroll', function (e) {
+        if (!menu || menu.contains(e.target)) { return; }
+        var r = button.getBoundingClientRect();
+        if (Math.abs(r.top - anchor.top) > 2 || Math.abs(r.left - anchor.left) > 2) { close(); }
+      }, true);
+      listen(window, 'resize', close);
+      openMenu = { root: root, close: close };
+    }
+
+    function move(by) {
+      var next = Math.min(opts.length - 1, Math.max(0, active + by));
+      setActive(next, true);
+    }
+
+    function typeahead(key) {
+      var now = Date.now();
+      typed = now - typedAt > 700 ? key : typed + key;
+      typedAt = now;
+      var wanted = typed.toLowerCase();
+      var list = menu ? opts.map(function (li) { return li._label; }) : [];
+      for (var i = 0; i < list.length; i++) {
+        var at = (active + 1 + i) % list.length;   // from the next one on, so typing the same letter again walks through the matches
+        if (list[at].toLowerCase().indexOf(wanted) === 0) { setActive(at, true); return; }
+      }
+    }
+
+    button.addEventListener('click', function () { if (menu) { close(); } else { open(); } });
+    button.addEventListener('keydown', function (e) {
+      var k = e.key;
+      if (!menu) {
+        if (k === 'ArrowDown' || k === 'ArrowUp' || k === 'Enter' || k === ' ') { e.preventDefault(); open(); if (active >= 0) { setActive(active, true); } }
+        return;
+      }
+      if (k === 'ArrowDown') { e.preventDefault(); move(1); }
+      else if (k === 'ArrowUp') { e.preventDefault(); move(-1); }
+      else if (k === 'PageDown') { e.preventDefault(); move(8); }
+      else if (k === 'PageUp') { e.preventDefault(); move(-8); }
+      else if (k === 'Home') { e.preventDefault(); setActive(0, true); }
+      else if (k === 'End') { e.preventDefault(); setActive(opts.length - 1, true); }
+      else if (k === 'Enter' || k === ' ') { e.preventDefault(); if (active >= 0) { choose(opts[active]._item); } }
+      else if (k === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+      else if (k === 'Tab') { close(); }
+      else if (k.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { typeahead(k); }
+    });
+    button.addEventListener('keyup', function (e) { if (e.key === ' ') { e.preventDefault(); } });   // a space must not "click" the button a second time
+    button.addEventListener('blur', function () { if (menu) { setTimeout(function () { if (menu && document.activeElement !== button) { close(); } }, 0); } });
+
+    Object.defineProperty(root, 'value', {
+      get: function () { return current ? current.value : ''; },
+      set: function (v) { current = find(v); paint(); }
+    });
+    Object.defineProperty(root, 'disabled', {
+      get: function () { return button.disabled; },
+      set: function (v) { button.disabled = !!v; }
+    });
+    paint();
+    return root;
+  }
+
+  // The picker's lists. A choice can carry a tone, a timing colour, a picture and something to say on hover (see choice()).
+  function plainSelect(options, value, onChange, settings) {
+    return choice(options, value, onChange, settings);
+  }
+
+  // The tone of a status, by its key or by the name the picker lists it under ("Power Up").
   function statusTone(name) {
-    var found = R.statusGuide.filter(function (s) { return s.title.toLowerCase() === String(name).toLowerCase(); })[0];
+    var found = R.statusGuide.filter(function (s) { return s.key === statusKey(name); })[0];
     return found ? found.tone : undefined;
+  }
+  // One status as a choice: its tone, its picture and its definition on hover.
+  function statusChoice(value, label) {
+    var key = statusKey(value);
+    return { value: value, label: label === undefined ? value : label, tone: statusTone(value), icon: key, tip: { kind: 'status', key: key } };
   }
 
   var DEFENSE_FLAGS = ['guard', 'evade', 'counter', 'clashable_guard', 'clashable_counter', 'supermove'];
@@ -645,7 +968,7 @@
     function timingOptions() {
       var groups = LN.spec.groups.map(function (g) {
         var items = LN.spec.timings.filter(function (t) { return t.group === g.id && (opts.passive ? t.passive : t.skill); })
-          .map(function (t) { return { value: t.key, label: t.key }; });
+          .map(function (t) { return { value: t.key, label: t.key, cls: window.LugicPreview.timingClass(t.key), tip: { kind: 'timing', key: t.key.toLowerCase() } }; });
         return { group: g.label, items: items };
       });
       return groups.filter(function (g) { return g.items.length; });
@@ -671,11 +994,11 @@
         control.value = String(values[p.name]);
         control.addEventListener('input', function () { values[p.name] = control.value === '' ? '' : Number(control.value); changed(); });
       } else if (p.kind === 'choice') {
-        var choices = p.name === 'status' ? p.options.map(function (o) { return { value: o.value, label: o.label, tone: statusTone(o.value) }; }) : p.options;
-        control = plainSelect(choices, values[p.name], function (v) { values[p.name] = v; changed(); });
+        var choices = p.name === 'status' ? p.options.map(function (o) { return statusChoice(o.value, o.label); }) : p.options;
+        control = plainSelect(choices, values[p.name], function (v) { values[p.name] = v; changed(); }, { label: p.label });
       } else if (p.kind === 'skill' && opts.names().length) {
         if (opts.names().indexOf(values[p.name]) < 0) { values[p.name] = opts.names()[0]; }
-        control = plainSelect(opts.names().map(function (n) { return { value: n, label: n }; }), values[p.name], function (v) { values[p.name] = v; changed(); });
+        control = plainSelect(opts.names().map(function (n) { return { value: n, label: n }; }), values[p.name], function (v) { values[p.name] = v; changed(); }, { label: p.label });
       } else {
         control = el('input', { type: 'text', autocomplete: 'off', maxlength: String(p.kind === 'tag' ? R.tags.maxLength : R.limits.skillName) });
         control.value = values[p.name] || '';
@@ -695,7 +1018,7 @@
       return el('div', { class: 'rule-step' }, [
         el('div', { class: 'rule-step-head' }, [el('span', { class: 'rule-no', text: number }), el('span', { class: 'rule-title', text: title })]),
         el('div', { class: 'rule-fields' }, kids),
-        help ? el('p', { class: 'note', text: help }) : null
+        help ? el('p', { class: 'note' }, [prose(help)]) : null
       ]);
     }
 
@@ -709,7 +1032,8 @@
       var lines = opts.read();
       var full = opts.maxLines && lines.length >= opts.maxLines;
       previewCode.textContent = '';
-      problemText.textContent = why || '';
+      problemText.textContent = '';
+      if (why) { problemText.appendChild(prose(why)); }
       problemText.hidden = !why;
       if (!why) { previewCode.appendChild(lineTokens(LN.compose(pick))); fillIcons(); }
       else { previewCode.appendChild(el('span', { class: 'pv-none', text: 'The line shows here once the choices fit together.' })); }
@@ -723,11 +1047,11 @@
       var c = LN.condition(pick.cond);
       var e = LN.effect(pick.effect);
 
-      var when = [plainSelect(timingOptions(), pick.timing, function (v) { pick.timing = v; drawPanel(); })];
+      var when = [plainSelect(timingOptions(), pick.timing, function (v) { pick.timing = v; drawPanel(); }, { label: 'When the line fires' })];
       if (t.perCoin) {
         var coinChoices = [];
         for (var n = 1; n <= R.skills.maxCoins; n++) { coinChoices.push({ value: String(n), label: 'Coin ' + n }); }
-        when.push(plainSelect(coinChoices, String(pick.coin), function (v) { pick.coin = parseInt(v, 10); paintResult(); }));
+        when.push(plainSelect(coinChoices, String(pick.coin), function (v) { pick.coin = parseInt(v, 10); paintResult(); }, { label: 'Which coin' }));
       }
       body.appendChild(step('1', 'When does it fire?', when, t.help));
 
@@ -735,7 +1059,7 @@
         pick.cond = v;
         pick.condValues = v ? fresh(LN.condition(v).params) : {};
         drawPanel();
-      })];
+      }, { label: 'Condition' })];
       if (c) { c.params.forEach(function (p) { ifKids.push(paramControl(p, pick.condValues, paintResult)); }); }
       body.appendChild(step('2', 'Only if... (optional)', ifKids));
 
@@ -746,7 +1070,7 @@
         if (!next.ally) { pick.target = ''; }
         if (!(next.post && !next.followup && !next.assist)) { pick.next = false; }
         drawPanel();
-      })];
+      }, { label: 'What the line does' })];
       e.params.forEach(function (p) { thenKids.push(paramControl(p, pick.effValues, paintResult)); });
       if (e.ally) {
         thenKids.push(el('label', { class: 'mini' }, ['Aimed at', plainSelect(LN.spec.targets.map(function (x) { return { value: x.value, label: x.label }; }), pick.target, function (v) {
@@ -855,6 +1179,11 @@
         var kind = selectInput([{ value: 'passive', label: 'Passive' }, { value: 'support', label: 'Support passive' }], p.kind, function (v) { p.kind = v; });
         var cost = numberInput(p.cost, 1, R.passives.costMax, function (n) { p.cost = n; });
         var rules = null;
+        var flavour = el('textarea', { rows: '2', maxlength: String(R.limits.passiveFlavour), autocomplete: 'off',
+          placeholder: 'Optional. The story behind the passive.' });
+        flavour.value = p.flavour || '';
+        flavour.addEventListener('input', function () { p.flavour = flavour.value; update(); });
+        var preview = el('div', { class: 'pp-wrap', 'aria-label': 'How the passive will look' });
         var lines = el('textarea', { rows: '3', spellcheck: 'false', placeholder: '[Combat Start] Gain 2 Protection' });
         lines.value = p.lines.join('\n');
         lines.addEventListener('input', function () { p.lines = lines.value.split('\n'); if (rules) { rules.refresh(); } update(); });
@@ -866,7 +1195,12 @@
         var remove = el('button', { type: 'button', class: 'btn quiet', text: 'Remove', onclick: function () {
           state.passives.splice(index, 1); renderPassives(); update();
         } });
-        local.push(function (r) { paintIssues(issues, r.perPassive[index] || []); });
+        local.push(function (r) {
+          paintIssues(issues, r.perPassive[index] || []);
+          preview.textContent = '';
+          preview.appendChild(window.LugicPreview.renderPassive(p));
+          fillIcons();
+        });
         list.appendChild(el('article', { class: 'item' }, [
           el('div', { class: 'grid passive-head' }, [field('Name', name), field('Kind', kind), field('Price (PP)', cost, 'An admin can change it.')]),
           el('div', { class: 'field' }, [
@@ -877,6 +1211,8 @@
               field('Rule lines, one per line', lines, 'The bot checks the wording when you import.')
             ])
           ]),
+          field('Flavour text (optional)', flavour, 'Shown in brown italics under the passive, like on the wiki. It goes into your code, and the bot shows it in italics on the character sheet.'),
+          preview,
           issues,
           el('div', { class: 'row' }, [remove])
         ]));
@@ -906,7 +1242,7 @@
   function statusOptions() {
     var ranked = R.ranks.statuses;
     var oneTurn = R.nonKeyword.oneTurn;
-    function items(list) { return list.map(function (s) { return { value: s, label: E.title(s) }; }); }
+    function items(list) { return list.map(function (s) { return statusChoice(s, E.title(s)); }); }
     return [
       { value: '', label: 'No status' },
       { group: 'Needs a rank', items: items(ranked) },
@@ -1045,7 +1381,66 @@
     adjust.addEventListener('click', function () { if (editor.hidden) { openEditor(); } else { editor.hidden = true; editor.textContent = ''; } });
     remove.addEventListener('click', function () { delete skill.art; sync(); changed(); });
     sync();
-    return el('div', { class: 'stack tight' }, [row, editor, note]);
+    var box = el('div', { class: 'stack tight' }, [row, editor, note]);
+    box.refreshEditor = function () { if (!editor.hidden) { openEditor(); } };   // the frame changed: draw the open adjuster again
+    return box;
+  }
+
+  // ---- the border round a skill's picture ---------------------------------------------------------------------------
+  // The page picks a frame on its own (the Sin of the status the skill leans on, the tier from its coins). This lets the player pick one by hand
+  // instead: Envy 1 to 3, Pride 1 to 3 and so on, Defense, or a plain ring. Like the picture it is for the preview only, stays on this device
+  // and is not part of the code, because the bot has no field for it.
+  function frameControls(skill, changed) {
+    var P = window.LugicPreview;
+    var details = el('details', { class: 'frame-picker' });
+    var summary = el('summary');
+    var grid = el('div', { class: 'frame-grid', role: 'radiogroup', 'aria-label': 'Skill border' });
+    var options = [];       // { node, test(skill) -> whether this one is the current choice }
+
+    function thumb(file) {
+      var box = el('span', { class: 'frame-thumb pv pv-sin-none', 'aria-hidden': 'true' });
+      if (file) { box.appendChild(el('img', { src: file, alt: '' })); } else { box.appendChild(P.ring()); }
+      return box;
+    }
+    function nameOf(f) { return f.file ? P.frameLabels[f.sin] + ' ' + f.tier : (f.sin ? P.frameLabels[f.sin] : 'Plain ring'); }
+    function add(label, file, value, current) {
+      var node = el('button', { type: 'button', class: 'frame-opt', role: 'radio', 'aria-checked': 'false', title: label }, [thumb(file), el('span', { text: label })]);
+      node.addEventListener('click', function () {
+        if (value) { skill.frame = value; } else { delete skill.frame; }
+        sync();
+        changed();
+      });
+      grid.appendChild(node);
+      options.push({ node: node, is: current });
+    }
+
+    var auto = P.autoFrame(skill);
+    add('Automatic', auto.file, null, function () { return !skill.frame; });
+    P.frameChoices().forEach(function (f) {
+      add(f.label, f.file, { sin: f.sin, tier: f.tier }, function () { return !!skill.frame && skill.frame.sin === f.sin && skill.frame.tier === f.tier; });
+    });
+    add('Plain ring', null, { sin: 'none', tier: 0 }, function () { return !!skill.frame && skill.frame.sin === 'none'; });
+
+    function sync() {
+      var now = P.model(skill).frame;
+      var automatic = P.autoFrame(skill);
+      summary.textContent = '';
+      summary.appendChild(thumb(now.file));
+      summary.appendChild(el('span', {}, [
+        el('strong', { text: 'Skill border: ' }),
+        skill.frame && now.picked ? nameOf(now) : 'Automatic (' + nameOf(automatic) + ')'
+      ]));
+      // the Automatic tile shows what automatic gives for this skill right now
+      var first = options[0].node;
+      first.replaceChild(thumb(automatic.file), first.firstChild);
+      options.forEach(function (o) { o.node.setAttribute('aria-checked', o.is() ? 'true' : 'false'); });
+    }
+    details.appendChild(summary);
+    details.appendChild(grid);
+    details.appendChild(el('p', { class: 'note frame-note', text: 'Automatic follows the skill: the status it leans on gives the Sin, and its coins give the tier. Pick one to fix it. Only the preview shows it; it stays on this device and is not part of the code.' }));
+    sync();
+    details.refresh = sync;     // the skill changed, so what Automatic gives may have too
+    return details;
   }
 
   function buildSkills() {
@@ -1092,12 +1487,12 @@
           var cnt = numberInput(coin.cnt, 0, null, function (n) { coin.cnt = n; });
           pot.setAttribute('aria-label', 'Coin ' + (i + 1) + ' potency');
           cnt.setAttribute('aria-label', 'Coin ' + (i + 1) + ' count');
-          var status = selectInput(statusOptions(), coin.name, function (v) {
+          var status = choice(statusOptions(), coin.name, function (v) {
             coin.name = v;
             if (v && !coin.pot && !coin.cnt) { coin.pot = 1; coin.cnt = 1; pot.value = '1'; cnt.value = '1'; }
             pot.disabled = cnt.disabled = !v;
-          });
-          status.setAttribute('aria-label', 'Coin ' + (i + 1) + ' status');
+            update();
+          }, { label: 'Coin ' + (i + 1) + ' status' });
           pot.disabled = cnt.disabled = !coin.name;
           coinRows.push(el('div', { class: 'coin-row' }, [
             el('span', { class: 'coin-no', text: 'Coin ' + (i + 1) }),
@@ -1152,6 +1547,7 @@
       var spNote = el('p', { class: 'note' });
       var preview = el('div', { class: 'pv-wrap', 'aria-label': 'How the skill will look' });
       var picture = pictureControls(skill, function () { paintPreview(); queueSave(); });
+      var border = frameControls(skill, function () { paintPreview(); picture.refreshEditor(); queueSave(); });
       function paintPreview() {
         preview.textContent = '';
         preview.appendChild(window.LugicPreview.render(skill, index));
@@ -1160,6 +1556,7 @@
 
       local.push(function (r) {
         paintPreview();
+        border.refresh();
         paintIssues(issues, r.perSkill[index] || []);
         var read = E.readTriggers(skill.triggers);
         spNote.textContent = read.lines.length > 1
@@ -1184,6 +1581,7 @@
         ]),
         preview,
         picture,
+        border,
         el('div', { class: 'grid four' }, [field('Base Power', base), field('Coin Power', coinPower), field('Coins', coins), field('Damage type', type)]),
         el('div', { class: 'coin-rows' }, coinRows),
         el('div', { class: 'field' }, [
@@ -1230,18 +1628,11 @@
 
   // ---- the status list and colour key -------------------------------------------------------------------------------
 
-  // **bold** and `code` only; every piece goes in as text, never as markup.
+  // The paragraphs of a status's full text, with **bold** and `code`.
   function richText(text) {
     var frag = document.createDocumentFragment();
     String(text).split(/\n\n+/).forEach(function (para) {
-      var p = el('p', { class: 'ref-p' });
-      para.split(/(\*\*[^*]+\*\*|`[^`]+`)/).forEach(function (bit) {
-        if (!bit) { return; }
-        if (bit.slice(0, 2) === '**') { p.appendChild(el('strong', { text: bit.slice(2, -2) })); }
-        else if (bit.charAt(0) === '`') { p.appendChild(el('code', { text: bit.slice(1, -1) })); }
-        else { p.appendChild(document.createTextNode(bit)); }
-      });
-      frag.appendChild(p);
+      frag.appendChild(inlineRich(el('p', { class: 'ref-p' }), para));
     });
     return frag;
   }
@@ -1303,7 +1694,7 @@
     return el('li', {}, [el('span', { class: cls, text: sample }), ' ' + what]);
   }
 
-  function statusName(s) { return el('span', { class: 'st-name tone-' + s.tone }, [icon(s.key), s.title]); }
+  function statusName(s) { return pointAt(el('span', { class: 'st-name tone-' + s.tone }, [icon(s.key), s.title]), 'status', s.key); }
 
   // One row per status: name (and Sin chip), then the same three slots every time.
   function statusTable(list) {
@@ -1342,7 +1733,7 @@
     var cell = el('td', { 'data-label': side }, [statusName(s), el('span', { class: 'st-does', text: s.quick.does })]);
     if (extra.length) {
       var line = el('span', { class: 'st-extra' }, ['Same, one damage type: ']);
-      extra.forEach(function (x, i) { line.appendChild(el('span', { class: 'st-name tone-' + x.tone }, [icon(x.key), x.title.replace(' Fragility', '')])); if (i < extra.length - 1) { line.appendChild(document.createTextNode(' ')); } });
+      extra.forEach(function (x, i) { line.appendChild(pointAt(el('span', { class: 'st-name tone-' + x.tone }, [icon(x.key), x.title.replace(' Fragility', '')]), 'status', x.key)); if (i < extra.length - 1) { line.appendChild(document.createTextNode(' ')); } });
       cell.appendChild(line);
     }
     return cell;
@@ -1363,8 +1754,16 @@
     var card = document.getElementById('card');
     card.textContent = '';
     var portraitImg = el('img', { alt: '', referrerpolicy: 'no-referrer', hidden: true });
-    portraitImg.addEventListener('error', function () { portraitImg.hidden = true; cardParts.initial.hidden = false; cardParts.portrait.classList.add('empty'); });
-    portraitImg.addEventListener('load', function () { portraitImg.hidden = false; cardParts.initial.hidden = true; cardParts.portrait.classList.remove('empty'); });
+    portraitImg.addEventListener('error', function () { portraitImg.hidden = true; cardParts.initial.hidden = false; cardParts.portrait.classList.add('empty'); if (portraitControlsSync) { portraitControlsSync(); } });
+    portraitImg.addEventListener('load', function () {
+      portraitImg.hidden = false; cardParts.initial.hidden = true; cardParts.portrait.classList.remove('empty');
+      var src = portraitImg.currentSrc || portraitImg.src;
+      if (portraitFit.src && portraitFit.src !== src) { portraitFit.x = 0; portraitFit.y = 0; portraitFit.zoom = 1; }   // another picture: start from the middle
+      portraitFit.src = src;
+      savePortraitFit();
+      paintPortrait();
+      if (portraitControlsSync) { portraitControlsSync(); }
+    });
     cardParts.img = portraitImg;
     cardParts.initial = el('span', { class: 'initial', 'aria-hidden': 'true', text: '?' });
     cardParts.level = el('span', { class: 'level' });
@@ -1386,7 +1785,8 @@
     cardParts.copy.addEventListener('click', copyCode);
     cardParts.jump = document.getElementById('jump');
 
-    cardParts.portrait = el('div', { class: 'portrait empty' }, [cardParts.initial, portraitImg]);
+    cardParts.frame = el('div', { class: 'portrait-frame' }, [portraitImg]);
+    cardParts.portrait = el('div', { class: 'portrait empty' }, [cardParts.initial, cardParts.frame]);
     card.appendChild(cardParts.portrait);
     card.appendChild(el('div', { class: 'plate' }, [cardParts.level, cardParts.name, cardParts.sub]));
     card.appendChild(el('div', { class: 'budget' }, [cardParts.coins, cardParts.bpText]));
@@ -1422,6 +1822,7 @@
       cardParts.img.hidden = true;
       cardParts.initial.hidden = false;
       cardParts.portrait.classList.add('empty');
+      if (portraitControlsSync) { portraitControlsSync(); }
     }
     var skills = state.skills.length, passives = state.passives.length;
     cardParts.sub.textContent = skills + (skills === 1 ? ' skill' : ' skills') + (passives ? ', ' + passives + (passives === 1 ? ' passive' : ' passives') : '');
@@ -1446,7 +1847,7 @@
 
     cardParts.chips.textContent = '';
     Object.keys(state.ranks).forEach(function (k) {
-      if (state.ranks[k]) { cardParts.chips.appendChild(el('span', { class: 'chip chip-' + k }, [icon(k), E.capitalize(k) + ' ' + state.ranks[k]])); }
+      if (state.ranks[k]) { cardParts.chips.appendChild(pointAt(el('span', { class: 'chip chip-' + k }, [icon(k), E.capitalize(k) + ' ' + state.ranks[k]]), 'status', k)); }
     });
     state.archetypes.forEach(function (k) { cardParts.chips.appendChild(el('span', { class: 'chip', text: E.title(k) })); });
     state.tags.filter(function (t) { return t.trim(); }).forEach(function (t) { cardParts.chips.appendChild(el('span', { class: 'chip tag', text: t.trim() })); });
@@ -1468,10 +1869,10 @@
     if (!any) { cardParts.breakdown.appendChild(el('dt', { text: 'Nothing spent yet' })); }
 
     cardParts.problems.textContent = '';
-    r.blocking.forEach(function (text) { cardParts.problems.appendChild(el('li', { text: text })); });
+    r.blocking.forEach(function (text) { cardParts.problems.appendChild(el('li', {}, [prose(text)])); });
     cardParts.problems.hidden = !r.blocking.length;
     cardParts.notes.textContent = '';
-    r.notes.forEach(function (text) { cardParts.notes.appendChild(el('li', { text: text })); });
+    r.notes.forEach(function (text) { cardParts.notes.appendChild(el('li', {}, [prose(text)])); });
     cardParts.notes.hidden = !r.notes.length;
     cardParts.status.textContent = r.ok
       ? 'This build fits the rules.'
@@ -1541,6 +1942,40 @@
     } catch (e) { /* no storage: the default is used */ }
     return 'full';
   }
+  var portraitControlsSync = null;   // set by the controls on the Identity tab, so they can follow the picture loading or going
+
+  function loadPortraitFit() {
+    var fit = { shape: 'original', x: 0, y: 0, zoom: 1, src: '' };
+    try {
+      var saved = JSON.parse(window.localStorage.getItem(PORTRAIT_FIT_KEY) || 'null');
+      if (saved && typeof saved === 'object') {
+        if (PORTRAIT_SHAPES.some(function (o) { return o.id === saved.shape; })) { fit.shape = saved.shape; }
+        ['x', 'y', 'zoom'].forEach(function (k) { if (typeof saved[k] === 'number' && isFinite(saved[k])) { fit[k] = saved[k]; } });
+        if (typeof saved.src === 'string') { fit.src = saved.src; }
+      }
+    } catch (e) { /* no storage, or an old value: the picture shows whole */ }
+    return fit;
+  }
+  function savePortraitFit() {
+    try { window.localStorage.setItem(PORTRAIT_FIT_KEY, JSON.stringify(portraitFit)); } catch (e) { /* not kept in this browser */ }
+  }
+  // The shape of the opening the picture shows through: the chosen shape, or the picture's own when it is shown whole.
+  function portraitOpening() {
+    var shape = PORTRAIT_SHAPES.filter(function (o) { return o.id === portraitFit.shape; })[0];
+    var img = cardParts.img;
+    var own = img && img.naturalWidth > 0 && img.naturalHeight > 0 ? img.naturalWidth / img.naturalHeight : 1;
+    return shape && shape.ratio ? shape.ratio : own;
+  }
+  // Fits the picture into the card's frame: shape, then where it sits and how far it is zoomed. With Original and no zoom this is the whole
+  // picture in its own shape, so a size change alone never crops or reshapes anything.
+  function paintPortrait() {
+    var img = cardParts.img, frame = cardParts.frame, card = document.getElementById('card');
+    if (!img || !frame || !card || !(img.naturalWidth > 0)) { return; }
+    var o = portraitOpening();
+    card.style.setProperty('--ar', String(o));
+    window.LugicPreview.applyArt(img, { a: img.naturalWidth / img.naturalHeight, x: portraitFit.x, y: portraitFit.y, zoom: portraitFit.zoom }, o);
+  }
+
   function paintPortraitSize() {
     var option = PORTRAIT_SIZES.filter(function (o) { return o.id === portraitSize; })[0] || PORTRAIT_SIZES[PORTRAIT_SIZES.length - 1];
     var card = document.getElementById('card');
@@ -1553,7 +1988,11 @@
       var loaded = text ? E.fromSpec(JSON.parse(text)) : null;
       if (loaded) {
         var pictures = JSON.parse(window.localStorage.getItem(ART_KEY) || '[]');
-        loaded.skills.forEach(function (skill, i) { if (pictures[i] && pictures[i].src) { skill.art = pictures[i]; } });
+        var frames = JSON.parse(window.localStorage.getItem(FRAME_KEY) || '[]');
+        loaded.skills.forEach(function (skill, i) {
+          if (pictures[i] && pictures[i].src) { skill.art = pictures[i]; }
+          if (frames[i] && typeof frames[i] === 'object') { skill.frame = frames[i]; }
+        });
       }
       return loaded;
     } catch (e) { return null; }
@@ -1565,13 +2004,18 @@
       try { window.localStorage.setItem(SAVE_KEY, JSON.stringify(E.toSpec(state))); } catch (e) { /* private window: nothing to do */ }
       try { window.localStorage.setItem(ART_KEY, JSON.stringify(state.skills.map(function (s) { return s.art || null; }))); }
       catch (e) { /* the pictures did not fit in this browser's storage: they last until the page is closed */ }
+      try { window.localStorage.setItem(FRAME_KEY, JSON.stringify(state.skills.map(function (s) { return s.frame || null; }))); }
+      catch (e) { /* no storage: the borders last until the page is closed */ }
     }, 400);
   }
-  // A code carries no pictures, so loading one keeps the pictures of skills that have the same name.
+  // A code carries no pictures and no borders, so loading one keeps those of skills that have the same name.
   function carryPictures(from, to) {
-    var byName = {};
-    from.forEach(function (s) { if (s.art) { byName[s.name] = s.art; } });
-    to.forEach(function (s) { if (byName[s.name] && !s.art) { s.art = byName[s.name]; } });
+    var art = {}, frame = {};
+    from.forEach(function (s) { if (s.art) { art[s.name] = s.art; } if (s.frame) { frame[s.name] = s.frame; } });
+    to.forEach(function (s) {
+      if (art[s.name] && !s.art) { s.art = art[s.name]; }
+      if (frame[s.name] && !s.frame) { s.frame = frame[s.name]; }
+    });
   }
 
   // ---- update loop ------------------------------------------------------------------------------------------------------
@@ -1626,6 +2070,7 @@
 
   function tipTarget(node) { return node && node.closest ? node.closest('[data-tip-kind]') : null; }
 
+  // The box is laid out like the wiki's own: the name with its picture, then one "- line" for each thing it does.
   function showTip(target, event) {
     var d = window.LugicPreview.definition(target.getAttribute('data-tip-kind'), target.getAttribute('data-tip-key'));
     if (!d) { hideTip(); return; }
@@ -1635,13 +2080,9 @@
     }
     if (tipFor && tipFor !== target) { tipFor.removeAttribute('aria-describedby'); }
     tip.textContent = '';
-    tip.appendChild(el('p', { class: 'tip-title' + (d.tone ? ' tone-' + d.tone : '') }, [d.icon ? icon(d.icon) : null, d.title]));
-    tip.appendChild(el('p', { class: 'tip-text', text: d.text }));
-    if (d.slots) {
-      var slots = el('dl', { class: 'tip-slots' });
-      ['when', 'does', 'then'].forEach(function (slot) { slots.appendChild(el('dt', { text: slot })); slots.appendChild(el('dd', { text: d.slots[slot] })); });
-      tip.appendChild(slots);
-    }
+    tip.appendChild(el('p', { class: 'tip-title' + (d.cls ? ' pv-' + d.cls : '') }, [d.icon ? icon(d.icon) : null, el('span', { text: d.title })]));
+    d.lines.forEach(function (line) { tip.appendChild(inlineRich(el('p', { class: 'tip-line' }), line)); });
+    if (d.flavour) { tip.appendChild(el('p', { class: 'tip-flavour', text: d.flavour })); }
     tip.hidden = false;
     fillIcons();
     placeTip(target, event);
@@ -1650,7 +2091,8 @@
   }
 
   // Under the word, or above it when there is no room below; never past the edge of the window. A word that wraps onto two lines has
-  // several boxes, so the one under the pointer is used.
+  // several boxes, so the one under the pointer is used. A choice in an open drop-down list is described beside the list, so it never
+  // covers the other choices.
   function placeTip(target, event) {
     var rects = target.getClientRects();
     var rect = rects[0] || target.getBoundingClientRect();
@@ -1663,9 +2105,19 @@
     tip.style.top = '0px';
     var w = tip.offsetWidth, h = tip.offsetHeight;
     var vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
-    var left = Math.max(8, Math.min(rect.left, vw - w - 8));
-    var top = rect.bottom + 8;
-    if (top + h > vh - 8 && rect.top - h - 8 >= 8) { top = rect.top - h - 8; }
+    var menu = target.closest ? target.closest('.choice-menu') : null;
+    var left, top;
+    if (menu) {
+      var m = menu.getBoundingClientRect();
+      left = m.right + 8;
+      if (left + w > vw - 8) { left = m.left - w - 8; }
+      if (left < 8) { left = Math.max(8, Math.min(m.left, vw - w - 8)); top = m.bottom + 8; if (top + h > vh - 8) { top = Math.max(8, m.top - h - 8); } }
+      else { top = Math.max(8, Math.min(rect.top, vh - h - 8)); }
+    } else {
+      left = Math.max(8, Math.min(rect.left, vw - w - 8));
+      top = rect.bottom + 8;
+      if (top + h > vh - 8 && rect.top - h - 8 >= 8) { top = rect.top - h - 8; }
+    }
     tip.style.left = Math.round(left) + 'px';
     tip.style.top = Math.round(top) + 'px';
   }
@@ -1684,12 +2136,13 @@
   document.addEventListener('click', function (e) {
     if (e.pointerType === 'mouse') { return; }                      // the mouse has already seen it on hover
     var target = tipTarget(e.target);
+    if (target && target.classList.contains('choice-btn')) { return; }   // a tap on a drop-down opens its list; the list has its own way to describe a choice
     if (target) { if (target !== tipFor) { showTip(target, e); } } else if (tipFor) { hideTip(); }    // a tap on a word shows it, a tap anywhere else closes it
   });
   document.addEventListener('focusin', function (e) { var target = tipTarget(e.target); if (target) { showTip(target); } else if (tipFor) { hideTip(); } });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { hideTip(); } });
   document.addEventListener('input', hideTip);                      // typing redraws the lines, so a word under the pointer may no longer exist
-  document.addEventListener('scroll', hideTip, true);
+  document.addEventListener('scroll', function (e) { if (!(e.target && e.target.closest && e.target.closest('.choice-menu'))) { hideTip(); } }, true);   // the page moved; a list scrolling under the box did not
   window.addEventListener('resize', hideTip);
   document.documentElement.addEventListener('mouseleave', hideTip);
 

@@ -16,7 +16,7 @@ from game.conditions import MAX_TAG_LENGTH, MAX_TAGS, SKILL_FLAG_TAGS
 from game import line_spec
 from game import wiki_assets
 from game.help_content import STATUS_EFFECTS
-from game.passives import MAX_PASSIVE_LINES, MAX_PASSIVES, PASSIVE_KINDS
+from game.passives import MAX_PASSIVE_LINES, MAX_PASSIVES, PASSIVE_FLAVOUR_MAX, PASSIVE_KINDS
 from game.resistances import DAMAGE_TYPES, STATUS_RESISTANCE_TYPES
 from game.statuses import (
     OTHER_DEBUFF_STATUSES, ONE_TURN_STATUSES, PERCENT_COUNT_STATUSES, POTENCY_TURN_STATUSES, SANITY_LOW_MORALE, SANITY_PANIC,
@@ -160,7 +160,7 @@ def rules() -> dict:
         "limits": {
             "name": NAME_MAX_LENGTH, "avatar": AVATAR_MAX, "skillName": SKILL_LIMITS["name"],
             "statuses": SKILL_LIMITS["statuses"], "triggers": SKILL_LIMITS["triggers"],
-            "passiveName": 40, "passiveLine": PASSIVE_LINE_MAX, "discordBox": 4000,
+            "passiveName": 40, "passiveLine": PASSIVE_LINE_MAX, "passiveFlavour": PASSIVE_FLAVOUR_MAX, "discordBox": 4000,
         },
         "startingBp": bp.STARTING_BP,
         "levels": [list(pair) for pair in bp.LEVEL_THRESHOLDS],

@@ -27,7 +27,7 @@ from game.colors import STATUS_COLORS
 from game.display import budget_bar
 from game.battle import DEFAULT_STAGGER_THRESHOLDS
 from game.conditions import MAX_TAG_LENGTH, MAX_TAGS, norm_tag
-from game.passives import MAX_PASSIVES, followup_problem, parse_passive, tag_warnings
+from game.passives import MAX_PASSIVES, PASSIVE_FLAVOUR_MAX, clean_flavour, followup_problem, parse_passive, tag_warnings
 from game.build_requests import known_tags
 from game.custom_statuses import (
     CustomStatus, KINDS, LIFETIMES, MAX_CUSTOM_STATUSES_PER_CHARACTER, slugify, validate_name,
@@ -68,6 +68,47 @@ def _stagger_line(character: Character) -> str:
     enabled = character.stagger_tiers_enabled or [True, True, True]
     parts = [f"{round(t * 100)}%" if on else "~~off~~" for t, on in zip(thresholds, enabled)]
     return " / ".join(parts)
+
+
+def _italic(text: str) -> str:
+    """One paragraph of flavour text in Discord italics, with any markdown inside it made harmless."""
+    return "*" + discord.utils.escape_markdown(text) + "*"
+
+
+def _fit_flavour(flavour: str, budget: int) -> list:
+    """The flavour text as italic lines that together take at most `budget` characters (each line also costs its line break), cut short with … when it does not all fit."""
+    lines: list = []
+    for paragraph in clean_flavour(flavour).split("\n"):
+        if not paragraph:
+            continue
+        room = budget - sum(len(l) + 1 for l in lines) - 1
+        if len(_italic(paragraph)) <= room:
+            lines.append(_italic(paragraph))
+            continue
+        text = paragraph
+        while text and len(_italic(text.rstrip() + "…")) > room:
+            text = text[:-1]
+        if len(text.strip()) >= 8:
+            lines.append(_italic(text.rstrip() + "…"))
+        break                              # cut short: nothing more of this story
+    return lines
+
+
+def passives_text(passives: list, limit: int = 1000) -> str:
+    """The Passives field of the character sheet: each passive with its rule lines, then, in what room is left, its flavour text in italics under it.
+    The rule lines come first and are never given up for flavour; the room left is shared between the passives that have a story, so one long story cannot push out the others."""
+    heads = [f"{'Support ' if p.get('kind') == 'support' else ''}**{p['name']}**: " + "; ".join(p.get("lines", [])) for p in passives]
+    rules = "\n".join(heads)
+    if len(rules) > limit:
+        return rules[:limit]
+    spare = limit - len(rules)
+    wanting = [i for i, p in enumerate(passives) if clean_flavour(p.get("flavour"))]
+    extra: dict = {}
+    for n, i in enumerate(wanting):
+        lines = _fit_flavour(passives[i].get("flavour"), spare // (len(wanting) - n))
+        extra[i] = lines
+        spare -= sum(len(l) + 1 for l in lines)
+    return "\n".join("\n".join([head] + extra.get(i, [])) for i, head in enumerate(heads))
 
 
 def build_character_embed(character: Character, owner_name: str) -> discord.Embed:
@@ -134,14 +175,7 @@ def build_character_embed(character: Character, owner_name: str) -> discord.Embe
         embed.add_field(name="Kit", value="\n".join(kit), inline=True)
 
     if character.passives:
-        embed.add_field(
-            name="Passives",
-            value="\n".join(
-                f"{'Support ' if p.get('kind') == 'support' else ''}**{p['name']}**: " + "; ".join(p.get("lines", []))
-                for p in character.passives
-            )[:1000],
-            inline=False,
-        )
+        embed.add_field(name="Passives", value=passives_text(character.passives), inline=False)
 
     if character.tags:
         embed.add_field(name="Tags", value=", ".join(character.tags)[:300], inline=False)
@@ -1342,11 +1376,13 @@ class CharacterAdminCog(commands.GroupCog, name="charadmin"):
         line_2="Second rule (optional)",
         line_3="Third rule (optional)",
         note="What the passive is, for the record",
+        flavour="The story behind it, shown in italics on the character sheet (optional)",
     )
     async def passive(
         self, interaction: discord.Interaction, name: str, passive_name: str,
         kind: app_commands.Choice[str], cost: app_commands.Range[int, 1, 6], line_1: str,
         line_2: str | None = None, line_3: str | None = None, note: str | None = None,
+        flavour: app_commands.Range[str, 1, PASSIVE_FLAVOUR_MAX] | None = None,
     ):
         if not is_admin(interaction):
             await interaction.response.send_message("Only an admin can give a passive.", ephemeral=True)
@@ -1380,6 +1416,8 @@ class CharacterAdminCog(commands.GroupCog, name="charadmin"):
             await interaction.response.send_message(problem, ephemeral=True)
             return
         entry = {"name": title, "kind": kind.value, "lines": lines, "cost": cost, "note": (note or "").strip()}
+        if clean_flavour(flavour):
+            entry["flavour"] = clean_flavour(flavour)
         trial = copy.deepcopy(character)
         trial.passives.append(entry)
         used = passive_points_spent(trial)

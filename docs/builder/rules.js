@@ -102,6 +102,7 @@
       "avatar": 300,
       "discordBox": 4000,
       "name": 40,
+      "passiveFlavour": 400,
       "passiveLine": 300,
       "passiveName": 40,
       "skillName": 100,

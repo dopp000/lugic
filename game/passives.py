@@ -12,6 +12,7 @@ from game.skills import Skill
 PASSIVE_KINDS = ("passive", "support")  # Support Passive is a label, it works the same
 MAX_PASSIVES = 3
 MAX_PASSIVE_LINES = 3
+PASSIVE_FLAVOUR_MAX = 400   # letters of optional flavour text (the story behind a passive, shown in italics on the character sheet)
 
 # Timings only a passive may use. They are swept over passive skills only, so on a
 # normal skill they would never fire.
@@ -27,6 +28,19 @@ PASSIVE_TIMINGS = PASSIVE_ONLY_TIMINGS | PASSIVE_ATTACK_TIMINGS | {
     "turn_start", "combat_start", "ally_turn_start", "ally_combat_start", "on_evade",
     "ally_on_hit", "ally_on_crit", "ally_on_kill", "ally_is_hit", "ally_on_stagger", "ally_before_hit",
 }
+
+
+def tidy_flavour(text) -> str:
+    """The flavour text with its line breaks made plain, each line trimmed and empty lines dropped, but not yet cut to PASSIVE_FLAVOUR_MAX. "" for nothing or for something that is not text."""
+    if not isinstance(text, str):
+        return ""
+    lines = [l.strip() for l in text.replace("\r\n", "\n").replace("\r", "\n").strip().split("\n")]
+    return "\n".join(l for l in lines if l)
+
+
+def clean_flavour(text) -> str:
+    """The flavour text as it is kept: tidied, and at most PASSIVE_FLAVOUR_MAX letters. docs/builder/engine.js has the same function (`cleanFlavour`), and a test feeds both the same texts."""
+    return tidy_flavour(text)[:PASSIVE_FLAVOUR_MAX]
 
 
 def parse_passive(lines: list[str], custom_kinds: dict[str, str] | None = None, strict: bool = True):

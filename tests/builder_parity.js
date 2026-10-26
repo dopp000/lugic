@@ -22,5 +22,6 @@ const input = JSON.parse(fs.readFileSync(0, 'utf8'));
   for (const spec of input.encode) { codes.push(await E.encode(spec)); }
   const decoded = [];
   for (const code of input.decode) { decoded.push(await E.decode(code)); }
-  process.stdout.write(JSON.stringify({ checks, codes, decoded }));
+  const cleaned = (input.flavours || []).map((text) => E.cleanFlavour(text));
+  process.stdout.write(JSON.stringify({ checks, codes, decoded, cleaned }));
 })().catch((error) => { console.error(error); process.exit(1); });

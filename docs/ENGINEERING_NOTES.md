@@ -2098,7 +2098,9 @@ a new status gets an icon.
   so the splash loop gets it too. Fixed-damage statuses (Burn and so on) do not use
   it. Admin-only through `/character edit offense_level/defense_level`.
 - Passives (`game/passives.py`) and Passive Points: `Character.passives` is a list of
-  {name, kind, lines, cost, note}; the lines are trigger text. They are NOT skills: in
+  {name, kind, lines, cost, note, [flavour]}; the lines are trigger text, `flavour` is the optional
+  story text (key present only when non-empty; `tidy_flavour`/`clean_flavour`, max 400, mirrored in
+  the site's `cleanFlavour`; shown in italics under the passive by `passives_text` in `cogs/character.py`). They are NOT skills: in
   battle `Fighter.from_character` turns each into a hidden `Skill` on
   `Fighter.passive_skills` (tag `passive`), so a passive can never be declared and takes
   no slot. `Fighter.trigger_skills()` (skills + passives) is what the sweeps use now:

@@ -25,7 +25,7 @@ from game.build_points import (
 )
 from game.character import STARTING_SPEED, validate_character_name
 from game.conditions import MAX_TAG_LENGTH, MAX_TAGS
-from game.passives import MAX_PASSIVES, PASSIVE_KINDS
+from game.passives import MAX_PASSIVES, PASSIVE_FLAVOUR_MAX, PASSIVE_KINDS, clean_flavour, tidy_flavour
 from game.resistances import ALL_RESISTANCE_TYPES
 
 VERSION = 1
@@ -253,7 +253,16 @@ def _read_passives(raw) -> tuple[list, str | None]:
         lines = [l.strip() for l in lines if l.strip()]
         if not lines or any(len(l) > PASSIVE_LINE_MAX for l in lines):
             return [], f"Passive {name} needs one to three rule lines of at most {PASSIVE_LINE_MAX} characters."
-        out.append({"name": name, "kind": kind, "lines": lines, "cost": cost, "note": IMPORT_NOTE})
+        entry = {"name": name, "kind": kind, "lines": lines, "cost": cost, "note": IMPORT_NOTE}
+        flavour = item.get("flavour")
+        if flavour is not None:       # optional: the story behind the passive, shown in italics on the character sheet
+            if not isinstance(flavour, str):
+                return [], f"The flavour text of {name} has to be text."
+            if len(tidy_flavour(flavour)) > PASSIVE_FLAVOUR_MAX:
+                return [], f"The flavour text of {name} is longer than {PASSIVE_FLAVOUR_MAX} characters."
+            if clean_flavour(flavour):
+                entry["flavour"] = clean_flavour(flavour)
+        out.append(entry)
     return out, None
 
 

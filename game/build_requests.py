@@ -17,7 +17,7 @@ from game.build_points import (
     DEFENSE_ARCHETYPES, RANKED_STATUSES, check_build, defense_label, passive_points_spent,
 )
 from game.conditions import MAX_TAG_LENGTH, MAX_TAGS, norm_tag
-from game.passives import MAX_PASSIVES, followup_problem, parse_passive
+from game.passives import MAX_PASSIVES, clean_flavour, followup_problem, parse_passive
 
 REQUESTS_PATH = "data/requests.json"
 KINDS = ("stats", "rank", "archetype", "tags", "passive", "build")
@@ -200,6 +200,9 @@ def _apply(character, kind: str, params: dict) -> tuple[list[str], str | None]:
             "name": params["name"], "kind": params["kind"], "lines": params["lines"],
             "cost": params["cost"], "note": params.get("note", ""),
         }
+        flavour = clean_flavour(params.get("flavour"))
+        if flavour:
+            entry["flavour"] = flavour
         if any(p["name"].lower() == entry["name"].lower() for p in character.passives):
             return [], f"{character.name} already has a passive called {entry['name']}."
         if len(character.passives) >= MAX_PASSIVES:
@@ -325,7 +328,8 @@ def describe_request(req: Request) -> str:
         return "tags: " + (", ".join(p.get("tags", [])) or "none")
     if req.kind == "passive":
         text = f"{p['name']} ({p['kind']}, asks {p['cost']} PP)"
-        return text + "\n" + "\n".join(p["lines"])
+        flavour = clean_flavour(p.get("flavour"))
+        return text + "\n" + "\n".join(p["lines"]) + (f"\nFlavour text: {flavour.replace(chr(10), ' / ')}" if flavour else "")
     if req.kind == "build":
         out = []
         if p.get("stats"):
@@ -338,6 +342,9 @@ def describe_request(req: Request) -> str:
             out.append("Tags: " + ", ".join(p["tags"]))
         for passive in p.get("passives") or []:
             out.append(f"Passive {passive['name']} ({passive['kind']}, asks {passive['cost']} PP): " + " / ".join(passive["lines"]))
+            flavour = clean_flavour(passive.get("flavour"))
+            if flavour:
+                out.append(f"Flavour text of {passive['name']}: " + flavour.replace("\n", " / "))
         if p.get("skills"):
             out.append("Skills: " + "; ".join(f"{sk['name']} ({sk['stats']})" for sk in p["skills"]))
         return "\n".join(out)
