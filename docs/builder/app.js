@@ -144,22 +144,95 @@
     sheet.appendChild(buildIdentity());
     sheet.appendChild(buildPoints());
     sheet.appendChild(buildStats());
+    sheet.appendChild(buildResistances());
     sheet.appendChild(buildRanks());
     sheet.appendChild(buildDefense());
+    sheet.appendChild(buildTags());
     sheet.appendChild(buildSkills());
     sheet.appendChild(buildPassives());
-    sheet.appendChild(buildResistances());
-    sheet.appendChild(buildTags());
     sheet.appendChild(buildReference());
-    buildNav(sheet);
+    buildTabs(sheet);
   }
 
-  // A row of links to every part, so Skills is one tap away.
-  function buildNav(sheet) {
+  // One tab for each part of the form. Only the open part is shown; Back and Next at the bottom walk through them in order.
+  var TAB_KEY = 'lugic-character-builder-tab-v1';
+  var tabParts = [];
+  var tabButtons = [];
+
+  function savedTab() {
+    try { return window.sessionStorage.getItem(TAB_KEY); } catch (e) { return null; }
+  }
+  function rememberTab(id) {
+    try { window.sessionStorage.setItem(TAB_KEY, id); } catch (e) { /* private window: the tab is just not remembered */ }
+    try { if (window.history && history.replaceState) { history.replaceState(null, '', '#' + id); } } catch (e) { /* ignore */ }
+  }
+
+  function selectTab(id, userDriven) {
+    var known = tabParts.some(function (part) { return part.id === id; });
+    if (!known) { return; }
+    tabParts.forEach(function (part) { part.hidden = part.id !== id; });
+    tabButtons.forEach(function (tab) {
+      var on = tab.getAttribute('aria-controls') === id;
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      tab.tabIndex = on ? 0 : -1;
+      if (on && userDriven && tab.scrollIntoView) { tab.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+    });
+    rememberTab(id);
+    if (userDriven) {
+      var nav = document.getElementById('nav');
+      var top = document.getElementById('sheet').getBoundingClientRect().top + window.pageYOffset - nav.offsetHeight - 12;
+      if (window.pageYOffset > top) { window.scrollTo(0, Math.max(0, top)); }
+    }
+  }
+
+  function buildTabs(sheet) {
     var nav = document.getElementById('nav');
     nav.textContent = '';
-    [].forEach.call(sheet.querySelectorAll('section.part'), function (part) {
-      nav.appendChild(el('a', { href: '#' + part.id, text: part.querySelector('h2').textContent }));
+    nav.setAttribute('role', 'tablist');
+    tabParts = [].slice.call(sheet.querySelectorAll('section.part'));
+    tabButtons = [];
+    tabParts.forEach(function (part, i) {
+      var title = part.querySelector('h2').textContent;
+      var tab = el('button', { type: 'button', class: 'tab', role: 'tab', id: 'tab-' + part.id, 'aria-controls': part.id, 'aria-selected': 'false', text: title });
+      tab.addEventListener('click', function () { selectTab(part.id, true); });
+      tab.addEventListener('keydown', function (event) {
+        var to = null;
+        if (event.key === 'ArrowRight') { to = (i + 1) % tabParts.length; }
+        else if (event.key === 'ArrowLeft') { to = (i + tabParts.length - 1) % tabParts.length; }
+        else if (event.key === 'Home') { to = 0; }
+        else if (event.key === 'End') { to = tabParts.length - 1; }
+        if (to === null) { return; }
+        event.preventDefault();
+        selectTab(tabParts[to].id, true);
+        tabButtons[to].focus();
+      });
+      tabButtons.push(tab);
+      nav.appendChild(tab);
+      part.setAttribute('role', 'tabpanel');
+      part.setAttribute('aria-labelledby', tab.id);
+      var back = i > 0 ? el('button', { type: 'button', class: 'btn quiet', text: 'Back: ' + tabParts[i - 1].querySelector('h2').textContent, onclick: function () { selectTab(tabParts[i - 1].id, true); } }) : null;
+      var next = i < tabParts.length - 1 ? el('button', { type: 'button', class: 'btn', text: 'Next: ' + tabParts[i + 1].querySelector('h2').textContent, onclick: function () { selectTab(tabParts[i + 1].id, true); } }) : null;
+      part.appendChild(el('div', { class: 'tab-nav' }, [back, next]));
+    });
+    var wanted = [window.location.hash.slice(1), savedTab(), tabParts[0].id].filter(function (id) {
+      return tabParts.some(function (part) { return part.id === id; });
+    })[0];
+    selectTab(wanted, false);
+  }
+
+  window.addEventListener('hashchange', function () { selectTab(window.location.hash.slice(1), true); });
+
+  // A small dot on a tab whose part has something to fix.
+  function markTabs(r) {
+    var marks = {
+      'sec-skills': (r.perSkill || []).some(function (list) { return list.length; }),
+      'sec-passives': (r.perPassive || []).some(function (list) { return list.length; })
+    };
+    tabButtons.forEach(function (tab) {
+      var id = tab.getAttribute('aria-controls');
+      var on = !!marks[id];
+      tab.classList.toggle('flagged', on);
+      if (on) { tab.title = 'Something here needs fixing'; } else { tab.removeAttribute('title'); }
     });
   }
 
@@ -271,6 +344,25 @@
     ]);
   }
 
+  // The wiki's words for a resistance: Fatal, Weak, Normal, Endure and Ineffective, each in its own colour.
+  function resistWord(value) {
+    var v = Number(value);
+    if (v >= 1.5) { return { word: 'Fatal', cls: 'res-fatal' }; }
+    if (v > 1) { return { word: 'Weak', cls: 'res-weak' }; }
+    if (v === 1) { return { word: 'Normal', cls: 'res-normal' }; }
+    if (v >= 0.75) { return { word: 'Endure', cls: 'res-endure' }; }
+    return { word: 'Ineffective', cls: 'res-ineffective' };
+  }
+  function resistTag(key) {
+    var tag = el('span', { class: 'res-tag' });
+    syncs.push(function () {
+      var w = resistWord(state.stats.resist[key]);
+      tag.className = 'res-tag ' + w.cls;
+      tag.textContent = w.word + ' x' + Number(state.stats.resist[key]);
+    });
+    return tag;
+  }
+
   function resistLabel(value) {
     var key = Number.isInteger(value) ? value.toFixed(1) : String(value);
     var price = R.resist.statusCosts[key];
@@ -287,13 +379,17 @@
       var select = selectInput(statusValues.map(function (v) { return { value: String(v), label: resistLabel(v) }; }),
         state.stats.resist[key], function (v) { state.stats.resist[key] = parseFloat(v); });
       syncs.push(function () { select.value = String(state.stats.resist[key]); });
-      return field(E.capitalize(key), select);
+      var f = field(E.capitalize(key), select);
+      f.appendChild(resistTag(key));
+      return f;
     });
     var physical = R.resist.damageTypes.map(function (key) {
       var select = selectInput([0.5, 1, 1.5].map(function (v) { return { value: String(v), label: v === 1 ? '1.0x, normal' : v + 'x' + (v < 1 ? ', resists' : ', weak') }; }),
         state.stats.resist[key], function (v) { state.stats.resist[key] = parseFloat(v); });
       syncs.push(function () { select.value = String(state.stats.resist[key]); });
-      return field(E.capitalize(key), select);
+      var f = field(E.capitalize(key), select);
+      f.appendChild(resistTag(key));
+      return f;
     });
     var cost = costNote();
     syncs.push(function (r) {
@@ -389,6 +485,253 @@
     ]);
   }
 
+
+  // ---- the rule-line picker ----------------------------------------------------------------------------------
+  // A rule line is picked from lists: when it fires, an optional condition, what it does, and a few extras. lines.js turns the
+  // choices into the one line of text the bot reads and says why a combination does not work. The lines still live in the
+  // same text the bot gets (a skill's trigger text, a passive's lines), so typing them stays possible.
+
+  var LN = window.LugicLines;
+
+  function plainSelect(options, value, onChange) {
+    var select = el('select');
+    options.forEach(function (o) {
+      if (o.group) {
+        var group = el('optgroup', { label: o.group });
+        o.items.forEach(function (item) { group.appendChild(el('option', { value: item.value, text: item.label })); });
+        select.appendChild(group);
+      } else { select.appendChild(el('option', { value: o.value, text: o.label })); }
+    });
+    select.value = String(value);
+    select.addEventListener('change', function () { onChange(select.value); });
+    return select;
+  }
+
+  var DEFENSE_FLAGS = ['guard', 'evade', 'counter', 'clashable_guard', 'clashable_counter', 'supermove'];
+  // The names of the skills a follow-up attack may use: the ones that are not defense skills or Supermoves.
+  function attackNames() {
+    var seen = {};
+    return state.skills.filter(function (s) {
+      var name = String(s.name || '').trim();
+      if (!name || seen[name.toLowerCase()]) { return false; }
+      seen[name.toLowerCase()] = true;
+      return E.readTriggers(s.triggers).flags.every(function (f) { return DEFENSE_FLAGS.indexOf(f) < 0; });
+    }).map(function (s) { return String(s.name).trim(); });
+  }
+  function groupTags() { return state.tags.map(function (t) { return String(t).trim(); }).filter(Boolean); }
+
+  function lineTokens(line) {
+    var code = el('code', { class: 'rule-text' });
+    var m = /^:Coin\s*(\d+):\s*(.*)$/i.exec(line);
+    if (m) { code.appendChild(el('span', { class: 'rule-coin', text: 'Coin ' + m[1] })); }
+    window.LugicPreview.renderTokens(window.LugicPreview.tokenize(m ? m[2] : line), code);
+    return code;
+  }
+
+  // opts: passive (bool), maxLines (number or null), read() -> the lines, write(lines), names() -> attack skill names, tags() -> group tags.
+  function ruleEditor(opts) {
+    var wrap = el('div', { class: 'rules' });
+    var list = el('ol', { class: 'rule-list' });
+    var panel = el('details', { class: 'rule-panel' });
+    var summary = el('summary', { text: 'Add a rule line' });
+    var body = el('div', { class: 'rule-body' });
+    var pick = newPick();
+    panel.addEventListener('toggle', function () { if (panel.open) { drawPanel(); } });
+    panel.appendChild(summary);
+    panel.appendChild(body);
+    wrap.appendChild(list);
+    wrap.appendChild(panel);
+
+    function fresh(params) {
+      var values = LN.defaults(params);
+      params.forEach(function (p) {
+        if (p.kind === 'skill') { values[p.name] = opts.names()[0] || ''; }
+        if (p.kind === 'tag') { values[p.name] = opts.tags()[0] || ''; }
+      });
+      return values;
+    }
+    function newPick() {
+      var p = LN.blank(opts.passive ? 'Combat Start' : 'On Use', opts.passive ? 'gain_bare' : 'coin_power', '');
+      p.effValues = fresh(LN.effect(p.effect).params);
+      return p;
+    }
+
+    function timingOptions() {
+      var groups = LN.spec.groups.map(function (g) {
+        var items = LN.spec.timings.filter(function (t) { return t.group === g.id && (opts.passive ? t.passive : t.skill); })
+          .map(function (t) { return { value: t.key, label: t.key }; });
+        return { group: g.label, items: items };
+      });
+      return groups.filter(function (g) { return g.items.length; });
+    }
+    function conditionOptions() {
+      return [{ value: '', label: 'Always (no condition)' }].concat(LN.spec.conditions.map(function (c) { return { value: c.id, label: c.label }; }));
+    }
+    function effectOptions() {
+      var names = [];
+      var by = {};
+      LN.spec.effects.forEach(function (e) {
+        if (!by[e.group]) { by[e.group] = []; names.push(e.group); }
+        by[e.group].push({ value: e.id, label: e.label });
+      });
+      return names.map(function (g) { return { group: g, items: by[g] }; });
+    }
+
+    // One input for one parameter. `values` is the object the pick keeps its numbers and words in.
+    function paramControl(p, values, changed) {
+      var control;
+      if (p.kind === 'number') {
+        control = el('input', { type: 'number', inputmode: 'numeric', min: String(p.min), max: String(p.max), step: '1' });
+        control.value = String(values[p.name]);
+        control.addEventListener('input', function () { values[p.name] = control.value === '' ? '' : Number(control.value); changed(); });
+      } else if (p.kind === 'choice') {
+        control = plainSelect(p.options, values[p.name], function (v) { values[p.name] = v; changed(); });
+      } else if (p.kind === 'skill' && opts.names().length) {
+        if (opts.names().indexOf(values[p.name]) < 0) { values[p.name] = opts.names()[0]; }
+        control = plainSelect(opts.names().map(function (n) { return { value: n, label: n }; }), values[p.name], function (v) { values[p.name] = v; changed(); });
+      } else {
+        control = el('input', { type: 'text', autocomplete: 'off', maxlength: String(p.kind === 'tag' ? R.tags.maxLength : R.limits.skillName) });
+        control.value = values[p.name] || '';
+        if (p.kind === 'tag' && opts.tags().length) {
+          var listId = nextId('tags');
+          var datalist = el('datalist', { id: listId }, opts.tags().map(function (t) { return el('option', { value: t }); }));
+          control.setAttribute('list', listId);
+          control.addEventListener('input', function () { values[p.name] = control.value; changed(); });
+          return el('label', { class: 'mini' }, [p.label, control, datalist]);
+        }
+        control.addEventListener('input', function () { values[p.name] = control.value; changed(); });
+      }
+      return el('label', { class: 'mini' }, [p.label, control]);
+    }
+
+    function step(number, title, kids, help) {
+      return el('div', { class: 'rule-step' }, [
+        el('div', { class: 'rule-step-head' }, [el('span', { class: 'rule-no', text: number }), el('span', { class: 'rule-title', text: title })]),
+        el('div', { class: 'rule-fields' }, kids),
+        help ? el('p', { class: 'note', text: help }) : null
+      ]);
+    }
+
+    var previewCode = el('code', { class: 'rule-preview' });
+    var problemText = el('p', { class: 'rule-problem', role: 'status' });
+    var addButton = el('button', { type: 'button', class: 'btn primary', text: 'Add this line' });
+    var fullNote = el('p', { class: 'note' });
+
+    function paintResult() {
+      var why = LN.problem(pick, opts.passive);
+      var lines = opts.read();
+      var full = opts.maxLines && lines.length >= opts.maxLines;
+      previewCode.textContent = '';
+      problemText.textContent = why || '';
+      problemText.hidden = !why;
+      if (!why) { previewCode.appendChild(lineTokens(LN.compose(pick))); fillIcons(); }
+      else { previewCode.appendChild(el('span', { class: 'pv-none', text: 'The line shows here once the choices fit together.' })); }
+      fullNote.textContent = full ? 'This passive already has ' + opts.maxLines + ' lines, which is the most it can hold. Remove one first.' : '';
+      addButton.disabled = !!why || !!full;
+    }
+
+    function drawPanel() {
+      body.textContent = '';
+      var t = LN.timing(pick.timing);
+      var c = LN.condition(pick.cond);
+      var e = LN.effect(pick.effect);
+
+      var when = [plainSelect(timingOptions(), pick.timing, function (v) { pick.timing = v; drawPanel(); })];
+      if (t.perCoin) {
+        var coinChoices = [];
+        for (var n = 1; n <= R.skills.maxCoins; n++) { coinChoices.push({ value: String(n), label: 'Coin ' + n }); }
+        when.push(plainSelect(coinChoices, String(pick.coin), function (v) { pick.coin = parseInt(v, 10); paintResult(); }));
+      }
+      body.appendChild(step('1', 'When does it fire?', when, t.help));
+
+      var ifKids = [plainSelect(conditionOptions(), pick.cond, function (v) {
+        pick.cond = v;
+        pick.condValues = v ? fresh(LN.condition(v).params) : {};
+        drawPanel();
+      })];
+      if (c) { c.params.forEach(function (p) { ifKids.push(paramControl(p, pick.condValues, paintResult)); }); }
+      body.appendChild(step('2', 'Only if... (optional)', ifKids));
+
+      var thenKids = [plainSelect(effectOptions(), pick.effect, function (v) {
+        var next = LN.effect(v);
+        pick.effect = v;
+        pick.effValues = fresh(next.params);
+        if (!next.ally) { pick.target = ''; }
+        if (!(next.post && !next.followup && !next.assist)) { pick.next = false; }
+        drawPanel();
+      })];
+      e.params.forEach(function (p) { thenKids.push(paramControl(p, pick.effValues, paintResult)); });
+      if (e.ally) {
+        thenKids.push(el('label', { class: 'mini' }, ['Aimed at', plainSelect(LN.spec.targets.map(function (x) { return { value: x.value, label: x.label }; }), pick.target, function (v) {
+          pick.target = v; drawPanel();
+        })]));
+        if (pick.target.indexOf('{selector}') >= 0) {
+          thenKids.push(el('label', { class: 'mini' }, ['Which ally', plainSelect(LN.spec.selectors.map(function (x) { return { value: x, label: x }; }), pick.selector, function (v) { pick.selector = v; paintResult(); })]));
+        }
+      }
+      body.appendChild(step('3', 'What does it do?', thenKids));
+
+      var extras = [];
+      if (e.post && !e.followup && !e.assist) {
+        var nextBox = el('input', { type: 'checkbox' });
+        nextBox.checked = !!pick.next;
+        nextBox.addEventListener('change', function () { pick.next = nextBox.checked; paintResult(); });
+        extras.push(el('label', { class: 'check' }, [nextBox, ' Wait until next turn']));
+      }
+      extras.push(el('label', { class: 'mini' }, ['How often', plainSelect(LN.spec.limits, pick.limit, function (v) { pick.limit = v; paintResult(); })]));
+      var chance = el('input', { type: 'number', inputmode: 'numeric', min: String(LN.spec.chance.min), max: String(LN.spec.chance.max), step: '1', placeholder: 'Always' });
+      chance.value = pick.chance ? String(pick.chance) : '';
+      chance.addEventListener('input', function () { pick.chance = chance.value === '' ? 0 : Number(chance.value); paintResult(); });
+      extras.push(el('label', { class: 'mini' }, ['Chance (%)', chance]));
+      body.appendChild(step('4', 'Extras (optional)', extras));
+
+      body.appendChild(el('div', { class: 'rule-result' }, [
+        el('span', { class: 'quick-label', text: 'The line' }), previewCode, problemText, fullNote,
+        el('div', { class: 'row' }, [addButton])
+      ]));
+      paintResult();
+    }
+
+    addButton.addEventListener('click', function () {
+      if (LN.problem(pick, opts.passive)) { return; }
+      var lines = opts.read();
+      if (opts.maxLines && lines.length >= opts.maxLines) { return; }
+      lines.push(LN.compose(pick));
+      opts.write(lines);
+    });
+
+    function refresh() {
+      var lines = opts.read();
+      list.textContent = '';
+      if (!lines.length) { list.appendChild(el('li', { class: 'rule-empty', text: opts.passive ? 'No rule lines yet. A passive needs at least one.' : 'No rule lines yet. A skill works without any.' })); }
+      lines.forEach(function (line, i) {
+        var move = function (by) {
+          var all = opts.read();
+          var j = i + by;
+          if (j < 0 || j >= all.length) { return; }
+          var held = all[i]; all[i] = all[j]; all[j] = held;
+          opts.write(all);
+        };
+        list.appendChild(el('li', { class: 'rule-row' }, [
+          lineTokens(line),
+          el('span', { class: 'rule-tools' }, [
+            el('button', { type: 'button', class: 'tagbtn', text: 'Up', 'aria-label': 'Move line ' + (i + 1) + ' up', disabled: i === 0, onclick: function () { move(-1); } }),
+            el('button', { type: 'button', class: 'tagbtn', text: 'Down', 'aria-label': 'Move line ' + (i + 1) + ' down', disabled: i === lines.length - 1, onclick: function () { move(1); } }),
+            el('button', { type: 'button', class: 'tagbtn', text: 'Remove', 'aria-label': 'Remove line ' + (i + 1), onclick: function () {
+              var all = opts.read(); all.splice(i, 1); opts.write(all);
+            } })
+          ])
+        ]));
+      });
+      fillIcons();
+      paintResult();
+    }
+
+    drawPanel();
+    refresh();
+    return { node: wrap, refresh: refresh };
+  }
+
   // ---- passives ---------------------------------------------------------------------------------------
 
   function buildPassives() {
@@ -424,16 +767,29 @@
         name.addEventListener('input', function () { p.name = name.value; update(); });
         var kind = selectInput([{ value: 'passive', label: 'Passive' }, { value: 'support', label: 'Support passive' }], p.kind, function (v) { p.kind = v; });
         var cost = numberInput(p.cost, 1, R.passives.costMax, function (n) { p.cost = n; });
+        var rules = null;
         var lines = el('textarea', { rows: '3', spellcheck: 'false', placeholder: '[Combat Start] Gain 2 Protection' });
         lines.value = p.lines.join('\n');
-        lines.addEventListener('input', function () { p.lines = lines.value.split('\n'); update(); });
+        lines.addEventListener('input', function () { p.lines = lines.value.split('\n'); if (rules) { rules.refresh(); } update(); });
+        rules = ruleEditor({
+          passive: true, maxLines: R.passives.maxLines, names: attackNames, tags: groupTags,
+          read: function () { return p.lines.map(function (l) { return l.trim(); }).filter(Boolean); },
+          write: function (written) { p.lines = written.length ? written : ['']; lines.value = written.join('\n'); rules.refresh(); update(); }
+        });
         var remove = el('button', { type: 'button', class: 'btn quiet', text: 'Remove', onclick: function () {
           state.passives.splice(index, 1); renderPassives(); update();
         } });
         local.push(function (r) { paintIssues(issues, r.perPassive[index] || []); });
         list.appendChild(el('article', { class: 'item' }, [
           el('div', { class: 'grid passive-head' }, [field('Name', name), field('Kind', kind), field('Price (PP)', cost, 'An admin can change it.')]),
-          field('Rule lines (up to ' + R.passives.maxLines + ', one per line)', lines, 'The bot checks the wording when you import.'),
+          el('div', { class: 'field' }, [
+            el('span', { class: 'label-like', text: 'Rule lines (up to ' + R.passives.maxLines + ')' }),
+            rules.node,
+            el('details', { class: 'rule-text-mode' }, [
+              el('summary', { text: 'Type or paste the lines as text instead' }),
+              field('Rule lines, one per line', lines, 'The bot checks the wording when you import.')
+            ])
+          ]),
           issues,
           el('div', { class: 'row' }, [remove])
         ]));
@@ -665,6 +1021,7 @@
         })(i);
       }
 
+      var rules = null;
       var triggers = el('textarea', { rows: '3', spellcheck: 'false', placeholder: '[On Use] Coin Power +1' });
       triggers.value = skill.triggers;
       triggers.addEventListener('input', function () { skill.triggers = triggers.value; syncFlags(); update(); });
@@ -694,7 +1051,13 @@
       function syncFlags() {
         var present = triggers.value.split('\n').map(function (l) { return l.trim().toLowerCase(); });
         flagButtons.forEach(function (f) { f.button.setAttribute('aria-pressed', present.indexOf(f.line.toLowerCase()) >= 0 ? 'true' : 'false'); });
+        if (rules) { rules.refresh(); }
       }
+      rules = ruleEditor({
+        passive: false, maxLines: null, names: attackNames, tags: groupTags,
+        read: function () { return triggers.value.split('\n').map(function (l) { return l.trim(); }).filter(Boolean); },
+        write: function (lines) { triggers.value = lines.join('\n'); skill.triggers = triggers.value; syncFlags(); update(); }
+      });
       syncFlags();
       var lineButtons = R.skills.lineTemplates.map(function (t) {
         return el('button', { type: 'button', class: 'tagbtn line', text: t.label, title: t.line, onclick: function () { addLine(t.line); } });
@@ -736,9 +1099,16 @@
         picture,
         el('div', { class: 'grid four' }, [field('Base Power', base), field('Coin Power', coinPower), field('Coins', coins), field('Damage type', type)]),
         el('div', { class: 'coin-rows' }, coinRows),
-        field('Trigger lines', triggers, 'One per line. The bot checks the wording when you import.'),
+        el('div', { class: 'field' }, [
+          el('span', { class: 'label-like', text: 'Rule lines' }),
+          rules.node,
+          el('details', { class: 'rule-text-mode' }, [
+            el('summary', { text: 'Type or paste the lines as text instead' }),
+            field('Trigger lines', triggers, 'One per line. The bot checks the wording when you import.')
+          ])
+        ]),
         el('div', { class: 'quick' }, [
-          el('span', { class: 'quick-label', text: 'Add a line' }), el('div', { class: 'quick-set' }, lineButtons),
+          el('span', { class: 'quick-label', text: 'Example lines' }), el('div', { class: 'quick-set' }, lineButtons),
           el('span', { class: 'quick-label', text: 'Skill tags' }), el('div', { class: 'quick-set' }, flagButtons.map(function (f) { return f.button; }))
         ]),
         spNote,
@@ -795,19 +1165,26 @@
   function buildReference() {
     var legend = el('div', { class: 'legend' }, [
       el('h3', { text: 'What the colours mean' }),
-      el('p', { class: 'note', text: 'The skill preview colours the tag at the start of a line by when it happens, and any status or damage word by what it is.' }),
+      el('p', { class: 'note', text: 'These are the colours the Limbus Company wiki uses. In a skill preview the tag at the start of a line is coloured by when it happens, and a status by what kind of effect it is.' }),
       el('ul', { class: 'legend-list' }, [
         legendItem('pv-tag pv-use', '[On Use]', 'when the skill is used'),
-        legendItem('pv-tag pv-before', '[Before Use]', 'just before it is used'),
-        legendItem('pv-tag pv-hit', '[On Hit]', 'a coin hits, a kill, a crit and similar'),
-        legendItem('pv-tag pv-clash', '[Clash Win]', 'anything about a clash'),
-        legendItem('pv-tag pv-turn', '[Turn Start]', 'turn and combat timings'),
-        legendItem('pv-tag pv-ally', '[Ally Is Hit]', 'about an ally'),
+        legendItem('pv-tag pv-hit', '[On Hit]', 'every other timing: a hit, a crit, the start or end of a turn'),
+        legendItem('pv-tag pv-clashwin', '[Clash Win]', 'the clash was won'),
+        legendItem('pv-tag pv-clashlose', '[Clash Lose]', 'the clash was lost'),
         legendItem('pv-tag pv-flag', '[Counter]', 'a skill type tag, such as Guard or Evade'),
-        legendItem('pv-word pv-w-damage pv-k-slash', 'Slash', 'a damage type'),
-        legendItem('pv-word pv-k-burn', 'Burn', 'a status; the colour is the status\'s own')
+        legendItem('pv-word pv-tone-positive', 'Poise', 'a positive effect (yellow)'),
+        legendItem('pv-word pv-tone-negative', 'Burn', 'a negative effect (red)'),
+        legendItem('pv-word pv-tone-neutral', 'Charge', 'a neutral effect (brown)')
       ]),
-      el('p', { class: 'note', text: 'Statuses are grouped the way the wiki groups them: positive (yellow), negative (red) and neutral (brown).' })
+      el('h3', { text: 'Resistances' }),
+      el('ul', { class: 'legend-list' }, [
+        legendItem('res-tag res-fatal', 'Fatal x1.5 or more', 'takes far more damage'),
+        legendItem('res-tag res-weak', 'Weak x1.25', 'takes more damage'),
+        legendItem('res-tag res-normal', 'Normal x1', 'takes the usual damage'),
+        legendItem('res-tag res-endure', 'Endure x0.75', 'takes less damage'),
+        legendItem('res-tag res-ineffective', 'Ineffective x0.5', 'takes half damage')
+      ]),
+      el('p', { class: 'note', text: 'The Sin colours on the frames and name plates come from the wiki too. Envy was on neither page checked, so its purple is a guess.' })
     ]);
     var groups = {};
     R.statusGuide.forEach(function (s) { (groups[s.group] = groups[s.group] || []).push(s); });
@@ -825,7 +1202,7 @@
   }
 
   function statusCard(s) {
-    var name = el('span', { class: 'st-name ' + (s.sin ? 'pv-k-' + s.key : 'tone-' + s.tone) }, [icon(s.key), s.title]);
+    var name = el('span', { class: 'st-name tone-' + s.tone }, [icon(s.key), s.title]);
     var chips = el('span', { class: 'st-chips' }, [el('span', { class: 'st-tone tone-' + s.tone, text: TONE_TITLES[s.tone] })]);
     if (s.sin) { chips.appendChild(el('span', { class: 'st-sin pv-sin-' + s.sin, text: E.capitalize(s.sin) })); }
     return el('article', { class: 'status-card' + (s.sin ? ' pv-sin-' + s.sin : '') }, [
@@ -1043,6 +1420,7 @@
     syncs.forEach(function (fn) { fn(r); });
     paintCard(r);
     paintCode(r);
+    markTabs(r);
     queueSave();
     resetArmed = false;
     resetButton.textContent = 'Start over';

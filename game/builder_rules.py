@@ -13,6 +13,7 @@ from game import build_points as bp
 from game.character import NAME_MAX_LENGTH, STARTING_SPEED
 from game.character_import import AVATAR_MAX, PASSIVE_LINE_MAX, SKILL_LIMITS, VERSION as CODE_VERSION
 from game.conditions import MAX_TAG_LENGTH, MAX_TAGS, SKILL_FLAG_TAGS
+from game import line_spec
 from game.help_content import STATUS_EFFECTS
 from game.passives import MAX_PASSIVE_LINES, MAX_PASSIVES, PASSIVE_KINDS
 from game.resistances import DAMAGE_TYPES, STATUS_RESISTANCE_TYPES
@@ -33,7 +34,7 @@ SKILL_LINE_TEMPLATES = [
     {"label": "Burn on hit", "line": ":Coin1: [On Hit] Inflict +2 Burn Count"},
 ]
 # Lines that are only a tag (no effect text). A skill's defense type and Target Fixed live here.
-SKILL_FLAG_BUTTONS = ["Guard", "Evade", "Counter", "Clashable Guard", "Clashable Counter", "Duality", "Target Fixed"]
+SKILL_FLAG_BUTTONS = list(line_spec.FLAG_LABELS)
 
 # Whole skills for "Add from an example". They need no status rank, and their Base Power and Coin Power fit a
 # starting character (Power 6). tests/test_builder_site.py checks every one against the bot's own rules.
@@ -140,6 +141,7 @@ def rules() -> dict:
             "max": MAX_PASSIVES, "maxLines": MAX_PASSIVE_LINES, "costMax": bp.PP_COST_MAX,
             "kinds": list(PASSIVE_KINDS), "templates": PASSIVE_TEMPLATES,
         },
+        "lines": line_spec.spec(),
         "sp": {"perExtraLine": bp.SP_PER_EXTRA_LINE},
         "tags": {"max": MAX_TAGS, "maxLength": MAX_TAG_LENGTH},
         "skills": {

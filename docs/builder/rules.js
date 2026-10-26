@@ -79,6 +79,2430 @@
       "statuses": 400,
       "triggers": 4000
     },
+    "lines": {
+      "chance": {
+        "max": 99,
+        "min": 1
+      },
+      "conditions": [
+        {
+          "id": "target_side",
+          "label": "The target is an ally or an enemy",
+          "params": [
+            {
+              "default": "enemy",
+              "kind": "choice",
+              "label": "Target",
+              "name": "side",
+              "options": [
+                {
+                  "label": "an enemy",
+                  "value": "enemy"
+                },
+                {
+                  "label": "an ally",
+                  "value": "ally"
+                }
+              ]
+            }
+          ],
+          "text": "If the target is an {side},"
+        },
+        {
+          "id": "speed_faster",
+          "label": "This unit is faster than the target",
+          "params": [],
+          "text": "If this unit's Speed is faster than the target's,"
+        },
+        {
+          "id": "speed_diff",
+          "label": "Speed is higher or lower by N",
+          "params": [
+            {
+              "default": 2,
+              "kind": "number",
+              "label": "By at least",
+              "max": 20,
+              "min": 1,
+              "name": "n"
+            },
+            {
+              "default": "higher",
+              "kind": "choice",
+              "label": "This unit is",
+              "name": "dir",
+              "options": [
+                {
+                  "label": "higher",
+                  "value": "higher"
+                },
+                {
+                  "label": "lower",
+                  "value": "lower"
+                }
+              ]
+            }
+          ],
+          "text": "If this unit's Speed is {n}+ {dir} than the target's,"
+        },
+        {
+          "id": "speed_at",
+          "label": "This unit's Speed is N or more",
+          "params": [
+            {
+              "default": 5,
+              "kind": "number",
+              "label": "Speed",
+              "max": 99,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "text": "At {n}+ Speed,"
+        },
+        {
+          "id": "target_status_any",
+          "label": "The target has a status",
+          "params": [
+            {
+              "default": "Burn",
+              "kind": "choice",
+              "label": "Status",
+              "name": "status",
+              "options": [
+                {
+                  "label": "Burn",
+                  "value": "Burn"
+                },
+                {
+                  "label": "Bleed",
+                  "value": "Bleed"
+                },
+                {
+                  "label": "Tremor",
+                  "value": "Tremor"
+                },
+                {
+                  "label": "Rupture",
+                  "value": "Rupture"
+                },
+                {
+                  "label": "Sinking",
+                  "value": "Sinking"
+                },
+                {
+                  "label": "Bind",
+                  "value": "Bind"
+                },
+                {
+                  "label": "Fragile",
+                  "value": "Fragile"
+                },
+                {
+                  "label": "Paralyze",
+                  "value": "Paralyze"
+                },
+                {
+                  "label": "Poison",
+                  "value": "Poison"
+                },
+                {
+                  "label": "Immobilized",
+                  "value": "Immobilized"
+                }
+              ]
+            }
+          ],
+          "text": "If the target has any {status},"
+        },
+        {
+          "id": "target_status_n",
+          "label": "The target has N or more of a status",
+          "params": [
+            {
+              "default": 3,
+              "kind": "number",
+              "label": "At least",
+              "max": 99,
+              "min": 1,
+              "name": "n"
+            },
+            {
+              "default": "Burn",
+              "kind": "choice",
+              "label": "Status",
+              "name": "status",
+              "options": [
+                {
+                  "label": "Burn",
+                  "value": "Burn"
+                },
+                {
+                  "label": "Bleed",
+                  "value": "Bleed"
+                },
+                {
+                  "label": "Tremor",
+                  "value": "Tremor"
+                },
+                {
+                  "label": "Rupture",
+                  "value": "Rupture"
+                },
+                {
+                  "label": "Sinking",
+                  "value": "Sinking"
+                },
+                {
+                  "label": "Bind",
+                  "value": "Bind"
+                },
+                {
+                  "label": "Fragile",
+                  "value": "Fragile"
+                },
+                {
+                  "label": "Paralyze",
+                  "value": "Paralyze"
+                },
+                {
+                  "label": "Poison",
+                  "value": "Poison"
+                },
+                {
+                  "label": "Immobilized",
+                  "value": "Immobilized"
+                }
+              ]
+            },
+            {
+              "default": "Count",
+              "kind": "choice",
+              "label": "Counting",
+              "name": "basis",
+              "options": [
+                {
+                  "label": "Count",
+                  "value": "Count"
+                },
+                {
+                  "label": "Potency",
+                  "value": "Potency"
+                }
+              ]
+            }
+          ],
+          "text": "If the target has {n}+ {status} {basis},"
+        },
+        {
+          "id": "self_status_n",
+          "label": "This unit has N or more of a status",
+          "params": [
+            {
+              "default": 5,
+              "kind": "number",
+              "label": "At least",
+              "max": 99,
+              "min": 1,
+              "name": "n"
+            },
+            {
+              "default": "Poise",
+              "kind": "choice",
+              "label": "Status",
+              "name": "status",
+              "options": [
+                {
+                  "label": "Poise",
+                  "value": "Poise"
+                },
+                {
+                  "label": "Charge",
+                  "value": "Charge"
+                },
+                {
+                  "label": "Power Up",
+                  "value": "Power Up"
+                },
+                {
+                  "label": "Haste",
+                  "value": "Haste"
+                },
+                {
+                  "label": "Damage Up",
+                  "value": "Damage Up"
+                },
+                {
+                  "label": "Protection",
+                  "value": "Protection"
+                }
+              ]
+            },
+            {
+              "default": "Count",
+              "kind": "choice",
+              "label": "Counting",
+              "name": "basis",
+              "options": [
+                {
+                  "label": "Count",
+                  "value": "Count"
+                },
+                {
+                  "label": "Potency",
+                  "value": "Potency"
+                }
+              ]
+            }
+          ],
+          "text": "At {n}+ {status} {basis},"
+        },
+        {
+          "id": "negatives",
+          "label": "The target has N different negative effects",
+          "params": [
+            {
+              "default": 3,
+              "kind": "number",
+              "label": "At least",
+              "max": 15,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "text": "If the target has {n}+ negative effects,"
+        },
+        {
+          "id": "hp",
+          "label": "HP is above or below a percent",
+          "params": [
+            {
+              "default": "this unit's",
+              "kind": "choice",
+              "label": "Whose",
+              "name": "who",
+              "options": [
+                {
+                  "label": "this unit's",
+                  "value": "this unit's"
+                },
+                {
+                  "label": "the target's",
+                  "value": "the target's"
+                }
+              ]
+            },
+            {
+              "default": 50,
+              "kind": "number",
+              "label": "Percent",
+              "max": 100,
+              "min": 0,
+              "name": "n"
+            },
+            {
+              "default": "less",
+              "kind": "choice",
+              "label": "Is",
+              "name": "dir",
+              "options": [
+                {
+                  "label": "less",
+                  "value": "less"
+                },
+                {
+                  "label": "more",
+                  "value": "more"
+                }
+              ]
+            }
+          ],
+          "text": "If {who} HP is {n}% or {dir},"
+        },
+        {
+          "id": "sanity",
+          "label": "Sanity is above or below a number",
+          "params": [
+            {
+              "default": "this unit's",
+              "kind": "choice",
+              "label": "Whose",
+              "name": "who",
+              "options": [
+                {
+                  "label": "this unit's",
+                  "value": "this unit's"
+                },
+                {
+                  "label": "the target's",
+                  "value": "the target's"
+                }
+              ]
+            },
+            {
+              "default": 20,
+              "kind": "number",
+              "label": "Sanity",
+              "max": 45,
+              "min": -45,
+              "name": "n"
+            },
+            {
+              "default": "+",
+              "kind": "choice",
+              "label": "Is",
+              "name": "dir",
+              "options": [
+                {
+                  "label": "this or higher",
+                  "value": "+"
+                },
+                {
+                  "label": "this or lower",
+                  "value": " or less"
+                }
+              ]
+            }
+          ],
+          "text": "If {who} Sanity is {n}{dir},"
+        },
+        {
+          "id": "morale",
+          "label": "Low Morale or Panic",
+          "params": [
+            {
+              "default": "this unit",
+              "kind": "choice",
+              "label": "Who",
+              "name": "who",
+              "options": [
+                {
+                  "label": "this unit",
+                  "value": "this unit"
+                },
+                {
+                  "label": "the target",
+                  "value": "the target"
+                }
+              ]
+            },
+            {
+              "default": "Low Morale",
+              "kind": "choice",
+              "label": "State",
+              "name": "state",
+              "options": [
+                {
+                  "label": "Low Morale",
+                  "value": "Low Morale"
+                },
+                {
+                  "label": "Panic",
+                  "value": "Panic"
+                }
+              ]
+            }
+          ],
+          "text": "If {who} is {state},"
+        },
+        {
+          "id": "affinity",
+          "label": "The target is Weak or Fatal to this skill's damage type",
+          "params": [
+            {
+              "default": "Weak",
+              "kind": "choice",
+              "label": "Is",
+              "name": "kind",
+              "options": [
+                {
+                  "label": "Weak",
+                  "value": "Weak"
+                },
+                {
+                  "label": "Fatal",
+                  "value": "Fatal"
+                }
+              ]
+            }
+          ],
+          "text": "If the target is {kind} to this skill's damage type,"
+        },
+        {
+          "id": "defending",
+          "label": "The target is using a Defense Skill",
+          "params": [],
+          "text": "If the target is using a Defense Skill,"
+        },
+        {
+          "id": "target_tag",
+          "label": "The target has a group tag",
+          "params": [
+            {
+              "default": "",
+              "kind": "tag",
+              "label": "Tag",
+              "name": "tag"
+            }
+          ],
+          "text": "If the target has the {tag} tag,"
+        },
+        {
+          "id": "side_tag",
+          "label": "N units on your side have a group tag",
+          "params": [
+            {
+              "default": 2,
+              "kind": "number",
+              "label": "At least",
+              "max": 20,
+              "min": 1,
+              "name": "n"
+            },
+            {
+              "default": "",
+              "kind": "tag",
+              "label": "Tag",
+              "name": "tag"
+            }
+          ],
+          "text": "If {n}+ units on your side have the {tag} tag,"
+        },
+        {
+          "id": "adjacent",
+          "label": "Allies are next to this unit",
+          "params": [
+            {
+              "default": "an ally is",
+              "kind": "choice",
+              "label": "Allies",
+              "name": "n",
+              "options": [
+                {
+                  "label": "An ally is",
+                  "value": "an ally is"
+                },
+                {
+                  "label": "2 allies are",
+                  "value": "2+ allies are"
+                }
+              ]
+            }
+          ],
+          "text": "If {n} adjacent,"
+        },
+        {
+          "id": "defeated",
+          "label": "N allies are defeated",
+          "params": [
+            {
+              "default": 1,
+              "kind": "number",
+              "label": "At least",
+              "max": 20,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "text": "If {n}+ allies are defeated,"
+        },
+        {
+          "id": "ally_rank",
+          "label": "The ally has the fastest, lowest... (ally timings)",
+          "params": [
+            {
+              "default": "Fastest SPeed",
+              "kind": "choice",
+              "label": "Ally with the",
+              "name": "selector",
+              "options": [
+                {
+                  "label": "Fastest SPeed",
+                  "value": "Fastest SPeed"
+                },
+                {
+                  "label": "Slowest SPeed",
+                  "value": "Slowest SPeed"
+                },
+                {
+                  "label": "Highest HP",
+                  "value": "Highest HP"
+                },
+                {
+                  "label": "Lowest HP",
+                  "value": "Lowest HP"
+                },
+                {
+                  "label": "Highest HP Percent",
+                  "value": "Highest HP Percent"
+                },
+                {
+                  "label": "Lowest HP Percent",
+                  "value": "Lowest HP Percent"
+                },
+                {
+                  "label": "Highest Max HP",
+                  "value": "Highest Max HP"
+                },
+                {
+                  "label": "Lowest Max HP",
+                  "value": "Lowest Max HP"
+                },
+                {
+                  "label": "Highest Sanity",
+                  "value": "Highest Sanity"
+                },
+                {
+                  "label": "Lowest Sanity",
+                  "value": "Lowest Sanity"
+                },
+                {
+                  "label": "Highest SP",
+                  "value": "Highest SP"
+                },
+                {
+                  "label": "Lowest SP",
+                  "value": "Lowest SP"
+                },
+                {
+                  "label": "First Deployed",
+                  "value": "First Deployed"
+                },
+                {
+                  "label": "Last Deployed",
+                  "value": "Last Deployed"
+                },
+                {
+                  "label": "Earliest Deployment",
+                  "value": "Earliest Deployment"
+                },
+                {
+                  "label": "Latest Deployment",
+                  "value": "Latest Deployment"
+                }
+              ]
+            }
+          ],
+          "text": "If the ally has the {selector},"
+        }
+      ],
+      "effects": [
+        {
+          "group": "Damage and power",
+          "id": "dmg_pct",
+          "label": "Deal +N% damage",
+          "params": [
+            {
+              "default": 10,
+              "kind": "number",
+              "label": "Percent",
+              "max": 50,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "power": true,
+          "text": "Deal +{n}% damage"
+        },
+        {
+          "flat": true,
+          "group": "Damage and power",
+          "id": "dmg_flat",
+          "label": "Deal +N damage",
+          "params": [
+            {
+              "default": 3,
+              "kind": "number",
+              "label": "Damage",
+              "max": 99,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "power": true,
+          "text": "Deal +{n} damage"
+        },
+        {
+          "flat": true,
+          "group": "Damage and power",
+          "id": "coin_power",
+          "label": "Coin Power +N",
+          "params": [
+            {
+              "default": 1,
+              "kind": "number",
+              "label": "Coin Power",
+              "max": 9,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "power": true,
+          "text": "Coin Power +{n}"
+        },
+        {
+          "group": "Damage and power",
+          "id": "clash_power",
+          "label": "Clash Power +N",
+          "params": [
+            {
+              "default": 1,
+              "kind": "number",
+              "label": "Clash Power",
+              "max": 9,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "power": true,
+          "text": "Clash Power +{n}"
+        },
+        {
+          "group": "Damage and power",
+          "id": "final_power",
+          "label": "Final Power +N",
+          "params": [
+            {
+              "default": 1,
+              "kind": "number",
+              "label": "Final Power",
+              "max": 9,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "power": true,
+          "text": "Final Power +{n}"
+        },
+        {
+          "group": "Damage and power",
+          "id": "dmg_pct_per",
+          "label": "Deal +N% damage for every few of a target's status",
+          "params": [
+            {
+              "default": 5,
+              "kind": "number",
+              "label": "Percent each",
+              "max": 10,
+              "min": 1,
+              "name": "n"
+            },
+            {
+              "default": 6,
+              "kind": "number",
+              "label": "For every",
+              "max": 99,
+              "min": 1,
+              "name": "per"
+            },
+            {
+              "default": "Burn",
+              "kind": "choice",
+              "label": "Target status",
+              "name": "status",
+              "options": [
+                {
+                  "label": "Burn",
+                  "value": "Burn"
+                },
+                {
+                  "label": "Bleed",
+                  "value": "Bleed"
+                },
+                {
+                  "label": "Tremor",
+                  "value": "Tremor"
+                },
+                {
+                  "label": "Rupture",
+                  "value": "Rupture"
+                },
+                {
+                  "label": "Sinking",
+                  "value": "Sinking"
+                },
+                {
+                  "label": "Bind",
+                  "value": "Bind"
+                },
+                {
+                  "label": "Fragile",
+                  "value": "Fragile"
+                },
+                {
+                  "label": "Slash Fragility",
+                  "value": "Slash Fragility"
+                },
+                {
+                  "label": "Pierce Fragility",
+                  "value": "Pierce Fragility"
+                },
+                {
+                  "label": "Blunt Fragility",
+                  "value": "Blunt Fragility"
+                },
+                {
+                  "label": "Power Down",
+                  "value": "Power Down"
+                },
+                {
+                  "label": "Damage Down",
+                  "value": "Damage Down"
+                },
+                {
+                  "label": "Paralyze",
+                  "value": "Paralyze"
+                },
+                {
+                  "label": "Poison",
+                  "value": "Poison"
+                },
+                {
+                  "label": "Immobilized",
+                  "value": "Immobilized"
+                }
+              ]
+            },
+            {
+              "default": "Count",
+              "kind": "choice",
+              "label": "Counting",
+              "name": "basis",
+              "options": [
+                {
+                  "label": "Count",
+                  "value": "Count"
+                },
+                {
+                  "label": "Potency",
+                  "value": "Potency"
+                }
+              ]
+            },
+            {
+              "default": 15,
+              "kind": "number",
+              "label": "Cap (%)",
+              "max": 50,
+              "min": 1,
+              "name": "max"
+            }
+          ],
+          "power": true,
+          "text": "Deal +{n}% damage per {per} {status} {basis} on the target (max {max}%)"
+        },
+        {
+          "flat": true,
+          "group": "Damage and power",
+          "id": "coin_power_per",
+          "label": "Coin Power +N for every few of your own status",
+          "params": [
+            {
+              "default": 1,
+              "kind": "number",
+              "label": "Coin Power each",
+              "max": 5,
+              "min": 1,
+              "name": "n"
+            },
+            {
+              "default": 5,
+              "kind": "number",
+              "label": "For every",
+              "max": 99,
+              "min": 1,
+              "name": "per"
+            },
+            {
+              "default": "Poise",
+              "kind": "choice",
+              "label": "Your status",
+              "name": "status",
+              "options": [
+                {
+                  "label": "Poise",
+                  "value": "Poise"
+                },
+                {
+                  "label": "Charge",
+                  "value": "Charge"
+                },
+                {
+                  "label": "Power Up",
+                  "value": "Power Up"
+                },
+                {
+                  "label": "Haste",
+                  "value": "Haste"
+                },
+                {
+                  "label": "Damage Up",
+                  "value": "Damage Up"
+                },
+                {
+                  "label": "Protection",
+                  "value": "Protection"
+                }
+              ]
+            },
+            {
+              "default": "Count",
+              "kind": "choice",
+              "label": "Counting",
+              "name": "basis",
+              "options": [
+                {
+                  "label": "Count",
+                  "value": "Count"
+                },
+                {
+                  "label": "Potency",
+                  "value": "Potency"
+                }
+              ]
+            },
+            {
+              "default": 3,
+              "kind": "number",
+              "label": "Cap",
+              "max": 9,
+              "min": 1,
+              "name": "max"
+            }
+          ],
+          "power": true,
+          "text": "Coin Power +{n} per {per} {status} {basis} (max {max})"
+        },
+        {
+          "flat": true,
+          "group": "Damage and power",
+          "id": "dmg_flat_per",
+          "label": "Deal +N damage for every few of your own status",
+          "params": [
+            {
+              "default": 1,
+              "kind": "number",
+              "label": "Damage each",
+              "max": 10,
+              "min": 1,
+              "name": "n"
+            },
+            {
+              "default": 5,
+              "kind": "number",
+              "label": "For every",
+              "max": 99,
+              "min": 1,
+              "name": "per"
+            },
+            {
+              "default": "Poise",
+              "kind": "choice",
+              "label": "Your status",
+              "name": "status",
+              "options": [
+                {
+                  "label": "Poise",
+                  "value": "Poise"
+                },
+                {
+                  "label": "Charge",
+                  "value": "Charge"
+                },
+                {
+                  "label": "Power Up",
+                  "value": "Power Up"
+                },
+                {
+                  "label": "Haste",
+                  "value": "Haste"
+                },
+                {
+                  "label": "Damage Up",
+                  "value": "Damage Up"
+                },
+                {
+                  "label": "Protection",
+                  "value": "Protection"
+                }
+              ]
+            },
+            {
+              "default": "Count",
+              "kind": "choice",
+              "label": "Counting",
+              "name": "basis",
+              "options": [
+                {
+                  "label": "Count",
+                  "value": "Count"
+                },
+                {
+                  "label": "Potency",
+                  "value": "Potency"
+                }
+              ]
+            },
+            {
+              "default": 5,
+              "kind": "number",
+              "label": "Cap",
+              "max": 99,
+              "min": 1,
+              "name": "max"
+            }
+          ],
+          "power": true,
+          "text": "Deal +{n} damage per {per} {status} {basis} (max {max})"
+        },
+        {
+          "flat": true,
+          "group": "Damage and power",
+          "id": "consume",
+          "label": "Spend some of your status for Coin Power",
+          "params": [
+            {
+              "default": 2,
+              "kind": "number",
+              "label": "Spend",
+              "max": 99,
+              "min": 1,
+              "name": "m"
+            },
+            {
+              "default": "Poise",
+              "kind": "choice",
+              "label": "Your status",
+              "name": "status",
+              "options": [
+                {
+                  "label": "Poise",
+                  "value": "Poise"
+                },
+                {
+                  "label": "Charge",
+                  "value": "Charge"
+                },
+                {
+                  "label": "Power Up",
+                  "value": "Power Up"
+                },
+                {
+                  "label": "Haste",
+                  "value": "Haste"
+                },
+                {
+                  "label": "Damage Up",
+                  "value": "Damage Up"
+                },
+                {
+                  "label": "Protection",
+                  "value": "Protection"
+                }
+              ]
+            },
+            {
+              "default": 1,
+              "kind": "number",
+              "label": "Coin Power",
+              "max": 9,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "power": true,
+          "text": "Consume {m} {status}: Coin Power +{n}"
+        },
+        {
+          "group": "Statuses",
+          "id": "inflict_count",
+          "label": "Inflict +N Count of a status",
+          "params": [
+            {
+              "default": 2,
+              "kind": "number",
+              "label": "Count",
+              "max": 99,
+              "min": 1,
+              "name": "n"
+            },
+            {
+              "default": "Burn",
+              "kind": "choice",
+              "label": "Status",
+              "name": "status",
+              "options": [
+                {
+                  "label": "Burn",
+                  "value": "Burn"
+                },
+                {
+                  "label": "Bleed",
+                  "value": "Bleed"
+                },
+                {
+                  "label": "Tremor",
+                  "value": "Tremor"
+                },
+                {
+                  "label": "Rupture",
+                  "value": "Rupture"
+                },
+                {
+                  "label": "Sinking",
+                  "value": "Sinking"
+                },
+                {
+                  "label": "Bind",
+                  "value": "Bind"
+                },
+                {
+                  "label": "Fragile",
+                  "value": "Fragile"
+                },
+                {
+                  "label": "Slash Fragility",
+                  "value": "Slash Fragility"
+                },
+                {
+                  "label": "Pierce Fragility",
+                  "value": "Pierce Fragility"
+                },
+                {
+                  "label": "Blunt Fragility",
+                  "value": "Blunt Fragility"
+                },
+                {
+                  "label": "Power Down",
+                  "value": "Power Down"
+                },
+                {
+                  "label": "Damage Down",
+                  "value": "Damage Down"
+                },
+                {
+                  "label": "Paralyze",
+                  "value": "Paralyze"
+                },
+                {
+                  "label": "Poison",
+                  "value": "Poison"
+                },
+                {
+                  "label": "Immobilized",
+                  "value": "Immobilized"
+                }
+              ]
+            }
+          ],
+          "post": true,
+          "text": "Inflict +{n} {status} Count"
+        },
+        {
+          "group": "Statuses",
+          "id": "inflict_bare",
+          "label": "Inflict N of a status",
+          "params": [
+            {
+              "default": 2,
+              "kind": "number",
+              "label": "Amount",
+              "max": 99,
+              "min": 1,
+              "name": "n"
+            },
+            {
+              "default": "Burn",
+              "kind": "choice",
+              "label": "Status",
+              "name": "status",
+              "options": [
+                {
+                  "label": "Burn",
+                  "value": "Burn"
+                },
+                {
+                  "label": "Bleed",
+                  "value": "Bleed"
+                },
+                {
+                  "label": "Tremor",
+                  "value": "Tremor"
+                },
+                {
+                  "label": "Rupture",
+                  "value": "Rupture"
+                },
+                {
+                  "label": "Sinking",
+                  "value": "Sinking"
+                },
+                {
+                  "label": "Bind",
+                  "value": "Bind"
+                },
+                {
+                  "label": "Fragile",
+                  "value": "Fragile"
+                },
+                {
+                  "label": "Slash Fragility",
+                  "value": "Slash Fragility"
+                },
+                {
+                  "label": "Pierce Fragility",
+                  "value": "Pierce Fragility"
+                },
+                {
+                  "label": "Blunt Fragility",
+                  "value": "Blunt Fragility"
+                },
+                {
+                  "label": "Power Down",
+                  "value": "Power Down"
+                },
+                {
+                  "label": "Damage Down",
+                  "value": "Damage Down"
+                },
+                {
+                  "label": "Paralyze",
+                  "value": "Paralyze"
+                },
+                {
+                  "label": "Poison",
+                  "value": "Poison"
+                },
+                {
+                  "label": "Immobilized",
+                  "value": "Immobilized"
+                }
+              ]
+            }
+          ],
+          "post": true,
+          "text": "Inflict {n} {status}"
+        },
+        {
+          "group": "Statuses",
+          "id": "inflict_both",
+          "label": "Inflict a status with Potency and Count",
+          "params": [
+            {
+              "default": "Burn",
+              "kind": "choice",
+              "label": "Status",
+              "name": "status",
+              "options": [
+                {
+                  "label": "Burn",
+                  "value": "Burn"
+                },
+                {
+                  "label": "Bleed",
+                  "value": "Bleed"
+                },
+                {
+                  "label": "Tremor",
+                  "value": "Tremor"
+                },
+                {
+                  "label": "Rupture",
+                  "value": "Rupture"
+                },
+                {
+                  "label": "Sinking",
+                  "value": "Sinking"
+                },
+                {
+                  "label": "Bind",
+                  "value": "Bind"
+                },
+                {
+                  "label": "Fragile",
+                  "value": "Fragile"
+                },
+                {
+                  "label": "Slash Fragility",
+                  "value": "Slash Fragility"
+                },
+                {
+                  "label": "Pierce Fragility",
+                  "value": "Pierce Fragility"
+                },
+                {
+                  "label": "Blunt Fragility",
+                  "value": "Blunt Fragility"
+                },
+                {
+                  "label": "Power Down",
+                  "value": "Power Down"
+                },
+                {
+                  "label": "Damage Down",
+                  "value": "Damage Down"
+                },
+                {
+                  "label": "Paralyze",
+                  "value": "Paralyze"
+                },
+                {
+                  "label": "Poison",
+                  "value": "Poison"
+                },
+                {
+                  "label": "Immobilized",
+                  "value": "Immobilized"
+                }
+              ]
+            },
+            {
+              "default": 2,
+              "kind": "number",
+              "label": "Potency",
+              "max": 99,
+              "min": 1,
+              "name": "p"
+            },
+            {
+              "default": 2,
+              "kind": "number",
+              "label": "Count",
+              "max": 99,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "post": true,
+          "text": "Inflict {status} Potency {p}, Count {n}"
+        },
+        {
+          "ally": true,
+          "group": "Statuses",
+          "id": "gain_count",
+          "label": "Gain +N Count of a status",
+          "params": [
+            {
+              "default": 2,
+              "kind": "number",
+              "label": "Count",
+              "max": 99,
+              "min": 1,
+              "name": "n"
+            },
+            {
+              "default": "Poise",
+              "kind": "choice",
+              "label": "Status",
+              "name": "status",
+              "options": [
+                {
+                  "label": "Poise",
+                  "value": "Poise"
+                },
+                {
+                  "label": "Charge",
+                  "value": "Charge"
+                },
+                {
+                  "label": "Power Up",
+                  "value": "Power Up"
+                },
+                {
+                  "label": "Haste",
+                  "value": "Haste"
+                },
+                {
+                  "label": "Damage Up",
+                  "value": "Damage Up"
+                },
+                {
+                  "label": "Protection",
+                  "value": "Protection"
+                }
+              ]
+            }
+          ],
+          "post": true,
+          "text": "Gain +{n} {status} Count"
+        },
+        {
+          "ally": true,
+          "group": "Statuses",
+          "id": "gain_bare",
+          "label": "Gain N of a status",
+          "params": [
+            {
+              "default": 2,
+              "kind": "number",
+              "label": "Amount",
+              "max": 99,
+              "min": 1,
+              "name": "n"
+            },
+            {
+              "default": "Poise",
+              "kind": "choice",
+              "label": "Status",
+              "name": "status",
+              "options": [
+                {
+                  "label": "Poise",
+                  "value": "Poise"
+                },
+                {
+                  "label": "Charge",
+                  "value": "Charge"
+                },
+                {
+                  "label": "Power Up",
+                  "value": "Power Up"
+                },
+                {
+                  "label": "Haste",
+                  "value": "Haste"
+                },
+                {
+                  "label": "Damage Up",
+                  "value": "Damage Up"
+                },
+                {
+                  "label": "Protection",
+                  "value": "Protection"
+                }
+              ]
+            }
+          ],
+          "post": true,
+          "text": "Gain {n} {status}"
+        },
+        {
+          "ally": true,
+          "group": "Statuses",
+          "id": "gain_both",
+          "label": "Gain a status with Potency and Count",
+          "params": [
+            {
+              "default": "Poise",
+              "kind": "choice",
+              "label": "Status",
+              "name": "status",
+              "options": [
+                {
+                  "label": "Poise",
+                  "value": "Poise"
+                },
+                {
+                  "label": "Charge",
+                  "value": "Charge"
+                },
+                {
+                  "label": "Power Up",
+                  "value": "Power Up"
+                },
+                {
+                  "label": "Haste",
+                  "value": "Haste"
+                },
+                {
+                  "label": "Damage Up",
+                  "value": "Damage Up"
+                },
+                {
+                  "label": "Protection",
+                  "value": "Protection"
+                }
+              ]
+            },
+            {
+              "default": 2,
+              "kind": "number",
+              "label": "Potency",
+              "max": 99,
+              "min": 1,
+              "name": "p"
+            },
+            {
+              "default": 2,
+              "kind": "number",
+              "label": "Count",
+              "max": 99,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "post": true,
+          "text": "Gain {status} Potency {p}, Count {n}"
+        },
+        {
+          "ally": true,
+          "group": "Statuses",
+          "id": "remove",
+          "label": "Remove a status",
+          "params": [
+            {
+              "default": "Burn",
+              "kind": "choice",
+              "label": "Status",
+              "name": "status",
+              "options": [
+                {
+                  "label": "Burn",
+                  "value": "Burn"
+                },
+                {
+                  "label": "Bleed",
+                  "value": "Bleed"
+                },
+                {
+                  "label": "Tremor",
+                  "value": "Tremor"
+                },
+                {
+                  "label": "Rupture",
+                  "value": "Rupture"
+                },
+                {
+                  "label": "Sinking",
+                  "value": "Sinking"
+                },
+                {
+                  "label": "Bind",
+                  "value": "Bind"
+                },
+                {
+                  "label": "Fragile",
+                  "value": "Fragile"
+                },
+                {
+                  "label": "Slash Fragility",
+                  "value": "Slash Fragility"
+                },
+                {
+                  "label": "Pierce Fragility",
+                  "value": "Pierce Fragility"
+                },
+                {
+                  "label": "Blunt Fragility",
+                  "value": "Blunt Fragility"
+                },
+                {
+                  "label": "Power Down",
+                  "value": "Power Down"
+                },
+                {
+                  "label": "Damage Down",
+                  "value": "Damage Down"
+                },
+                {
+                  "label": "Paralyze",
+                  "value": "Paralyze"
+                },
+                {
+                  "label": "Poison",
+                  "value": "Poison"
+                },
+                {
+                  "label": "Immobilized",
+                  "value": "Immobilized"
+                },
+                {
+                  "label": "Poise",
+                  "value": "Poise"
+                },
+                {
+                  "label": "Charge",
+                  "value": "Charge"
+                },
+                {
+                  "label": "Power Up",
+                  "value": "Power Up"
+                },
+                {
+                  "label": "Haste",
+                  "value": "Haste"
+                },
+                {
+                  "label": "Damage Up",
+                  "value": "Damage Up"
+                },
+                {
+                  "label": "Protection",
+                  "value": "Protection"
+                }
+              ]
+            }
+          ],
+          "post": true,
+          "text": "Remove {status}"
+        },
+        {
+          "ally": true,
+          "group": "Offense and Defense Level",
+          "id": "level_gain",
+          "label": "Gain Offense or Defense Level",
+          "params": [
+            {
+              "default": "Offense",
+              "kind": "choice",
+              "label": "Level",
+              "name": "stat",
+              "options": [
+                {
+                  "label": "Offense",
+                  "value": "Offense"
+                },
+                {
+                  "label": "Defense",
+                  "value": "Defense"
+                }
+              ]
+            },
+            {
+              "default": 1,
+              "kind": "number",
+              "label": "Steps",
+              "max": 5,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "post": true,
+          "text": "Gain {stat} Level +{n}"
+        },
+        {
+          "group": "Offense and Defense Level",
+          "id": "level_inflict",
+          "label": "Lower the target's Offense or Defense Level",
+          "params": [
+            {
+              "default": "Offense",
+              "kind": "choice",
+              "label": "Level",
+              "name": "stat",
+              "options": [
+                {
+                  "label": "Offense",
+                  "value": "Offense"
+                },
+                {
+                  "label": "Defense",
+                  "value": "Defense"
+                }
+              ]
+            },
+            {
+              "default": 1,
+              "kind": "number",
+              "label": "Steps",
+              "max": 5,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "post": true,
+          "text": "Inflict {stat} Level -{n}"
+        },
+        {
+          "ally": true,
+          "group": "Sanity, HP and shield",
+          "id": "sanity_gain",
+          "label": "Gain Sanity",
+          "params": [
+            {
+              "default": 3,
+              "kind": "number",
+              "label": "Sanity",
+              "max": 45,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "post": true,
+          "text": "Gain {n} Sanity"
+        },
+        {
+          "group": "Sanity, HP and shield",
+          "id": "sanity_lose",
+          "label": "Lose Sanity",
+          "params": [
+            {
+              "default": 3,
+              "kind": "number",
+              "label": "Sanity",
+              "max": 45,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "post": true,
+          "text": "Lose {n} Sanity"
+        },
+        {
+          "ally": true,
+          "group": "Sanity, HP and shield",
+          "id": "heal",
+          "label": "Heal HP",
+          "params": [
+            {
+              "default": 5,
+              "kind": "number",
+              "label": "HP",
+              "max": 999,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "post": true,
+          "text": "Heal {n} HP"
+        },
+        {
+          "ally": true,
+          "group": "Sanity, HP and shield",
+          "id": "heal_pct",
+          "label": "Heal a percent of max HP",
+          "params": [
+            {
+              "default": 10,
+              "kind": "number",
+              "label": "Percent",
+              "max": 100,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "post": true,
+          "text": "Heal {n}% max HP"
+        },
+        {
+          "ally": true,
+          "group": "Sanity, HP and shield",
+          "id": "shield",
+          "label": "Gain Shield",
+          "params": [
+            {
+              "default": 5,
+              "kind": "number",
+              "label": "Shield",
+              "max": 999,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "post": true,
+          "text": "Gain {n} Shield"
+        },
+        {
+          "ally": true,
+          "group": "Sanity, HP and shield",
+          "id": "shield_pct",
+          "label": "Gain Shield as a percent of max HP",
+          "params": [
+            {
+              "default": 10,
+              "kind": "number",
+              "label": "Percent",
+              "max": 100,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "post": true,
+          "text": "Gain {n}% max HP Shield"
+        },
+        {
+          "group": "Staying alive",
+          "id": "hp_floor",
+          "label": "HP cannot drop below N this turn",
+          "params": [
+            {
+              "default": 1,
+              "kind": "number",
+              "label": "HP",
+              "max": 999,
+              "min": 1,
+              "name": "n"
+            }
+          ],
+          "post": true,
+          "text": "HP cannot drop below {n} this turn"
+        },
+        {
+          "group": "Staying alive",
+          "id": "nullify",
+          "label": "Nullify the next lethal damage",
+          "params": [],
+          "post": true,
+          "text": "Nullify the next lethal damage"
+        },
+        {
+          "group": "Staying alive",
+          "id": "no_stagger",
+          "label": "Cannot be Staggered this turn",
+          "params": [],
+          "post": true,
+          "text": "Cannot be Staggered this turn"
+        },
+        {
+          "group": "Staying alive",
+          "id": "recover_stagger",
+          "label": "Recover from Stagger",
+          "params": [],
+          "post": true,
+          "text": "Recover from Stagger"
+        },
+        {
+          "followup": true,
+          "group": "Allies and follow-ups",
+          "id": "followup",
+          "label": "Use a skill as a follow-up attack",
+          "needsLimit": true,
+          "params": [
+            {
+              "default": "",
+              "kind": "skill",
+              "label": "Skill",
+              "name": "skill"
+            }
+          ],
+          "post": true,
+          "text": "Use {skill} as a follow-up attack"
+        },
+        {
+          "assist": true,
+          "group": "Allies and follow-ups",
+          "id": "assist",
+          "label": "Take the hit for the ally",
+          "params": [],
+          "post": true,
+          "text": "Take the hit for the ally"
+        }
+      ],
+      "flagHelp": {
+        "Clashable Counter": "Like Counter, but it can also be Clashed back.",
+        "Clashable Guard": "Guard that can be Clashed. Winning raises Stagger thresholds.",
+        "Counter": "Strikes back at a faster unopposed attack, once per round.",
+        "Duality": "Attacks an enemy, or helps an ally. You pick when you declare.",
+        "Evade": "One coin flip to fully dodge one specific incoming attack.",
+        "Guard": "Never Clashes. Turns your Power into Shield instead.",
+        "Indiscriminate": "Hits a random enemy slot instead of the one you pick.",
+        "Target Fixed": "No ally can take over this Clash slot.",
+        "Unclashable": "This attack can never be Clashed. It lands unopposed.",
+        "Unfocused Volley": "Every coin picks its own random enemy."
+      },
+      "groups": [
+        {
+          "help": "Fires once while the skill is being used or clashed.",
+          "id": "use",
+          "label": "When the skill is used"
+        },
+        {
+          "help": "Fires for one coin of the skill. Pick which coin.",
+          "id": "coin",
+          "label": "On one coin"
+        },
+        {
+          "help": "Fires on its own, whatever the skill is doing.",
+          "id": "turn",
+          "label": "Start and end of turns"
+        },
+        {
+          "help": "Fires because of how a hit went.",
+          "id": "result",
+          "label": "After a hit"
+        },
+        {
+          "help": "Reacts to something that happens to an ally.",
+          "id": "ally",
+          "label": "When an ally acts or is hit"
+        },
+        {
+          "help": "Passives only: reacts to something that happens to its owner.",
+          "id": "self",
+          "label": "When this unit is hit (passives only)"
+        }
+      ],
+      "limits": [
+        {
+          "label": "No limit",
+          "value": ""
+        },
+        {
+          "label": "Once per turn",
+          "value": " (once per turn)"
+        },
+        {
+          "label": "2 times per turn",
+          "value": " (2 times per turn)"
+        },
+        {
+          "label": "3 times per turn",
+          "value": " (3 times per turn)"
+        },
+        {
+          "label": "Once per Encounter",
+          "value": " (once per Encounter)"
+        },
+        {
+          "label": "2 times per Encounter",
+          "value": " (2 times per Encounter)"
+        }
+      ],
+      "selectors": [
+        "Fastest SPeed",
+        "Slowest SPeed",
+        "Highest HP",
+        "Lowest HP",
+        "Highest HP Percent",
+        "Lowest HP Percent",
+        "Highest Max HP",
+        "Lowest Max HP",
+        "Highest Sanity",
+        "Lowest Sanity",
+        "Highest SP",
+        "Lowest SP",
+        "First Deployed",
+        "Last Deployed",
+        "Earliest Deployment",
+        "Latest Deployment"
+      ],
+      "targets": [
+        {
+          "label": "This unit",
+          "value": ""
+        },
+        {
+          "label": "The ally",
+          "value": " to the ally"
+        },
+        {
+          "label": "The adjacent allies",
+          "value": " to the adjacent allies"
+        },
+        {
+          "label": "The ally with the fastest, lowest...",
+          "value": " to the ally with the {selector}"
+        }
+      ],
+      "timings": [
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "use",
+          "help": "Before the skill starts. Power effects (Deal, Coin Power) work here.",
+          "key": "Before Use",
+          "passive": true,
+          "perCoin": false,
+          "power": true,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "use",
+          "help": "As the skill starts. Power effects (Deal, Coin Power) work here.",
+          "key": "On Use",
+          "passive": true,
+          "perCoin": false,
+          "power": true,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "use",
+          "help": "When a clash with this skill begins. Power effects work here.",
+          "key": "Clash Start",
+          "passive": true,
+          "perCoin": false,
+          "power": true,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "use",
+          "help": "When this skill wins its clash.",
+          "key": "Clash Win",
+          "passive": false,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "use",
+          "help": "When this skill loses its clash.",
+          "key": "Clash Lose",
+          "passive": false,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "use",
+          "help": "Before the coins land: after winning a clash, or when nobody clashes. Power effects work here.",
+          "key": "Before Attack",
+          "passive": true,
+          "perCoin": false,
+          "power": true,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "use",
+          "help": "When nobody clashes with this skill.",
+          "key": "On Unopposed Attack",
+          "passive": false,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "use",
+          "help": "After every coin has been resolved.",
+          "key": "Attack End",
+          "passive": false,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": true,
+          "followup": false,
+          "group": "coin",
+          "help": "When that coin is about to be tossed. Only Deal +N and Coin Power +N work here.",
+          "key": "Coin Start",
+          "passive": false,
+          "perCoin": true,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "coin",
+          "help": "When that coin hits.",
+          "key": "On Hit",
+          "passive": false,
+          "perCoin": true,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "coin",
+          "help": "When that coin lands Heads and hits.",
+          "key": "Heads Hit",
+          "passive": false,
+          "perCoin": true,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "coin",
+          "help": "When that coin lands Tails and hits.",
+          "key": "Tails Hit",
+          "passive": false,
+          "perCoin": true,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "coin",
+          "help": "When that coin hits after the clash was won.",
+          "key": "Hit After Clash Win",
+          "passive": false,
+          "perCoin": true,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "coin",
+          "help": "When that coin has finished resolving.",
+          "key": "Current Coin Attack End",
+          "passive": false,
+          "perCoin": true,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "coin",
+          "help": "When that coin has finished resolving and landed Heads.",
+          "key": "Heads Attack End",
+          "passive": false,
+          "perCoin": true,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "coin",
+          "help": "When that coin has finished resolving and landed Tails.",
+          "key": "Tails Attack End",
+          "passive": false,
+          "perCoin": true,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "coin",
+          "help": "When that coin crits (the unit is holding Poise).",
+          "key": "On Crit",
+          "passive": false,
+          "perCoin": true,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "coin",
+          "help": "When that coin crits and lands Heads.",
+          "key": "On Crit - Heads Hit",
+          "passive": false,
+          "perCoin": true,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "coin",
+          "help": "When that coin crits and lands Tails.",
+          "key": "On Crit - Tails Hit",
+          "passive": false,
+          "perCoin": true,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "turn",
+          "help": "Once, when the battle begins.",
+          "key": "Combat Start",
+          "passive": true,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "turn",
+          "help": "At the start of every turn.",
+          "key": "Turn Start",
+          "passive": true,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "turn",
+          "help": "At the end of every turn.",
+          "key": "Turn End",
+          "passive": false,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": true,
+          "group": "result",
+          "help": "When this unit evades an attack.",
+          "key": "On Evade",
+          "passive": true,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "result",
+          "help": "Just before this unit is hit.",
+          "key": "Before Getting Hit",
+          "passive": false,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "result",
+          "help": "When this hit leaves the target Staggered.",
+          "key": "On Stagger",
+          "passive": false,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "result",
+          "help": "When this hit defeats the target. (The game calls it On Target Kill.)",
+          "key": "On Kill",
+          "passive": false,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "result",
+          "help": "When a crit defeats the target.",
+          "key": "On Crit Kill",
+          "passive": false,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "result",
+          "help": "When the hit failed: it was evaded or did 0 damage.",
+          "key": "Failed Hit",
+          "passive": false,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "result",
+          "help": "When the hit landed but the target is still standing.",
+          "key": "Failed Kill",
+          "passive": false,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "result",
+          "help": "For the side that lost the clash, when its hit lands.",
+          "key": "Hit After Clash Lose",
+          "passive": false,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "result",
+          "help": "Against a target with Tremor: its Stagger payoff. Use it with a Tremor condition.",
+          "key": "Tremor Burst",
+          "passive": false,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": true,
+          "group": "ally",
+          "help": "When an ally hits an enemy.",
+          "key": "Ally On Hit",
+          "passive": true,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": true,
+          "group": "ally",
+          "help": "When an ally crits.",
+          "key": "Ally On Crit",
+          "passive": true,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": true,
+          "group": "ally",
+          "help": "When an ally defeats an enemy.",
+          "key": "Ally On Kill",
+          "passive": true,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": true,
+          "group": "ally",
+          "help": "When an ally is hit.",
+          "key": "Ally Is Hit",
+          "passive": true,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": true,
+          "coinStart": false,
+          "followup": false,
+          "group": "ally",
+          "help": "Just before an unopposed attack on an ally lands.",
+          "key": "Ally Before Getting Hit",
+          "passive": true,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": true,
+          "group": "ally",
+          "help": "When an ally is Staggered.",
+          "key": "Ally On Stagger",
+          "passive": true,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "ally",
+          "help": "At the start of every turn, for an ally.",
+          "key": "Ally Turn Start",
+          "passive": true,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "ally",
+          "help": "When the battle begins, for an ally.",
+          "key": "Ally Combat Start",
+          "passive": true,
+          "perCoin": false,
+          "power": false,
+          "skill": true
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": true,
+          "group": "self",
+          "help": "When this unit takes a landed hit.",
+          "key": "Self Is Hit",
+          "passive": true,
+          "perCoin": false,
+          "power": false,
+          "skill": false
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": true,
+          "group": "self",
+          "help": "When this unit becomes Staggered.",
+          "key": "Self On Stagger",
+          "passive": true,
+          "perCoin": false,
+          "power": false,
+          "skill": false
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "self",
+          "help": "When this unit defeats someone.",
+          "key": "Self On Kill",
+          "passive": true,
+          "perCoin": false,
+          "power": false,
+          "skill": false
+        },
+        {
+          "assist": false,
+          "coinStart": false,
+          "followup": false,
+          "group": "self",
+          "help": "When this unit is defeated.",
+          "key": "Self On Death",
+          "passive": true,
+          "perCoin": false,
+          "power": false,
+          "skill": false
+        }
+      ]
+    },
     "nonKeyword": {
       "cap": 3,
       "oneTurn": [
@@ -345,7 +2769,10 @@
         "Clashable Guard",
         "Clashable Counter",
         "Duality",
-        "Target Fixed"
+        "Target Fixed",
+        "Unclashable",
+        "Indiscriminate",
+        "Unfocused Volley"
       ],
       "flagTags": {
         "clashable counter": "clashable_counter",

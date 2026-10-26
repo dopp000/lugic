@@ -66,16 +66,25 @@
     return vocab;
   }
 
-  // Which colour a [Timing] tag gets. Skill-type tags such as [Counter] are gold.
+  // Which colour a [Timing] tag gets, the way the wiki does it: On Use is blue, Clash Win orange, Clash Lose red, every other
+  // timing green. Skill-type tags such as [Counter] are neutral (brown), like Unfocused Volley on the wiki.
   function timingClass(label) {
     var key = String(label).trim().toLowerCase();
     if (Object.prototype.hasOwnProperty.call(R.skills.flagTags, key)) { return 'flag'; }
-    if (/clash/.test(key)) { return 'clash'; }
-    if (/turn|combat|death/.test(key)) { return 'turn'; }
-    if (/ally/.test(key)) { return 'ally'; }
-    if (/^before/.test(key)) { return 'before'; }
-    if (/use/.test(key)) { return 'use'; }
+    if (key === 'on use') { return 'use'; }
+    if (key === 'clash win') { return 'clashwin'; }
+    if (key === 'clash lose') { return 'clashlose'; }
     return 'hit';
+  }
+
+  // Positive, negative or neutral, the way the wiki sorts effects (the status list on the page has the same data).
+  var tones = null;
+  function toneOf(key) {
+    if (!tones) {
+      tones = {};
+      (R.statusGuide || []).forEach(function (s) { tones[s.key] = s.tone; });
+    }
+    return tones[key] || 'negative';
   }
 
   // Splits a line into coloured pieces: { kind: 'tag'|'status'|'damage'|'stat'|'text', text, key?, cls? }.
@@ -239,7 +248,7 @@
       if (t.kind === 'tag') { into.appendChild(node('span', 'pv-tag pv-' + t.cls, t.text)); into.appendChild(document.createTextNode(' ')); }
       else if (t.kind === 'text') { into.appendChild(document.createTextNode(t.text)); }
       else {
-        var span = node('span', 'pv-word pv-w-' + t.kind + ' pv-k-' + t.key);
+        var span = node('span', 'pv-word pv-w-' + t.kind + ' pv-k-' + t.key + (t.kind === 'status' ? ' pv-tone-' + toneOf(t.key) : ''));
         span.appendChild(icon(t.key));
         span.appendChild(document.createTextNode(t.text));
         into.appendChild(span);
@@ -302,5 +311,5 @@
     return box;
   }
 
-  return { tokenize: tokenize, model: model, render: render, timingClass: timingClass, statusSentence: statusSentence, frameTiers: FRAME_TIERS, emblem: emblem, applyArt: applyArt, clampArt: clampArt, artStyle: artStyle, maxZoom: ART_MAX_ZOOM };
+  return { tokenize: tokenize, renderTokens: renderTokens, model: model, render: render, timingClass: timingClass, statusSentence: statusSentence, toneOf: toneOf, frameTiers: FRAME_TIERS, emblem: emblem, applyArt: applyArt, clampArt: clampArt, artStyle: artStyle, maxZoom: ART_MAX_ZOOM };
 });

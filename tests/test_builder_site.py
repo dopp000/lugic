@@ -11,6 +11,7 @@ Run all tests from the repo root with:  python -m unittest discover tests
 import json
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -238,10 +239,28 @@ class SkillExamples(unittest.TestCase):
 
 @unittest.skipUnless(NODE, "node is not installed")
 class Preview(unittest.TestCase):
-    def run_preview(self, lines, skills):
-        done = subprocess.run([NODE, os.path.join(ROOT, "tests", "preview_check.js")], input=json.dumps({"lines": lines, "skills": skills}),
+    def run_preview(self, lines, skills, **extra):
+        done = subprocess.run([NODE, os.path.join(ROOT, "tests", "preview_check.js")], input=json.dumps({"lines": lines, "skills": skills, **extra}),
                               capture_output=True, text=True, check=True)
         return json.loads(done.stdout)
+
+    def test_timing_tags_are_coloured_the_way_the_wiki_does(self):
+        timings = ["On Use", "Clash Win", "Clash Lose", "On Hit", "Combat Start", "Before Attack", "Turn End", "Counter", "Guard", "Unclashable"]
+        classes = dict(zip(timings, self.run_preview([], [], timings=timings)["classes"]))
+        self.assertEqual(classes["On Use"], "use")
+        self.assertEqual(classes["Clash Win"], "clashwin")
+        self.assertEqual(classes["Clash Lose"], "clashlose")
+        for green in ("On Hit", "Combat Start", "Before Attack", "Turn End"):
+            self.assertEqual(classes[green], "hit", green)
+        for tag in ("Counter", "Guard", "Unclashable"):
+            self.assertEqual(classes[tag], "flag", tag)
+
+    def test_status_words_take_the_tone_of_the_status_guide(self):
+        guide = builder_rules.rules()["statusGuide"]
+        keys = [s["key"] for s in guide]
+        tones = self.run_preview([], [], tones=keys)["tones"]
+        self.assertEqual(dict(zip(keys, tones)), {s["key"]: s["tone"] for s in guide})
+        self.assertEqual(self.run_preview([], [], tones=["not_a_status"])["tones"], ["negative"])
 
     def test_tags_and_words_get_their_colours(self):
         out = self.run_preview(["[On Use] If the target has 3+ Burn, Deal +3 Slash damage", "[Before Use] Gain 2 Haste", "[On Hit] Inflict 2 Power Down"], [])
@@ -249,7 +268,7 @@ class Preview(unittest.TestCase):
         self.assertEqual(first[0], {"kind": "tag", "text": "[On Use]", "cls": "use"})
         self.assertIn({"kind": "status", "key": "burn", "text": "Burn"}, first)
         self.assertIn({"kind": "damage", "key": "slash", "text": "Slash"}, first)
-        self.assertEqual(second[0]["cls"], "before")
+        self.assertEqual(second[0]["cls"], "hit")        # every timing but On Use and the two clash results is green, as on the wiki
         self.assertIn({"kind": "status", "key": "haste", "text": "Haste"}, second)
         self.assertEqual(third[0]["cls"], "hit")
         self.assertIn({"kind": "status", "key": "power_down", "text": "Power Down"}, third)
@@ -338,6 +357,66 @@ class Preview(unittest.TestCase):
         self.assertEqual(model["name"], "Unnamed skill")
         self.assertEqual(model["coins"], builder_rules.MAX_COINS)
         self.assertEqual((model["base"], model["coin"]), (0, 0))
+
+
+class WikiLook(unittest.TestCase):
+    """The page uses the colours the Limbus Company wiki uses, taken from the wiki pages' own inline styles."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(ROOT, "docs", "builder", "style.css"), encoding="utf-8") as handle:
+            cls.css = handle.read()
+        with open(os.path.join(ROOT, "docs", "builder", "index.html"), encoding="utf-8") as handle:
+            cls.html = handle.read()
+        with open(os.path.join(ROOT, "docs", "builder", "app.js"), encoding="utf-8") as handle:
+            cls.app = handle.read()
+
+    def token(self, name):
+        found = re.search(r"--" + re.escape(name) + r":\s*(#[0-9a-fA-F]{6})", self.css)
+        self.assertIsNotNone(found, name)
+        return found.group(1).lower()
+
+    def test_the_wiki_palette_is_the_one_in_the_stylesheet(self):
+        expected = {
+            "wiki-positive": "#fac400", "wiki-negative": "#e20000", "wiki-neutral": "#9f6a3a",
+            "wiki-tag-use": "#26cfff", "wiki-tag-hit": "#94f140", "wiki-tag-clash-win": "#ff7e00", "wiki-tag-clash-lose": "#e30000",
+            "wiki-cream": "#eecea4", "wiki-bar": "#810000", "wiki-weight": "#fac700",
+        }
+        for name, colour in expected.items():
+            with self.subTest(token=name):
+                self.assertEqual(self.token(name), colour)
+
+    def test_every_sin_has_its_dark_and_light_banner_colour(self):
+        expected = {
+            "wrath": ("#fe0000", "#520000"), "lust": ("#fb6500", "#521b00"), "sloth": ("#f7c729", "#4f3f06"),
+            "gluttony": ("#9dfe00", "#2f5300"), "gloom": ("#0dc1eb", "#013d4b"), "pride": ("#0049d3", "#001142"),
+            "none": ("#9f693a", "#301d0c"),
+        }
+        for sin, (light, dark) in expected.items():
+            with self.subTest(sin=sin):
+                self.assertEqual(self.token("sin-" + sin), light)
+                self.assertEqual(self.token("sin-" + sin + "-dark"), dark)
+        for sin in list(expected) + ["envy", "def"]:
+            self.assertIn(".pv-sin-" + sin, self.css)
+
+    def test_tones_and_resistances_have_colours(self):
+        for tone in ("positive", "negative", "neutral"):
+            self.assertIn(".pv-tone-" + tone, self.css)
+            self.assertIn(".tone-" + tone, self.css)
+        for word in ("fatal", "weak", "normal", "endure", "ineffective"):
+            self.assertIn(".res-" + word, self.css)
+        for word in ("Fatal", "Weak", "Normal", "Endure", "Ineffective"):
+            self.assertIn(word, self.app)
+
+    def test_every_part_of_the_form_is_its_own_tab(self):
+        order = re.findall(r"sheet\.appendChild\((build\w+)\(\)\)", self.app)
+        self.assertEqual(order, ["buildIdentity", "buildPoints", "buildStats", "buildResistances", "buildRanks", "buildDefense", "buildTags", "buildSkills", "buildPassives", "buildReference"])
+        titles = re.findall(r"section\(\s*'([^']+)'", self.app)
+        self.assertEqual(sorted(titles), sorted(["Identity", "Your points", "Stats", "Resistances", "Status ranks", "Defense types", "Group tags", "Passives", "Skills", "Status effects"]))
+        self.assertIn("tablist", self.app)
+        for needed in ("aria-selected", "aria-controls", "ArrowRight", "ArrowLeft", "Home", "End", "hashchange"):
+            self.assertIn(needed, self.app, needed)
+        self.assertIn('.tab[aria-selected="true"]', self.css)
 
 
 class Templates(unittest.TestCase):
