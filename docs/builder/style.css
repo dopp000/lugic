@@ -478,6 +478,8 @@ input[type="range"]::-moz-range-thumb {
 .foot p { max-width: 72ch; }
 .jump { display: none; }
 .nojs { padding: 20px var(--gutter); color: var(--alert); }
+.trouble { margin: 12px var(--gutter); padding: 12px 14px; border: 1px solid var(--alert); border-radius: 8px; background: rgba(255, 106, 92, 0.1); display: grid; gap: 8px; justify-items: start; }
+.trouble p { margin: 0; }
 
 /* ---- narrow screens ---------------------------------------------------------------------- */
 @media (max-width: 920px) {

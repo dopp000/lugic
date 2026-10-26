@@ -5,6 +5,13 @@
 (function () {
   'use strict';
 
+  // The scripts are cached by the browser for a few minutes, so right after a new version goes online a visitor can end up with the
+  // page made of two versions. If a whole script is missing, say so with a way out, instead of leaving an empty page.
+  if (!window.LugicEngine || !window.LugicEngine.rules || !window.LugicPreview || !window.LugicLines) {
+    trouble('a script did not load', new Error('the page files do not match'));
+    return;
+  }
+
   var E = window.LugicEngine;
   var R = E.rules;
   var SAVE_KEY = 'lugic-character-builder-v1';
@@ -129,6 +136,46 @@
     return node;
   }
 
+  // ---- when something does not draw ---------------------------------------------------------------------
+  // One broken part must not take the tabs and the other parts with it. Every part, and every step of starting up, is tried on its own;
+  // what fails is listed in a box at the top with a button that fetches fresh copies of the page's files (which is what fixes a
+  // page that was put together from two versions).
+
+  function trouble(where, error) {
+    trouble.list = trouble.list || [];
+    trouble.list.push(where + ': ' + String(error && error.message ? error.message : error));
+    if (window.console && window.console.error) { window.console.error('Lugic builder: ' + where, error); }
+    var box = document.getElementById('trouble');
+    if (!box) {
+      box = el('div', { class: 'trouble', id: 'trouble', role: 'alert' });
+      var main = document.querySelector('main.layout');
+      if (main && main.parentNode) { main.parentNode.insertBefore(box, main); } else { document.body.insertBefore(box, document.body.firstChild); }
+    }
+    box.textContent = '';
+    box.appendChild(el('p', { text: 'Part of this page could not be drawn. This usually means the browser kept an older copy of one of the page\'s files, which can happen for a few minutes after a new version goes online.' }));
+    box.appendChild(el('button', { type: 'button', class: 'btn', text: 'Fetch fresh copies', onclick: fetchFresh }));
+    box.appendChild(el('p', { class: 'note', text: 'What failed: ' + trouble.list.join(' | ') }));
+  }
+
+  function clearTrouble() {
+    trouble.list = [];
+    var box = document.getElementById('trouble');
+    if (box && box.parentNode) { box.parentNode.removeChild(box); }
+  }
+
+  function attempt(where, make) {
+    try { return make(); } catch (error) { trouble(where, error); return null; }
+  }
+
+  // Asks the server again for the page and every file it loads (bypassing the browser's copies), then reloads.
+  function fetchFresh() {
+    var urls = [window.location.href.split('#')[0]];
+    [].forEach.call(document.querySelectorAll('script[src], link[rel="stylesheet"]'), function (node) { urls.push(node.src || node.href); });
+    var again = function () { window.location.reload(); };
+    if (!window.fetch || !window.Promise) { again(); return; }
+    Promise.all(urls.map(function (url) { return window.fetch(url, { cache: 'reload' }).catch(function () { return null; }); })).then(again, again);
+  }
+
   var uid = 0;
   function nextId(prefix) { uid += 1; return prefix + '-' + uid; }
 
@@ -230,17 +277,14 @@
     var sheet = document.getElementById('sheet');
     sheet.textContent = '';
     // Skills come right after the things they depend on (ranks and defense types), before the rarer parts.
-    sheet.appendChild(buildIdentity());
-    sheet.appendChild(buildPoints());
-    sheet.appendChild(buildStats());
-    sheet.appendChild(buildResistances());
-    sheet.appendChild(buildRanks());
-    sheet.appendChild(buildDefense());
-    sheet.appendChild(buildTags());
-    sheet.appendChild(buildSkills());
-    sheet.appendChild(buildPassives());
-    sheet.appendChild(buildReference());
-    buildTabs(sheet);
+    [
+      ['Identity', buildIdentity], ['Your points', buildPoints], ['Stats', buildStats], ['Resistances', buildResistances],
+      ['Status ranks', buildRanks], ['Defense types', buildDefense], ['Group tags', buildTags], ['Skills', buildSkills],
+      ['Passives', buildPassives], ['Status effects', buildReference]
+    ].forEach(function (part) {
+      sheet.appendChild(attempt(part[0], part[1]) || section(part[0], null, [el('p', { class: 'note', text: 'This part could not be drawn.' })]));
+    });
+    attempt('the tabs', function () { buildTabs(sheet); });
   }
 
   // One tab for each part of the form. Only the open part is shown; Back and Next at the bottom walk through them in order.
@@ -2041,6 +2085,7 @@
       return;
     }
     state = E.defaultState();
+    clearTrouble();
     build();
     update();
   });
@@ -2053,6 +2098,7 @@
       var before = state.skills;
       state = E.fromSpec(res.spec);
       carryPictures(before, state.skills);
+      clearTrouble();
       build();
       update();
       msg.classList.remove('bad');
@@ -2146,9 +2192,9 @@
   window.addEventListener('resize', hideTip);
   document.documentElement.addEventListener('mouseleave', hideTip);
 
-  buildCard();
-  paintPortraitSize();
+  attempt('the card', buildCard);
+  attempt('the portrait', paintPortraitSize);
   build();
-  update();
-  loadIcons();
+  attempt('the totals', update);
+  attempt('the icons', loadIcons);
 })();

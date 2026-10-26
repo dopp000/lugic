@@ -15,6 +15,8 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import threading
 import unittest
 import warnings
 
@@ -725,10 +727,12 @@ class WikiLook(unittest.TestCase):
             self.assertIn(word, self.app)
 
     def test_every_part_of_the_form_is_its_own_tab(self):
-        order = re.findall(r"sheet\.appendChild\((build\w+)\(\)\)", self.app)
-        self.assertEqual(order, ["buildIdentity", "buildPoints", "buildStats", "buildResistances", "buildRanks", "buildDefense", "buildTags", "buildSkills", "buildPassives", "buildReference"])
+        build = re.search(r"  function build\(\) \{.*?\n  \}\n", self.app, re.S).group(0)
+        listed = re.findall(r"\['([^']+)', (build\w+)\]", build)
+        self.assertEqual([name for _, name in listed], ["buildIdentity", "buildPoints", "buildStats", "buildResistances", "buildRanks", "buildDefense", "buildTags", "buildSkills", "buildPassives", "buildReference"])
         titles = re.findall(r"section\(\s*'([^']+)'", self.app)
         self.assertEqual(sorted(titles), sorted(["Identity", "Your points", "Stats", "Resistances", "Status ranks", "Defense types", "Group tags", "Passives", "Skills", "Status effects"]))
+        self.assertEqual(sorted(title for title, _ in listed), sorted(titles))        # the name shown if a part fails to draw is the part's own
         self.assertIn("tablist", self.app)
         for needed in ("aria-selected", "aria-controls", "ArrowRight", "ArrowLeft", "Home", "End", "hashchange"):
             self.assertIn(needed, self.app, needed)
@@ -747,6 +751,20 @@ class PageShape(unittest.TestCase):
                 return handle.read()
 
         cls.folder, cls.html, cls.css, cls.app, cls.engine = folder, read("index.html"), read("style.css"), read("app.js"), read("engine.js")
+
+    def test_a_part_that_fails_to_draw_does_not_take_the_tabs_with_it(self):
+        build = re.search(r"  function build\(\) \{.*?\n  \}\n", self.app, re.S).group(0)
+        for builder in ("buildIdentity", "buildPoints", "buildStats", "buildResistances", "buildRanks", "buildDefense", "buildTags", "buildSkills", "buildPassives", "buildReference"):
+            self.assertIn(builder + "]", build, builder)
+            self.assertNotIn("appendChild(" + builder + "()", build, builder)       # each part goes through attempt(), none is called bare
+        self.assertIn("attempt('the tabs'", build)
+        tail = self.app[self.app.rindex("attempt('the card'"):]
+        for step in ("attempt('the portrait', paintPortraitSize)", "attempt('the totals', update)", "attempt('the icons', loadIcons)"):
+            self.assertIn(step, tail)
+        for needed in ("Fetch fresh copies", "cache: 'reload'", "id: 'trouble'"):
+            self.assertIn(needed, self.app, needed)
+        self.assertIn(".trouble", self.css)
+        self.assertIn("a script did not load", self.app)            # a script that is missing altogether is reported, not a blank page
 
     def test_the_page_has_no_header_and_keeps_load_and_start_over(self):
         self.assertNotIn("<header", self.html)
@@ -941,6 +959,83 @@ class GeneratedRules(unittest.TestCase):
                 handle.read(), builder_rules.rules_js(),
                 "docs/builder/rules.js is out of date. Run:  python -m game.builder_rules",
             )
+
+    def test_index_html_names_the_current_version_of_every_file(self):
+        with open(builder_rules.INDEX_HTML_PATH, encoding="utf-8", newline="") as handle:
+            html = handle.read()
+        self.assertEqual(
+            html, builder_rules.versioned_index(html),
+            "docs/builder/index.html names an old version of a site file. Run:  python -m game.builder_rules",
+        )
+        loaded = re.findall(r'(?:src|href)="([\w.-]+\.(?:js|css))(?:\?v=([0-9a-f]+))?"', html)
+        self.assertEqual(sorted(name for name, _ in loaded), sorted(builder_rules.VERSIONED_FILES))
+        for name, version in loaded:
+            self.assertRegex(version, r"^[0-9a-f]{10}$", name)
+
+    def test_a_changed_file_gets_a_new_address(self):
+        with tempfile.TemporaryDirectory() as folder:
+            for name in builder_rules.VERSIONED_FILES:
+                with open(os.path.join(folder, name), "w", encoding="utf-8") as handle:
+                    handle.write("// " + name)
+            page = '<link rel="stylesheet" href="style.css"><script src="app.js?v=0000000000"></script>'
+            first = builder_rules.versioned_index(page, folder)
+            self.assertRegex(first, r'href="style\.css\?v=[0-9a-f]{10}"')
+            self.assertRegex(first, r'src="app\.js\?v=[0-9a-f]{10}"')
+            self.assertNotIn("0000000000", first)
+            self.assertEqual(builder_rules.versioned_index(first, folder), first)       # running it again changes nothing
+            with open(os.path.join(folder, "app.js"), "w", encoding="utf-8") as handle:
+                handle.write("// app.js changed")
+            second = builder_rules.versioned_index(first, folder)
+            self.assertNotEqual(second, first)
+            self.assertEqual(re.search(r"style\.css\?v=(\w+)", second).group(1), re.search(r"style\.css\?v=(\w+)", first).group(1))
+
+
+def _playwright_available() -> bool:
+    return bool(NODE) and subprocess.run([NODE, "-e", "require('playwright')"], cwd=ROOT, capture_output=True).returncode == 0
+
+
+@unittest.skipUnless(_playwright_available(), "needs Playwright for Node (only used to open the page in a browser)")
+class PageInABrowser(unittest.TestCase):
+    """Opens the real page. A page put together from two versions (one script an older copy) still has its tabs and says what failed."""
+
+    @classmethod
+    def setUpClass(cls):
+        import functools
+        import http.server
+
+        class Quiet(http.server.SimpleHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+        handler = functools.partial(Quiet, directory=os.path.join(ROOT, "docs", "builder"))
+        cls.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+        base = f"http://127.0.0.1:{cls.server.server_address[1]}"
+        run = subprocess.run([NODE, os.path.join(ROOT, "tests", "page_check.js"), base], cwd=ROOT, capture_output=True, text=True, timeout=120)
+        if run.returncode != 0:
+            raise unittest.SkipTest("the browser could not be started here: " + run.stderr[-300:])
+        cls.found = json.loads(run.stdout)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def test_every_part_is_a_tab_and_only_one_is_open(self):
+        fresh = self.found["fresh"]
+        self.assertEqual(len(fresh["tabs"]), 10)
+        self.assertEqual(fresh["parts"], 10)
+        self.assertEqual(fresh["open"], ["sec-identity"])
+        self.assertEqual(fresh["box"], "")
+
+    def test_an_older_copy_of_one_script_still_leaves_the_tabs_and_a_way_to_fix_it(self):
+        stale = self.found["stale"]
+        self.assertEqual(len(stale["tabs"]), 10)
+        self.assertEqual(stale["open"], ["sec-identity"])
+        self.assertEqual(stale["parts"], 10)
+        self.assertTrue(stale["button"])
+        self.assertIn("Part of this page could not be drawn", stale["box"])
+        self.assertIn("Fetch fresh copies", stale["box"])
 
 
 if __name__ == "__main__":

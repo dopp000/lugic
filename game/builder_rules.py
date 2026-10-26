@@ -3,11 +3,14 @@
 The site (docs/builder/) runs in the browser and cannot import Python, so this module
 writes docs/builder/rules.js from the same constants the bot checks against. Change a
 price in game/build_points.py, run `python -m game.builder_rules`, and the site follows.
-A test (tests/test_builder_site.py) fails when rules.js is out of date.
+A test (tests/test_builder_site.py) fails when rules.js is out of date. The same command also writes the
+fingerprints of the site's files into index.html (see VERSIONED_FILES), so run it after changing any of them.
 """
 
+import hashlib
 import json
 import os
+import re
 
 from game import build_points as bp
 from game.character import NAME_MAX_LENGTH, STARTING_SPEED
@@ -236,6 +239,36 @@ def write_rules_js(path: str = RULES_JS_PATH) -> None:
         handle.write(rules_js())
 
 
+# The page's own files, in the order index.html loads them. Browsers keep a file for a few minutes after it was fetched (GitHub
+# Pages allows ten), so right after a new version goes online a visitor can get the new app.js with the old preview.js, and the
+# page breaks. Each file's address in index.html therefore carries a short fingerprint of its content (preview.js?v=3fa9...), so a
+# changed file is always fetched fresh and a page is never made of two versions.
+SITE_FOLDER = os.path.dirname(RULES_JS_PATH)
+VERSIONED_FILES = ["style.css", "rules.js", "engine.js", "preview.js", "lines.js", "app.js"]
+INDEX_HTML_PATH = os.path.join(SITE_FOLDER, "index.html")
+
+
+def file_version(name: str, folder: str = SITE_FOLDER) -> str:
+    with open(os.path.join(folder, name), "rb") as handle:
+        return hashlib.sha1(handle.read()).hexdigest()[:10]
+
+
+def versioned_index(html: str, folder: str = SITE_FOLDER) -> str:
+    """index.html with the fingerprint of every file in VERSIONED_FILES written into its address."""
+    for name in VERSIONED_FILES:
+        pattern = r'((?:href|src)=")' + re.escape(name) + r'(?:\?v=[0-9a-f]+)?"'
+        html = re.sub(pattern, lambda found: f'{found.group(1)}{name}?v={file_version(name, folder)}"', html)
+    return html
+
+
+def write_index_html(path: str = INDEX_HTML_PATH) -> None:
+    with open(path, encoding="utf-8", newline="") as handle:
+        html = handle.read()
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(versioned_index(html, os.path.dirname(path)))
+
+
 if __name__ == "__main__":
     write_rules_js()
-    print(f"Wrote {RULES_JS_PATH}")
+    write_index_html()
+    print(f"Wrote {RULES_JS_PATH} and the file versions in {INDEX_HTML_PATH}")
