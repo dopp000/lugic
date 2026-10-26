@@ -300,6 +300,44 @@
         "blunt",
         "pierce"
       ],
+      "examples": [
+        {
+          "base": 4,
+          "blurb": "2 coins, Blunt",
+          "coin": 2,
+          "coins": 2,
+          "name": "Quick Jab",
+          "triggers": "",
+          "type": "blunt"
+        },
+        {
+          "base": 4,
+          "blurb": "3 coins, Slash",
+          "coin": 1,
+          "coins": 3,
+          "name": "Rending Slash",
+          "triggers": "[On Use] Deal +10% damage",
+          "type": "slash"
+        },
+        {
+          "base": 4,
+          "blurb": "1 coin, Pierce",
+          "coin": 2,
+          "coins": 1,
+          "name": "Piercing Shot",
+          "triggers": "[On Use] Coin Power +1",
+          "type": "pierce"
+        },
+        {
+          "base": 4,
+          "blurb": "bonus vs Burn",
+          "coin": 2,
+          "coins": 2,
+          "name": "Opening Blow",
+          "triggers": "[On Use] If the target has 3+ Burn, Deal +3 damage",
+          "type": "blunt"
+        }
+      ],
       "flagButtons": [
         "Guard",
         "Evade",
@@ -366,11 +404,197 @@
         3
       ]
     },
+    "stackingNote": "Most statuses have two numbers. **Potency** is how strong it is. **Count** is how many times it can still happen, or how long it lasts. Gaining the same status again adds to both. Potency tops out at 99.\n\nSome statuses only last for the turn they land in and are wiped at turn end (Bind, Fragile and friends). Others stay until they run out. Each status page says which.\n\nYou usually can't see exact numbers on an enemy. The icons under a fighter's name hint at how dangerous their statuses and passives are.",
     "stagger": {
       "2": 5,
       "3": 7
     },
     "startingBp": 30,
+    "statusGuide": [
+      {
+        "body": "At the end of the turn, take fixed damage by the effect's **Potency**, then reduce its **Count** by 1. At 0 Count it is gone. Shield soaks the damage first.",
+        "group": "keyword",
+        "key": "burn",
+        "sin": "wrath",
+        "summary": "Damage to you at turn end, then it fades.",
+        "title": "Burn",
+        "tone": "negative"
+      },
+      {
+        "body": "When using an attack skill, take fixed damage by the effect's **Potency** for every coin in that skill, then reduce its **Count** by 1. Defense skills (Guard, Counter and so on) don't count as attacking.",
+        "group": "keyword",
+        "key": "bleed",
+        "sin": "lust",
+        "summary": "Hurts you whenever you attack, then it fades.",
+        "title": "Bleed",
+        "tone": "negative"
+      },
+      {
+        "body": "Tremor does nothing alone. When a skill with a **[Tremor Burst]** line hits a target holding Tremor, raise the target's Stagger thresholds by the effect's **Potency** in percentage points, so they Stagger sooner. Then reduce its **Count** by 1.",
+        "group": "keyword",
+        "key": "tremor",
+        "sin": "sloth",
+        "summary": "Tremor Burst makes the target easier to Stagger.",
+        "title": "Tremor",
+        "tone": "negative"
+      },
+      {
+        "body": "When hit by a coin, take extra fixed damage by the effect's **Potency**, then reduce its **Count** by 1. The extra damage is capped at 10% of your max HP per coin, so a huge stack can't one-shot you.",
+        "group": "keyword",
+        "key": "rupture",
+        "sin": "gluttony",
+        "summary": "Hits on you deal extra fixed damage.",
+        "title": "Rupture",
+        "tone": "negative"
+      },
+      {
+        "body": "At the end of the turn, lose Sanity by the effect's **Potency**. It does not fade on its own. Low Sanity makes coins land tails more often and can lead to Low Morale and Panic.",
+        "group": "keyword",
+        "key": "sinking",
+        "sin": "gloom",
+        "summary": "Drains your Sanity at turn end.",
+        "title": "Sinking",
+        "tone": "negative"
+      },
+      {
+        "body": "Each coin has a **5% Crit chance per Potency** (up to 100%). A Crit deals **20% more damage** and reduces its **Count** by 1. Poise is gained on yourself.",
+        "group": "keyword",
+        "key": "poise",
+        "sin": "pride",
+        "summary": "Chance to Crit.",
+        "title": "Poise",
+        "tone": "positive"
+      },
+      {
+        "body": "Charge does nothing by itself. Skills and passives give it to you, and a **Consume** line spends it for a payoff, for example `Consume 3 Charge: Coin Power +2`. Count goes up to 20. At the end of the turn, reduce its **Count** by 1.",
+        "group": "keyword",
+        "key": "charge",
+        "sin": "envy",
+        "summary": "A stored resource you spend with Consume.",
+        "title": "Charge",
+        "tone": "neutral"
+      },
+      {
+        "body": "Each coin gains Final Power by the effect's **Count** for one turn. Gained on yourself.",
+        "group": "buff",
+        "key": "power_up",
+        "summary": "Stronger coins this turn.",
+        "title": "Power Up",
+        "tone": "positive"
+      },
+      {
+        "body": "Every skill slot gains Speed by the effect's **Count** for one turn. Gained on yourself.",
+        "group": "buff",
+        "key": "haste",
+        "summary": "Faster this turn.",
+        "title": "Haste",
+        "tone": "positive"
+      },
+      {
+        "body": "Deal **10% more damage per Count** for one turn, up to 10 Count. Damage Up, Damage Down, Fragile and Protection add together into one number.",
+        "group": "buff",
+        "key": "damage_up",
+        "summary": "You deal more damage this turn.",
+        "title": "Damage Up",
+        "tone": "positive"
+      },
+      {
+        "body": "Take **10% less damage per Count** for one turn, up to 10 Count.",
+        "group": "buff",
+        "key": "protection",
+        "summary": "You take less damage this turn.",
+        "title": "Protection",
+        "tone": "positive"
+      },
+      {
+        "body": "Every skill slot loses Speed by the effect's **Potency** for one turn, down to a minimum of 0. It is wiped at turn end.",
+        "group": "debuff",
+        "key": "bind",
+        "summary": "Makes you slower this turn.",
+        "title": "Bind",
+        "tone": "negative"
+      },
+      {
+        "body": "Each coin loses Final Power by the effect's **Potency** for one turn, down to a minimum of 0.",
+        "group": "debuff",
+        "key": "power_down",
+        "summary": "Weakens every coin this turn.",
+        "title": "Power Down",
+        "tone": "negative"
+      },
+      {
+        "body": "Take **10% more damage per Count** for one turn, up to 10 Count (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
+        "group": "debuff",
+        "key": "fragile",
+        "summary": "You take more damage this turn.",
+        "title": "Fragile",
+        "tone": "negative"
+      },
+      {
+        "body": "Take **10% more damage per Count** for one turn, up to 10 Count (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
+        "group": "debuff",
+        "key": "slash_fragility",
+        "summary": "Fragile, but only against Slash hits. It adds to Fragile and to the other Fragility types.",
+        "title": "Slash Fragility",
+        "tone": "negative"
+      },
+      {
+        "body": "Take **10% more damage per Count** for one turn, up to 10 Count (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
+        "group": "debuff",
+        "key": "pierce_fragility",
+        "summary": "Fragile, but only against Pierce hits. It adds to Fragile and to the other Fragility types.",
+        "title": "Pierce Fragility",
+        "tone": "negative"
+      },
+      {
+        "body": "Take **10% more damage per Count** for one turn, up to 10 Count (+100%). **Slash, Pierce and Blunt Fragility** work the same but only against that damage type. All add together.",
+        "group": "debuff",
+        "key": "blunt_fragility",
+        "summary": "Fragile, but only against Blunt hits. It adds to Fragile and to the other Fragility types.",
+        "title": "Blunt Fragility",
+        "tone": "negative"
+      },
+      {
+        "body": "Deal **10% less damage per Count** for one turn, up to 10 Count.",
+        "group": "debuff",
+        "key": "damage_down",
+        "summary": "You deal less damage this turn.",
+        "title": "Damage Down",
+        "tone": "negative"
+      },
+      {
+        "body": "Fix the Power of the **first X coins** of each skill you use to 0 for one turn, where X is the effect's **Count**.",
+        "group": "debuff",
+        "key": "paralyze",
+        "summary": "Your first coins deal nothing this turn.",
+        "title": "Paralyze",
+        "tone": "negative"
+      },
+      {
+        "body": "At the end of the turn, take fixed damage by the effect's **Count**, then **halve** the Count. It carries over across turns until it reaches 0.",
+        "group": "debuff",
+        "key": "poison",
+        "summary": "Damage at turn end, then it halves.",
+        "title": "Poison",
+        "tone": "negative"
+      },
+      {
+        "body": "You can't declare any skills, and anything you already declared is dropped when combat starts. It wears off after the round it stops you. If you get Immobilized during combat, you sit out the next round instead.",
+        "group": "debuff",
+        "key": "immobilized",
+        "summary": "You can't act.",
+        "title": "Immobilized",
+        "tone": "negative"
+      },
+      {
+        "body": "At **-30 Sanity** you are on **Low Morale**. It has no effect on its own, but some characters have skills that care about it. At **-45 Sanity** you **Panic**: you can't act next turn, then your Sanity resets to 0.",
+        "group": "other",
+        "key": "panic",
+        "summary": "What happens at very low Sanity.",
+        "title": "Low Morale and Panic",
+        "tone": "negative"
+      }
+    ],
     "tags": {
       "max": 3,
       "maxLength": 30

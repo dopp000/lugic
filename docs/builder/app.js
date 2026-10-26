@@ -8,6 +8,7 @@
   var E = window.LugicEngine;
   var R = E.rules;
   var SAVE_KEY = 'lugic-character-builder-v1';
+  var ART_KEY = 'lugic-character-builder-pictures-v1';
   var MAX_COINS_SHOWN = 120;
 
   var state = loadSaved() || E.defaultState();
@@ -16,6 +17,37 @@
   var currentCode = '';
   var saveTimer = null;
   var resetArmed = false;
+
+  // ---- icons -------------------------------------------------------------------------------------------------
+  // icons/index.json (made by `python -m game.emoji_icons`) maps a name such as "burn" to an image of the bot's emoji.
+  // Without it every icon slot stays empty and the page shows text only.
+
+  var iconFiles = {};
+
+  function icon(name) { return el('span', { class: 'ico', 'data-icon': name, 'aria-hidden': 'true' }); }
+
+  function fillIcons() {
+    var slots = document.querySelectorAll('.ico[data-icon]');
+    for (var i = 0; i < slots.length; i++) {
+      var slot = slots[i];
+      var file = iconFiles[slot.getAttribute('data-icon')];
+      if (file && !slot.firstChild) {
+        var img = document.createElement('img');
+        img.alt = '';
+        img.src = file;
+        img.addEventListener('error', function () { this.parentNode.removeChild(this); });
+        slot.appendChild(img);
+      }
+    }
+  }
+
+  function loadIcons() {
+    if (!window.fetch) { return; }
+    fetch('icons/index.json').then(function (r) { return r.ok ? r.json() : {}; }).then(function (map) {
+      iconFiles = map && typeof map === 'object' ? map : {};
+      fillIcons();
+    }).catch(function () { /* no icons folder: text only */ });
+  }
 
   // ---- tiny DOM helpers ------------------------------------------------------------------------
 
@@ -84,7 +116,7 @@
   }
 
   function section(title, intro, kids) {
-    return el('section', { class: 'part' }, [
+    return el('section', { class: 'part', id: 'sec-' + title.toLowerCase().replace(/[^a-z0-9]+/g, '-') }, [
       el('h2', { text: title }),
       intro ? el('p', { class: 'intro', text: intro }) : null,
       el('div', { class: 'part-body' }, kids)
@@ -108,15 +140,27 @@
     syncs = [];
     var sheet = document.getElementById('sheet');
     sheet.textContent = '';
+    // Skills come right after the things they depend on (ranks and defense types), before the rarer parts.
     sheet.appendChild(buildIdentity());
     sheet.appendChild(buildPoints());
     sheet.appendChild(buildStats());
-    sheet.appendChild(buildResistances());
     sheet.appendChild(buildRanks());
     sheet.appendChild(buildDefense());
-    sheet.appendChild(buildTags());
-    sheet.appendChild(buildPassives());
     sheet.appendChild(buildSkills());
+    sheet.appendChild(buildPassives());
+    sheet.appendChild(buildResistances());
+    sheet.appendChild(buildTags());
+    sheet.appendChild(buildReference());
+    buildNav(sheet);
+  }
+
+  // A row of links to every part, so Skills is one tap away.
+  function buildNav(sheet) {
+    var nav = document.getElementById('nav');
+    nav.textContent = '';
+    [].forEach.call(sheet.querySelectorAll('section.part'), function (part) {
+      nav.appendChild(el('a', { href: '#' + part.id, text: part.querySelector('h2').textContent }));
+    });
   }
 
   function buildIdentity() {
@@ -287,7 +331,7 @@
         inputs.forEach(function (input, i) { input.checked = i === rank; });
         cost.textContent = rank ? bp(R.ranks.costs[rank]) : '';
       });
-      return el('div', { class: 'rank-row' }, [el('span', { class: 'rank-name chip-' + status, text: E.capitalize(status) }), group, cost]);
+      return el('div', { class: 'rank-row' }, [el('span', { class: 'rank-name chip-' + status }, [icon(status), E.capitalize(status)]), group, cost]);
     });
     var tail = el('p', { class: 'note' });
     syncs.push(function (r) {
@@ -428,6 +472,139 @@
     ];
   }
 
+  // ---- a picture inside the skill's frame -------------------------------------------------------------------
+  // The picture is shrunk in the browser, kept on this device only, and is not part of the code.
+
+  var PICTURE_SIDE = 640;       // longest side after shrinking
+  var PICTURE_LIMIT = 20 * 1024 * 1024;
+
+  function shrinkPicture(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file || !/^image\//.test(file.type)) { reject(new Error('That is not a picture file.')); return; }
+      if (file.size > PICTURE_LIMIT) { reject(new Error('That picture is too big. Pick one under 20 MB.')); return; }
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) { reject(new Error('The browser could not read that picture.')); return; }
+        var scale = Math.min(1, PICTURE_SIDE / Math.max(w, h));
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(w * scale));
+        canvas.height = Math.max(1, Math.round(h * scale));
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#050506';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve({ src: canvas.toDataURL('image/jpeg', 0.86), a: canvas.width / canvas.height, x: 0, y: 0, zoom: 1 });
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('The browser could not read that picture.')); };
+      img.src = url;
+    });
+  }
+
+  function pictureControls(skill, changed) {
+    var P = window.LugicPreview;
+    var input = el('input', { type: 'file', accept: 'image/*', id: nextId('pic') });
+    var pick = el('label', { class: 'btn', for: input.id, text: skill.art ? 'Change picture' : 'Add a picture' });
+    var adjust = el('button', { type: 'button', class: 'btn quiet', text: 'Adjust' });
+    var remove = el('button', { type: 'button', class: 'btn quiet', text: 'Remove picture' });
+    var msg = el('span', { class: 'msg bad', role: 'status' });
+    var editor = el('div', { class: 'art-editor', hidden: true });
+    var row = el('div', { class: 'art-row' }, [input, pick, adjust, remove, msg]);
+    var note = el('p', { class: 'note', text: 'The picture shows inside the skill\'s frame. It stays on this device and is not part of the code, so the bot never sees it.' });
+
+    function sync() {
+      pick.textContent = skill.art ? 'Change picture' : 'Add a picture';
+      adjust.hidden = remove.hidden = !skill.art;
+      if (!skill.art) { editor.hidden = true; editor.textContent = ''; }
+    }
+
+    function openEditor() {
+      var art = skill.art;
+      if (!art) { return; }
+      editor.textContent = '';
+      editor.hidden = false;
+      var model = P.model(skill);
+      var stage = el('div', { class: 'art-stage', tabindex: '0', role: 'group', 'aria-label': 'Drag to move the picture. Arrow keys move it, plus and minus zoom.' });
+      var big = P.emblem(model.frame, art, model.type);
+      big.classList.add('big');
+      stage.appendChild(big);
+      var zoom = el('input', { type: 'range', min: '1', max: String(P.maxZoom), step: '0.01', 'aria-label': 'Zoom' });
+      zoom.value = String(art.zoom);
+      var done = el('button', { type: 'button', class: 'btn primary', text: 'Done' });
+      var reset = el('button', { type: 'button', class: 'btn quiet', text: 'Reset' });
+
+      function paint() {
+        var c = P.clampArt(art);
+        art.x = c.x; art.y = c.y; art.zoom = c.zoom;
+        var img = big.querySelector('.pv-art img');
+        if (img) { P.applyArt(img, art); }
+        zoom.value = String(art.zoom);
+        changed();
+      }
+      // dragging: the opening is 66% of the frame canvas, which is 132% of the emblem
+      var drag = null;
+      stage.addEventListener('pointerdown', function (e) {
+        drag = { x: e.clientX, y: e.clientY };
+        try { stage.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
+        e.preventDefault();
+      });
+      stage.addEventListener('pointermove', function (e) {
+        if (!drag) { return; }
+        var open = big.getBoundingClientRect().width * 1.32 * 0.66;
+        art.x += (e.clientX - drag.x) / open;
+        art.y += (e.clientY - drag.y) / open;
+        drag = { x: e.clientX, y: e.clientY };
+        paint();
+      });
+      function stop() { drag = null; }
+      stage.addEventListener('pointerup', stop);
+      stage.addEventListener('pointercancel', stop);
+      stage.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        art.zoom += e.deltaY < 0 ? 0.08 : -0.08;
+        paint();
+      }, { passive: false });
+      stage.addEventListener('keydown', function (e) {
+        var step = 0.02, handled = true;
+        if (e.key === 'ArrowLeft') { art.x -= step; } else if (e.key === 'ArrowRight') { art.x += step; }
+        else if (e.key === 'ArrowUp') { art.y -= step; } else if (e.key === 'ArrowDown') { art.y += step; }
+        else if (e.key === '+' || e.key === '=') { art.zoom += 0.1; } else if (e.key === '-') { art.zoom -= 0.1; }
+        else { handled = false; }
+        if (handled) { e.preventDefault(); paint(); }
+      });
+      zoom.addEventListener('input', function () { art.zoom = parseFloat(zoom.value); paint(); });
+      reset.addEventListener('click', function () { art.x = 0; art.y = 0; art.zoom = 1; paint(); });
+      done.addEventListener('click', function () { editor.hidden = true; editor.textContent = ''; });
+      editor.appendChild(stage);
+      editor.appendChild(el('div', { class: 'art-controls' }, [
+        el('p', { class: 'note', text: 'Drag the picture to move it. Scroll or use the slider to zoom.' }),
+        el('label', {}, ['Zoom', zoom]),
+        el('div', { class: 'row' }, [done, reset])
+      ]));
+      fillIcons();
+      stage.focus({ preventScroll: true });
+    }
+
+    input.addEventListener('change', function () {
+      msg.textContent = '';
+      var file = input.files && input.files[0];
+      input.value = '';
+      if (!file) { return; }
+      shrinkPicture(file).then(function (art) {
+        skill.art = art;
+        sync();
+        changed();
+        openEditor();
+      }).catch(function (err) { msg.textContent = err.message; });
+    });
+    adjust.addEventListener('click', function () { if (editor.hidden) { openEditor(); } else { editor.hidden = true; editor.textContent = ''; } });
+    remove.addEventListener('click', function () { delete skill.art; sync(); changed(); });
+    sync();
+    return el('div', { class: 'stack tight' }, [row, editor, note]);
+  }
+
   function buildSkills() {
     var list = el('div', { class: 'stack' });
     var add = el('button', { type: 'button', class: 'btn', text: 'Add a skill' });
@@ -523,8 +700,16 @@
         return el('button', { type: 'button', class: 'tagbtn line', text: t.label, title: t.line, onclick: function () { addLine(t.line); } });
       });
       var spNote = el('p', { class: 'note' });
+      var preview = el('div', { class: 'pv-wrap', 'aria-label': 'How the skill will look' });
+      var picture = pictureControls(skill, function () { paintPreview(); queueSave(); });
+      function paintPreview() {
+        preview.textContent = '';
+        preview.appendChild(window.LugicPreview.render(skill, index));
+        fillIcons();
+      }
 
       local.push(function (r) {
+        paintPreview();
         paintIssues(issues, r.perSkill[index] || []);
         var read = E.readTriggers(skill.triggers);
         spNote.textContent = read.lines.length > 1
@@ -535,8 +720,20 @@
       return el('article', { class: 'item' }, [
         el('div', { class: 'item-head' }, [
           field('Skill name', name),
-          el('button', { type: 'button', class: 'btn quiet', text: 'Remove', onclick: function () { state.skills.splice(index, 1); renderSkills(); } })
+          el('div', { class: 'row' }, [
+            el('button', { type: 'button', class: 'btn quiet', text: 'Copy', title: 'Make a copy of this skill', disabled: state.skills.length >= R.skills.max,
+              onclick: function () {
+                if (state.skills.length >= R.skills.max) { return; }
+                var copy = JSON.parse(JSON.stringify(skill));
+                copy.name = (skill.name + ' copy').slice(0, R.limits.skillName);
+                state.skills.splice(index + 1, 0, copy);
+                renderSkills();
+              } }),
+            el('button', { type: 'button', class: 'btn quiet', text: 'Remove', onclick: function () { state.skills.splice(index, 1); renderSkills(); } })
+          ])
         ]),
+        preview,
+        picture,
         el('div', { class: 'grid four' }, [field('Base Power', base), field('Coin Power', coinPower), field('Coins', coins), field('Damage type', type)]),
         el('div', { class: 'coin-rows' }, coinRows),
         field('Trigger lines', triggers, 'One per line. The bot checks the wording when you import.'),
@@ -553,11 +750,89 @@
       local.forEach(function (fn) { fn(r); });
       summary.textContent = state.skills.length ? state.skills.length + ' of ' + R.skills.max + ' skills.' : '';
     });
-    var node = section('Skills', 'Up to ' + R.skills.max + '. Skills are yours to add, so a build that only has skills needs no admin. Coin Power and Base Power are capped by your Power.', [
-      list, el('div', { class: 'row' }, [add]), summary
+    var example = selectInput(
+      [{ value: '', label: 'Add from an example' }].concat(R.skills.examples.map(function (t, i) { return { value: String(i), label: t.name + ' (' + t.blurb + ')' }; })),
+      '', function (v) {
+        if (v === '' || state.skills.length >= R.skills.max) { example.value = ''; return; }
+        var t = R.skills.examples[parseInt(v, 10)];
+        var s = E.newSkill(state.skills.length);
+        s.name = t.name; s.base = t.base; s.coin = t.coin; s.coins = t.coins; s.type = t.type; s.triggers = t.triggers;
+        s.statuses = [];
+        for (var i = 0; i < t.coins; i++) { s.statuses.push(E.emptyCoin()); }
+        state.skills.push(s);
+        example.value = '';
+        renderSkills();
+      });
+    example.setAttribute('aria-label', 'Add a skill from an example');
+    var node = section('Skills', 'Up to ' + R.skills.max + '. Each skill shows a live preview the way it reads on the wiki. Skills are yours to add, so a build that only has skills needs no admin. Coin Power and Base Power are capped by your Power.', [
+      list, el('div', { class: 'row' }, [add, example]), summary
     ]);
     renderSkills();
     return node;
+  }
+
+  // ---- the status list and colour key -------------------------------------------------------------------------------
+
+  // **bold** and `code` only; every piece goes in as text, never as markup.
+  function richText(text) {
+    var frag = document.createDocumentFragment();
+    String(text).split(/\n\n+/).forEach(function (para) {
+      var p = el('p', { class: 'ref-p' });
+      para.split(/(\*\*[^*]+\*\*|`[^`]+`)/).forEach(function (bit) {
+        if (!bit) { return; }
+        if (bit.slice(0, 2) === '**') { p.appendChild(el('strong', { text: bit.slice(2, -2) })); }
+        else if (bit.charAt(0) === '`') { p.appendChild(el('code', { text: bit.slice(1, -1) })); }
+        else { p.appendChild(document.createTextNode(bit)); }
+      });
+      frag.appendChild(p);
+    });
+    return frag;
+  }
+
+  var GROUP_TITLES = { keyword: 'Keyword statuses', buff: 'Buffs', debuff: 'Debuffs', other: 'Other' };
+  var TONE_TITLES = { positive: 'Positive', negative: 'Negative', neutral: 'Neutral' };
+
+  function buildReference() {
+    var legend = el('div', { class: 'legend' }, [
+      el('h3', { text: 'What the colours mean' }),
+      el('p', { class: 'note', text: 'The skill preview colours the tag at the start of a line by when it happens, and any status or damage word by what it is.' }),
+      el('ul', { class: 'legend-list' }, [
+        legendItem('pv-tag pv-use', '[On Use]', 'when the skill is used'),
+        legendItem('pv-tag pv-before', '[Before Use]', 'just before it is used'),
+        legendItem('pv-tag pv-hit', '[On Hit]', 'a coin hits, a kill, a crit and similar'),
+        legendItem('pv-tag pv-clash', '[Clash Win]', 'anything about a clash'),
+        legendItem('pv-tag pv-turn', '[Turn Start]', 'turn and combat timings'),
+        legendItem('pv-tag pv-ally', '[Ally Is Hit]', 'about an ally'),
+        legendItem('pv-tag pv-flag', '[Counter]', 'a skill type tag, such as Guard or Evade'),
+        legendItem('pv-word pv-w-damage pv-k-slash', 'Slash', 'a damage type'),
+        legendItem('pv-word pv-k-burn', 'Burn', 'a status; the colour is the status\'s own')
+      ]),
+      el('p', { class: 'note', text: 'Statuses are grouped the way the wiki groups them: positive (yellow), negative (red) and neutral (brown).' })
+    ]);
+    var groups = {};
+    R.statusGuide.forEach(function (s) { (groups[s.group] = groups[s.group] || []).push(s); });
+    var kids = [legend, el('div', { class: 'ref-intro' }, [richText(R.stackingNote)])];
+    Object.keys(GROUP_TITLES).forEach(function (g) {
+      if (!groups[g]) { return; }
+      kids.push(el('h3', { text: GROUP_TITLES[g] }));
+      kids.push(el('div', { class: 'status-grid' }, groups[g].map(statusCard)));
+    });
+    return section('Status effects', 'Every status the bot knows, in the bot\'s own words. Skills hand them out on a coin or in a trigger line.', kids);
+  }
+
+  function legendItem(cls, sample, what) {
+    return el('li', {}, [el('span', { class: cls, text: sample }), ' ' + what]);
+  }
+
+  function statusCard(s) {
+    var name = el('span', { class: 'st-name ' + (s.sin ? 'pv-k-' + s.key : 'tone-' + s.tone) }, [icon(s.key), s.title]);
+    var chips = el('span', { class: 'st-chips' }, [el('span', { class: 'st-tone tone-' + s.tone, text: TONE_TITLES[s.tone] })]);
+    if (s.sin) { chips.appendChild(el('span', { class: 'st-sin pv-sin-' + s.sin, text: E.capitalize(s.sin) })); }
+    return el('article', { class: 'status-card' + (s.sin ? ' pv-sin-' + s.sin : '') }, [
+      el('div', { class: 'st-head' }, [name, chips]),
+      el('p', { class: 'st-sum', text: s.summary }),
+      el('details', { class: 'st-more' }, [el('summary', { text: 'How it works' }), el('div', {}, [richText(s.body)])])
+    ]);
   }
 
   // ---- the card -----------------------------------------------------------------------------------------
@@ -606,7 +881,7 @@
     ]));
   }
 
-  function statLine(label, value) { return [el('dt', { text: label }), el('dd', { text: value })]; }
+  function statLine(label, value, iconName) { return [el('dt', {}, [iconName ? icon(iconName) : null, label]), el('dd', { text: value })]; }
 
   function paintCard(r) {
     var report = r.report;
@@ -639,14 +914,14 @@
     var s = state.stats;
     cardParts.stats.textContent = '';
     [].concat(
-      statLine('HP', String(s.hp)), statLine('Power', String(s.power)),
-      statLine('Speed', Math.min(s.speed[0], s.speed[1]) + ' to ' + Math.max(s.speed[0], s.speed[1])),
+      statLine('HP', String(s.hp), 'hp'), statLine('Power', String(s.power)),
+      statLine('Speed', Math.min(s.speed[0], s.speed[1]) + ' to ' + Math.max(s.speed[0], s.speed[1]), 'speed'),
       statLine('Offense / Defense', s.offense + ' / ' + s.defense)
     ).forEach(function (node) { cardParts.stats.appendChild(node); });
 
     cardParts.chips.textContent = '';
     Object.keys(state.ranks).forEach(function (k) {
-      if (state.ranks[k]) { cardParts.chips.appendChild(el('span', { class: 'chip chip-' + k, text: E.capitalize(k) + ' ' + state.ranks[k] })); }
+      if (state.ranks[k]) { cardParts.chips.appendChild(el('span', { class: 'chip chip-' + k }, [icon(k), E.capitalize(k) + ' ' + state.ranks[k]])); }
     });
     state.archetypes.forEach(function (k) { cardParts.chips.appendChild(el('span', { class: 'chip', text: E.title(k) })); });
     state.tags.filter(function (t) { return t.trim(); }).forEach(function (t) { cardParts.chips.appendChild(el('span', { class: 'chip tag', text: t.trim() })); });
@@ -681,6 +956,7 @@
     cardParts.jump.classList.toggle('bad', !r.ok);
     cardParts.status.classList.toggle('ok', r.ok);
     cardParts.status.classList.toggle('bad', !r.ok);
+    fillIcons();
   }
 
   // ---- the code -----------------------------------------------------------------------------------------------
@@ -736,14 +1012,28 @@
   function loadSaved() {
     try {
       var text = window.localStorage.getItem(SAVE_KEY);
-      return text ? E.fromSpec(JSON.parse(text)) : null;
+      var loaded = text ? E.fromSpec(JSON.parse(text)) : null;
+      if (loaded) {
+        var pictures = JSON.parse(window.localStorage.getItem(ART_KEY) || '[]');
+        loaded.skills.forEach(function (skill, i) { if (pictures[i] && pictures[i].src) { skill.art = pictures[i]; } });
+      }
+      return loaded;
     } catch (e) { return null; }
   }
+  // Pictures are not part of the code, so they are kept beside it, one slot per skill.
   function queueSave() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
       try { window.localStorage.setItem(SAVE_KEY, JSON.stringify(E.toSpec(state))); } catch (e) { /* private window: nothing to do */ }
+      try { window.localStorage.setItem(ART_KEY, JSON.stringify(state.skills.map(function (s) { return s.art || null; }))); }
+      catch (e) { /* the pictures did not fit in this browser's storage: they last until the page is closed */ }
     }, 400);
+  }
+  // A code carries no pictures, so loading one keeps the pictures of skills that have the same name.
+  function carryPictures(from, to) {
+    var byName = {};
+    from.forEach(function (s) { if (s.art) { byName[s.name] = s.art; } });
+    to.forEach(function (s) { if (byName[s.name] && !s.art) { s.art = byName[s.name]; } });
   }
 
   // ---- update loop ------------------------------------------------------------------------------------------------------
@@ -777,7 +1067,9 @@
     var input = document.getElementById('loader-input');
     E.decode(input.value).then(function (res) {
       if (res.error) { msg.textContent = res.error; msg.classList.add('bad'); return; }
+      var before = state.skills;
       state = E.fromSpec(res.spec);
+      carryPictures(before, state.skills);
       build();
       update();
       msg.classList.remove('bad');
@@ -789,4 +1081,5 @@
   buildCard();
   build();
   update();
+  loadIcons();
 })();

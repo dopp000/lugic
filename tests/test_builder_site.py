@@ -198,6 +198,148 @@ class SiteAgreesWithBot(unittest.TestCase):
                 ))
 
 
+class StatusGuide(unittest.TestCase):
+    def test_every_status_the_builder_offers_is_in_the_list_with_text(self):
+        rules = builder_rules.rules()
+        offered = set(rules["ranks"]["statuses"]) | set(rules["nonKeyword"]["oneTurn"]) | set(rules["otherStatuses"])
+        listed = {s["key"] for s in rules["statusGuide"]}
+        self.assertEqual(offered - listed, set())
+        for s in rules["statusGuide"]:
+            with self.subTest(status=s["key"]):
+                self.assertTrue(s["title"] and s["summary"] and s["body"])
+                self.assertIn(s["tone"], ("positive", "negative", "neutral"))
+                self.assertIn(s["group"], ("keyword", "buff", "debuff", "other"))
+        self.assertEqual(len(listed), len(rules["statusGuide"]))   # no status twice
+
+    def test_each_keyword_status_has_its_sin_and_the_text_is_the_bots_own(self):
+        from game.help_content import STATUS_EFFECTS
+        bot = {e.key: e for e in STATUS_EFFECTS}
+        by_key = {s["key"]: s for s in builder_rules.rules()["statusGuide"]}
+        self.assertEqual({k: by_key[k]["sin"] for k in ("burn", "bleed", "tremor", "rupture", "sinking", "poise", "charge")},
+                         {"burn": "wrath", "bleed": "lust", "tremor": "sloth", "rupture": "gluttony", "sinking": "gloom", "poise": "pride", "charge": "envy"})
+        self.assertEqual(by_key["burn"]["body"], bot["burn"].body)
+        self.assertNotIn("sin", by_key["haste"])
+
+
+class SkillExamples(unittest.TestCase):
+    def test_every_example_skill_is_a_valid_build_for_a_starting_character(self):
+        for item in builder_rules.SKILL_EXAMPLES:
+            with self.subTest(skill=item["name"]):
+                spec = {"v": 1, "name": "Tester", "skills": [{
+                    "name": item["name"], "stats": f'{item["base"]}, {item["coin"]}, {item["coins"]}, {item["type"]}',
+                    "statuses": "none", "triggers": item["triggers"],
+                }]}
+                c = character_from_spec(spec)
+                report = check_build(c)
+                self.assertTrue(report.ok, report.problems)
+                self.assertEqual(report.skill_problems, [])
+                self.assertLessEqual(len(item["blurb"]), 30)
+
+
+@unittest.skipUnless(NODE, "node is not installed")
+class Preview(unittest.TestCase):
+    def run_preview(self, lines, skills):
+        done = subprocess.run([NODE, os.path.join(ROOT, "tests", "preview_check.js")], input=json.dumps({"lines": lines, "skills": skills}),
+                              capture_output=True, text=True, check=True)
+        return json.loads(done.stdout)
+
+    def test_tags_and_words_get_their_colours(self):
+        out = self.run_preview(["[On Use] If the target has 3+ Burn, Deal +3 Slash damage", "[Before Use] Gain 2 Haste", "[On Hit] Inflict 2 Power Down"], [])
+        first, second, third = out["tokens"]
+        self.assertEqual(first[0], {"kind": "tag", "text": "[On Use]", "cls": "use"})
+        self.assertIn({"kind": "status", "key": "burn", "text": "Burn"}, first)
+        self.assertIn({"kind": "damage", "key": "slash", "text": "Slash"}, first)
+        self.assertEqual(second[0]["cls"], "before")
+        self.assertIn({"kind": "status", "key": "haste", "text": "Haste"}, second)
+        self.assertEqual(third[0]["cls"], "hit")
+        self.assertIn({"kind": "status", "key": "power_down", "text": "Power Down"}, third)
+
+    def test_every_status_name_is_recognised(self):
+        rules = builder_rules.rules()
+        names = rules["ranks"]["statuses"] + rules["nonKeyword"]["oneTurn"] + rules["otherStatuses"]
+        lines = ["Inflict " + n.replace("_", " ").title() for n in names]
+        out = self.run_preview(lines, [])
+        for name, tokens in zip(names, out["tokens"]):
+            self.assertTrue(any(t["kind"] == "status" and t["key"] == name for t in tokens), name)
+
+    def test_skill_type_tags_are_gold_and_leave_the_text_lines(self):
+        skill = {"name": "S", "base": 4, "coin": 2, "coins": 2, "type": "blunt", "statuses": [], "triggers": "[Counter]\n[On Use] Coin Power +1"}
+        model = self.run_preview([], [skill])["models"][0]
+        self.assertEqual([f["text"] for f in model["flags"]], ["[Counter]"])
+        self.assertEqual(model["flags"][0]["cls"], "flag")
+        self.assertEqual(len(model["general"]), 1)
+
+    def test_coin_lines_land_on_their_coin_and_statuses_read_like_the_bot(self):
+        skill = {
+            "name": "S", "base": 4, "coin": 2, "coins": 3, "type": "slash",
+            "statuses": [{"name": "bleed", "pot": 3, "cnt": 0}, {"name": "", "pot": 0, "cnt": 0}, {"name": "burn", "pot": 2, "cnt": 3}],
+            "triggers": ":Coin2: [On Hit] Inflict +2 Burn Count\n:Coin9: [On Hit] Coin Power +1",
+        }
+        model = self.run_preview([], [skill])["models"][0]
+        text = lambda tokens: "".join(t["text"] for t in tokens)
+        rows = [[text(line) for line in row["lines"]] for row in model["rows"]]
+        self.assertEqual(rows[0], ["[On Hit]Inflict 3 Bleed"])
+        self.assertEqual(rows[1], ["[On Hit]Inflict +2 Burn Count"])
+        self.assertEqual(rows[2], ["[On Hit]Inflict Burn Potency 2, Count 3"])
+        self.assertEqual(len(model["general"]), 1)      # a coin that does not exist falls back to the whole skill
+
+    def frame_of(self, coins, statuses, triggers=""):
+        coin = [{"name": n, "pot": 1, "cnt": 1} if n else {"name": "", "pot": 0, "cnt": 0} for n in statuses]
+        skill = {"name": "S", "base": 4, "coin": 2, "coins": coins, "type": "slash", "statuses": coin, "triggers": triggers}
+        return self.run_preview([], [skill])["models"][0]["frame"]
+
+    def test_the_frame_follows_the_status_and_the_number_of_coins(self):
+        self.assertEqual(self.frame_of(2, ["burn", ""]), {"sin": "wrath", "tier": 1, "file": "borders/wrath1.png"})
+        self.assertEqual(self.frame_of(2, ["charge", ""])["file"], "borders/envy1.png")
+        self.assertEqual(self.frame_of(3, ["", "sinking", ""])["file"], "borders/gloom2.png")
+        self.assertEqual(self.frame_of(4, ["rupture", "", "", ""])["file"], "borders/gluttony3.png")
+        self.assertEqual(self.frame_of(3, ["", "", ""], "[Guard]"), {"sin": "def", "tier": 1, "file": "borders/def1.png"})
+        self.assertEqual(self.frame_of(2, ["", ""]), {"sin": None, "tier": 1, "file": None})
+
+    def test_a_tier_with_no_image_uses_the_best_one_below_it(self):
+        self.assertEqual(self.frame_of(4, ["tremor", "", "", ""])["file"], "borders/sloth2.png")   # Sloth has no tier 3 yet
+        self.assertEqual(self.frame_of(4, ["burn", "", "", ""])["file"], "borders/wrath3.png")
+        self.assertEqual(self.frame_of(4, ["poise", "", "", ""])["file"], "borders/pride3.png")
+
+    def test_the_status_used_most_decides_the_sin_and_trigger_lines_count(self):
+        self.assertEqual(self.frame_of(2, ["bleed", "rupture"], ":Coin1: [On Hit] Inflict +2 Rupture Count")["sin"], "gluttony")
+        self.assertEqual(self.frame_of(2, ["bleed", ""], "[On Use] If the target has 3+ Charge, Deal +3 damage\n[On Hit] Gain 1 Charge\n[On Hit] Gain +1 Charge Count")["sin"], "envy")
+
+    def test_every_frame_in_the_list_exists_and_every_image_is_in_the_list(self):
+        tiers = self.run_preview([], [])["frameTiers"]
+        listed = {f"{sin}{n}.png" for sin, ns in tiers.items() for n in ns}
+        on_disk = set(os.listdir(os.path.join(ROOT, "docs", "builder", "borders")))
+        self.assertEqual(listed, on_disk)
+
+    def test_the_picture_covers_the_opening_and_cannot_be_dragged_off_it(self):
+        def arts(*items):
+            done = subprocess.run([NODE, os.path.join(ROOT, "tests", "preview_check.js")], input=json.dumps({"lines": [], "skills": [], "arts": list(items)}),
+                                  capture_output=True, text=True, check=True)
+            return json.loads(done.stdout)["arts"]
+        square, wide, tall, zoomed, wild, junk = arts(
+            {"src": "x", "a": 1, "x": 0, "y": 0, "zoom": 1},
+            {"src": "x", "a": 2, "x": 0, "y": 0, "zoom": 1},
+            {"src": "x", "a": 0.5, "x": 0, "y": 0, "zoom": 1},
+            {"src": "x", "a": 1, "x": 0.25, "y": -0.25, "zoom": 2},
+            {"src": "x", "a": 1, "x": 9, "y": -9, "zoom": 99},
+            {"src": "x", "a": "no", "x": "no", "y": None, "zoom": "no"},
+        )
+        self.assertEqual(square["style"], {"width": 100, "height": 100, "left": 0, "top": 0})
+        self.assertEqual(wide["style"], {"width": 200, "height": 100, "left": -50, "top": 0})      # wide: fills the height, sides cropped
+        self.assertEqual(tall["style"], {"width": 100, "height": 200, "left": 0, "top": -50})
+        self.assertEqual(zoomed["style"], {"width": 200, "height": 200, "left": -25, "top": -75})
+        self.assertEqual((wild["clamped"]["zoom"], wild["clamped"]["x"], wild["clamped"]["y"]), (4, 1.5, -1.5))   # never past the edge
+        self.assertEqual(junk["clamped"]["zoom"], 1)
+        self.assertEqual((junk["clamped"]["x"], junk["clamped"]["y"]), (0, 0))
+
+    def test_an_empty_or_odd_skill_still_gives_a_model(self):
+        skill = {"name": "  ", "base": "x", "coin": None, "coins": 99, "type": "pierce", "statuses": [], "triggers": None}
+        model = self.run_preview([], [skill])["models"][0]
+        self.assertEqual(model["name"], "Unnamed skill")
+        self.assertEqual(model["coins"], builder_rules.MAX_COINS)
+        self.assertEqual((model["base"], model["coin"]), (0, 0))
+
+
 class Templates(unittest.TestCase):
     def test_every_skill_line_button_parses(self):
         for item in builder_rules.SKILL_LINE_TEMPLATES:

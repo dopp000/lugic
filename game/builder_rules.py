@@ -13,6 +13,7 @@ from game import build_points as bp
 from game.character import NAME_MAX_LENGTH, STARTING_SPEED
 from game.character_import import AVATAR_MAX, PASSIVE_LINE_MAX, SKILL_LIMITS, VERSION as CODE_VERSION
 from game.conditions import MAX_TAG_LENGTH, MAX_TAGS, SKILL_FLAG_TAGS
+from game.help_content import STATUS_EFFECTS
 from game.passives import MAX_PASSIVE_LINES, MAX_PASSIVES, PASSIVE_KINDS
 from game.resistances import DAMAGE_TYPES, STATUS_RESISTANCE_TYPES
 from game.statuses import (
@@ -34,11 +35,61 @@ SKILL_LINE_TEMPLATES = [
 # Lines that are only a tag (no effect text). A skill's defense type and Target Fixed live here.
 SKILL_FLAG_BUTTONS = ["Guard", "Evade", "Counter", "Clashable Guard", "Clashable Counter", "Duality", "Target Fixed"]
 
+# Whole skills for "Add from an example". They need no status rank, and their Base Power and Coin Power fit a
+# starting character (Power 6). tests/test_builder_site.py checks every one against the bot's own rules.
+SKILL_EXAMPLES = [
+    {"name": "Quick Jab", "blurb": "2 coins, Blunt", "base": 4, "coin": 2, "coins": 2, "type": "blunt", "triggers": ""},
+    {"name": "Rending Slash", "blurb": "3 coins, Slash", "base": 4, "coin": 1, "coins": 3, "type": "slash",
+     "triggers": "[On Use] Deal +10% damage"},
+    {"name": "Piercing Shot", "blurb": "1 coin, Pierce", "base": 4, "coin": 2, "coins": 1, "type": "pierce",
+     "triggers": "[On Use] Coin Power +1"},
+    {"name": "Opening Blow", "blurb": "bonus vs Burn", "base": 4, "coin": 2, "coins": 2, "type": "blunt",
+     "triggers": "[On Use] If the target has 3+ Burn, Deal +3 damage"},
+]
+
 PASSIVE_TEMPLATES = [
     {"name": "Steady Nerves", "kind": "passive", "cost": 2, "lines": ["[Combat Start] Gain 2 Protection"]},
     {"name": "Cover Fire", "kind": "support", "cost": 2, "lines": ["[Ally Is Hit] Gain 2 Protection"]},
     {"name": "Slow Burn", "kind": "passive", "cost": 3, "lines": ["[Turn Start] Gain +1 Charge Count"]},
 ]
+
+
+# The site's status list is the bot's own help text (game/help_content.py), so the two never disagree. The wiki marks effects
+# as positive (yellow), negative (red) or neutral (brown); this is that grouping for the effects the bot has.
+_SIN_OF_KEYWORD = {"burn": "wrath", "bleed": "lust", "tremor": "sloth", "rupture": "gluttony", "sinking": "gloom", "poise": "pride", "charge": "envy"}
+_TONES = {"poise": "positive", "charge": "neutral", "panic": "negative"}
+_FRAGILITY_NOTE = "Fragile, but only against {} hits. It adds to Fragile and to the other Fragility types."
+
+
+def status_guide() -> list[dict]:
+    """One entry per status the builder knows, in the order a reader wants them: keywords, buffs, debuffs, other."""
+    by_key = {e.key: e for e in STATUS_EFFECTS}
+    keywords = list(bp.RANKED_STATUSES)
+    buffs = ["power_up", "haste", "damage_up", "protection"]
+    debuffs = ["bind", "power_down", "fragile", "slash_fragility", "pierce_fragility", "blunt_fragility", "damage_down", "paralyze", "poison", "immobilized"]
+    out = []
+
+    def add(key, group, tone):
+        entry = by_key.get(key)
+        if entry is None and key.endswith("_fragility"):
+            kind = key[: -len("_fragility")]
+            entry = by_key["fragile"]
+            title, summary, body = f"{kind.title()} Fragility", _FRAGILITY_NOTE.format(kind.title()), by_key["fragile"].body
+        else:
+            title, summary, body = entry.title, entry.summary, entry.body
+        item = {"key": key, "title": title, "summary": summary, "body": body, "group": group, "tone": tone}
+        if key in _SIN_OF_KEYWORD:
+            item["sin"] = _SIN_OF_KEYWORD[key]
+        out.append(item)
+
+    for key in keywords:
+        add(key, "keyword", _TONES.get(key, "negative"))
+    for key in buffs:
+        add(key, "buff", "positive")
+    for key in debuffs:
+        add(key, "debuff", "negative")
+    add("panic", "other", "negative")
+    return out
 
 
 def rules() -> dict:
@@ -77,6 +128,8 @@ def rules() -> dict:
             "percentCount": list(PERCENT_COUNT_STATUSES),
         },
         "otherStatuses": list(OTHER_DEBUFF_STATUSES),
+        "statusGuide": status_guide(),
+        "stackingNote": next(e.body for e in STATUS_EFFECTS if e.key == "stacking"),
         "defense": {
             "archetypes": dict(bp.DEFENSE_ARCHETYPES), "max": bp.DEFENSE_MAX, "minSpeed": bp.DEFENSE_MIN_SPEED,
             "needsSpeed": sorted(bp.DEFENSE_NEEDS_SPEED), "needsNoTier2": sorted(bp.DEFENSE_NEEDS_NO_TIER2),
@@ -92,7 +145,7 @@ def rules() -> dict:
         "skills": {
             "max": MAX_SKILLS, "maxCoins": MAX_COINS, "damageTypes": list(DAMAGE_TYPES),
             "flagTags": dict(SKILL_FLAG_TAGS), "flagButtons": SKILL_FLAG_BUTTONS,
-            "lineTemplates": SKILL_LINE_TEMPLATES,
+            "lineTemplates": SKILL_LINE_TEMPLATES, "examples": SKILL_EXAMPLES,
         },
     }
 
