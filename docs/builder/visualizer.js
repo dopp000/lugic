@@ -27,12 +27,14 @@
   var EMBLEM = 200;           // the skill frame
 
   // ---- colours -------------------------------------------------------------------------------------------------
-  // Read off the identity teasers: cream body text, yellow for what helps, red for what hurts, brown for the rest, and the timing
-  // tags blue (On Use), orange (Clash Win), red (Clash Lose) or green (anything else). The Sins are the wiki's.
+  // Measured on the identity teasers (Yi Sang, Hong Lu, Ryoshu): ordinary words are a warm tan, never white. Only keywords take a colour:
+  // yellow for what helps, red for what hurts, a muted brown for the rest. The timing tags are blue for On Use, orange for Clash Win, red
+  // for Clash Lose, a pale green for On Hit and a mid green for every other timing. The Sins are the wiki's.
   var INK = {
-    cream: '#f3e6cf', hot: '#fff3d6', dim: '#8d7a64', big: '#3d2b1b', brown: '#b27a43', bar: '#a76d3a', barDark: '#5e3a1e',
-    use: '#3cbced', hit: '#9be85a', win: '#ff8a1f', lose: '#ee2210', flag: '#d98a3d',
-    positive: '#fed81c', negative: '#ee1c0c', neutral: '#b9763a'
+    cream: '#e4d2b8', hot: '#e9d8bf', dim: '#8d7a64', big: '#4a3626', brown: '#b27a43', bar: '#a76d3a', barDark: '#5e3a1e',
+    use: '#45b6ea', hit: '#69b02c', hitPale: '#c6ec98', win: '#ff8a1f', lose: '#ee2210', flag: '#d98a3d',
+    banner: '#f3e6c8', barText: '#f1e1c0',
+    positive: '#f7cf30', negative: '#f01818', neutral: '#9c7a58'
   };
   var SINS = {
     wrath: ['#fe0000', '#520000'], lust: ['#fb6500', '#521b00'], sloth: ['#f7c729', '#4f3f06'], gluttony: ['#9dfe00', '#2f5300'],
@@ -48,11 +50,15 @@
       if (token.cls === 'clashwin') { return INK.win; }
       if (token.cls === 'clashlose') { return INK.lose; }
       if (token.cls === 'flag') { return INK.flag; }
-      return INK.hit;
+      return token.text === '[On Hit]' ? INK.hitPale : INK.hit;
     }
+    // On the teasers "Gain Clash Power", "Gain Coin Power" and "deal +Z% damage" are ordinary words, not coloured ones; the builder's
+    // preview colours them the way the wiki does, the picture follows the teasers.
+    if (token.kind === 'text' && PLAIN_PHRASE.test(token.text)) { return INK.cream; }
     var tone = token.kind === 'status' ? P.toneOf(token.key) : token.tone;
     return INK[tone] && tone !== 'cream' ? INK[tone] : INK.cream;
   }
+  var PLAIN_PHRASE = /^(?:(?:Coin|Clash|Final) Power\b|Deal\b.*\bdamage\b)/i;
 
   // The coloured pieces of a line: [{ text, color }]. A timing tag is followed by a space, the way the page draws it.
   function piecesOf(tokens) {
@@ -470,7 +476,7 @@
         ctx.fill();
       }
       ctx.restore();
-      text(ctx, label, x + 20, y + h / 2 + size * 0.34, F.head(size), '#fffbde', { shadow: [2, 2, 'rgba(0,0,0,0.85)'] });
+      text(ctx, label, x + 20, y + h / 2 + size * 0.34, F.head(size), INK.banner, { shadow: [2, 2, 'rgba(0,0,0,0.85)'] });
       return { w: w, h: h };
     }
     function drawNumber(ctx, F, cx, cy, n) {
@@ -505,7 +511,7 @@
         ctx.fill();
       }
       ctx.restore();
-      text(ctx, label, x + 22, y + h / 2 + size * 0.34, F.head(size), '#fff0cf', { shadow: [2, 2, 'rgba(0,0,0,0.85)'] });
+      text(ctx, label, x + 22, y + h / 2 + size * 0.34, F.head(size), INK.barText, { shadow: [2, 2, 'rgba(0,0,0,0.85)'] });
       return { w: w, h: h };
     }
 

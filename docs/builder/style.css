@@ -218,7 +218,7 @@ html { scroll-padding-top: 56px; }
 .pv-numbers { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
 .pv-damage { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
 .pv-damage { color: var(--wiki-cream); }
-.pv-base { font-size: 1.5rem; font-weight: 800; line-height: 1; }
+.pv-base { font-size: 1.5rem; font-weight: 800; line-height: 1; color: var(--wiki-cream); }   /* the numbers and the damage type are plain text, so cream like the lines under them, not white */
 .pv-coinpower { color: var(--gold); font-weight: 700; }
 .pv-line { margin: 0; }
 .pv-none { color: #8d7a64; }
@@ -637,7 +637,7 @@ input[type="range"]::-moz-range-thumb {
 .tip-flavour { margin: 9px 0 0; font-style: italic; color: var(--wiki-brown-text); }
 
 /* ---- bold is white (last, so it wins over the colours set above; a name that carries a tone colour keeps it) ---- */
-strong, b, h1, h2, h3, h4, .cardname, .rank-name, .rule-title, .pv-base, .pv-damage, .st-first { color: var(--bold); }
+strong, b, h1, h2, h3, h4, .cardname, .rank-name, .rule-title, .st-first { color: var(--bold); }
 
 
 /* the attack type (Slash, Pierce, Blunt): three buttons with their pictures, above the preview so the change is seen at once */

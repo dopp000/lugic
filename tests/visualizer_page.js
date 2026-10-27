@@ -93,6 +93,15 @@ const stripLook = (page) => page.evaluate(() => {
     out.label = await page.getAttribute('.viz-canvas', 'aria-label');
     out.skillsFingerprint = await fingerprint(page);
     out.noPicture = await stripLook(page);
+    // the words, the numbers and the banner titles in the boxes: tan, never white (the frames and icons on the left are pictures of their own)
+    out.nearWhite = await page.evaluate(() => {
+      const canvas = document.querySelector('.viz-canvas');
+      const x0 = 330, y0 = 356, w = canvas.width - x0 - 80, h = canvas.height - y0 - 100;
+      const data = canvas.getContext('2d').getImageData(x0, y0, w, h).data;
+      let count = 0;
+      for (let i = 0; i < data.length; i += 4) { if (Math.min(data[i], data[i + 1], data[i + 2]) > 225) { count++; } }
+      return count;
+    });
 
     // Download keeps the same picture
     const [file] = await Promise.all([page.waitForEvent('download'), page.locator('#sec-visualizer button', { hasText: 'Download picture' }).click()]);

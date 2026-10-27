@@ -59,6 +59,14 @@ class VisualizerIsPartOfTheSite(unittest.TestCase):
         for name in ("app.js", "visualizer.js"):
             self.assertNotRegex(read(name), r"(?i)rarity|\bmarks\b", name)
 
+    def test_the_numbers_and_the_damage_type_in_the_builders_preview_are_not_white(self):
+        css = read("style.css")
+        white = re.search(r"\nstrong, b, h1[^{]*\{ color: var\(--bold\); \}", css).group(0)
+        for selector in (".pv-base", ".pv-damage"):
+            self.assertNotIn(selector, white)
+        self.assertRegex(css, r"\.pv-base \{[^}]*color: var\(--wiki-cream\)")
+        self.assertRegex(css, r"\.pv-damage \{ color: var\(--wiki-cream\); \}")
+
     def test_the_picture_never_asks_the_network_for_anything(self):
         script = read("visualizer.js")
         self.assertNotRegex(script, r"https?://")
@@ -70,7 +78,10 @@ class VisualizerFunctions(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         payload = {
-            "lines": ["[On Use] Gain 2 Protection", "[Clash Lose] Lose 5 Sanity", "[On Hit] Inflict 2 Burn"],
+            "lines": [
+                "[On Use] Gain 2 Protection", "[Clash Lose] Lose 5 Sanity", "[On Hit] Inflict 2 Burn", "[Combat Start] Gain 2 Haste",
+                "[On Use] Coin Power +1", "Deal +10% damage", "[On Hit] Heal 5 HP",
+            ],
             "wraps": [
                 {"pieces": [{"text": "aaa bbb ccc", "color": "#111"}], "width": 70, "unit": 10},
                 {"pieces": [{"text": "abcdefghijkl", "color": "#222"}], "width": 50, "unit": 10},
@@ -95,16 +106,36 @@ class VisualizerFunctions(unittest.TestCase):
         self.assertEqual(sorted(self.out["sinKeys"]), sorted(["wrath", "lust", "sloth", "gluttony", "gloom", "pride", "envy", "none"]))
 
     def test_timing_tags_and_status_words_get_the_teasers_colours(self):
-        use, lose, hit = self.out["pieces"]
+        use, lose, hit, start = self.out["pieces"][:4]
         ink = self.out["colours"]
         self.assertEqual(use[0], {"text": "[On Use]", "color": ink["use"]})
         self.assertEqual(lose[0], {"text": "[Clash Lose]", "color": ink["lose"]})
-        self.assertEqual(hit[0], {"text": "[On Hit]", "color": ink["hit"]})
-        for line in (use, lose, hit):
+        self.assertEqual(hit[0], {"text": "[On Hit]", "color": ink["hitPale"]})            # On Hit is the pale green on the teasers
+        self.assertEqual(start[0], {"text": "[Combat Start]", "color": ink["hit"]})        # every other timing is the mid green
+        self.assertNotEqual(ink["hit"], ink["hitPale"])
+        for line in (use, lose, hit, start):
             self.assertEqual(line[1], {"text": " ", "color": ink["cream"]})      # a tag is followed by its space
         self.assertEqual(use[-1], {"text": "Protection", "color": ink["positive"]})
         self.assertEqual(lose[-1], {"text": "Sanity", "color": ink["negative"]})
         self.assertEqual(hit[-1], {"text": "Burn", "color": ink["negative"]})
+        self.assertEqual(start[-1], {"text": "Haste", "color": ink["positive"]})
+
+    def test_ordinary_words_are_tan_and_only_keywords_take_a_colour(self):
+        ink = self.out["colours"]
+        coin, damage, heal = self.out["pieces"][4:7]
+        # "Coin Power" and "deal +N% damage" are plain on the teasers, even though the builder's preview colours them like the wiki does
+        self.assertEqual([piece["color"] for piece in coin[2:]], [ink["cream"]])
+        self.assertEqual([piece["color"] for piece in damage], [ink["cream"]])
+        self.assertEqual(heal[-1], {"text": "HP", "color": ink["positive"]})          # an effect that helps or hurts keeps its colour
+
+    def test_nothing_that_is_not_a_keyword_is_white(self):
+        ink = self.out["colours"]
+        for name in ("cream", "hot", "banner", "barText"):
+            red, green, blue = (int(ink[name][i:i + 2], 16) for i in (1, 3, 5))
+            self.assertTrue(red > green > blue and red - blue >= 30 and blue <= 200, f"{name} {ink[name]} is not a warm tan")
+        # the keyword colours are what the teasers use: yellow helps, red hurts, brown is neither
+        self.assertEqual((ink["positive"], ink["negative"]), ("#f7cf30", "#f01818"))
+        self.assertEqual(ink["neutral"], "#9c7a58")
 
     def test_lines_wrap_at_the_width_without_splitting_words(self):
         lines = self.out["wraps"][0]
@@ -193,6 +224,9 @@ class VisualizerInABrowser(unittest.TestCase):
     def test_without_a_picture_the_strip_letters_are_the_dim_accent_colour(self):
         self.assertEqual(self.found["noPicture"]["cyan"], 0)
         self.assertGreater(self.found["noPicture"]["bright"], 1000)           # the letters and bars are there
+
+    def test_no_word_or_number_in_the_boxes_is_white(self):
+        self.assertEqual(self.found["nearWhite"], 0)
 
     def test_with_a_picture_the_body_is_dimmed_and_the_strip_letters_show_it_inverted_at_full_colour(self):
         # the picture is pure red: dimmed behind the page, and through the letters pure cyan, which is red inverted, not darkened or see-through
