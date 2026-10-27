@@ -28,7 +28,7 @@ from cogs.battle import _parse_status_tokens  # noqa: E402
 from game import build_points as bp  # noqa: E402
 from game import builder_rules  # noqa: E402
 from game.build_points import (  # noqa: E402
-    DEFENSE_ARCHETYPES, RANKED_STATUSES, check_build, skill_rank_problems,
+    DEFENSE_ARCHETYPES, RANKED_STATUSES, check_build, skill_coin_excess, skill_power_problem, skill_rank_problems,
 )
 from game.build_requests import _apply  # noqa: E402
 from game.character import starting_character  # noqa: E402
@@ -258,7 +258,11 @@ class FlaggedParts(unittest.TestCase):
             "longTag": {"v": 1, "name": "X", "tags": ["x" * 31]},
             "overBudget": {"v": 1, "name": "X", "pools": {"bp": 5}, "stats": {"hp": 170, "power": 14}},
             "badResistance": {"v": 1, "name": "X", "stats": {"resist": {"burn": 0.6}}},
-            "missingRank": {"v": 1, "name": "X", "skills": [{"name": "Shot", "stats": "4, 2, 3, Pierce", "statuses": "Poise:2:2,none,none"}]},
+            "missingRank": {"v": 1, "name": "X", "skills": [{"name": "Shot", "stats": "2, 1, 3, Pierce", "statuses": "Poise:2:2,none,none"}]},
+            "tooStrongForItsCoins": {"v": 1, "name": "X", "skills": [{"name": "Wide", "stats": "4, 2, 3, Slash"}, {"name": "Tall", "stats": "4, 2, 1, Slash"}]},
+            "examples": {"v": 1, "name": "X", "skills": [{
+                "name": item["name"], "stats": f'{item["base"]}, {item["coin"]}, {item["coins"]}, {item["type"]}', "triggers": item["triggers"],
+            } for item in builder_rules.SKILL_EXAMPLES]},
         }
         cls.js = run_node({
             "specs": list(cls.specs.values()),
@@ -298,6 +302,18 @@ class FlaggedParts(unittest.TestCase):
         self.assertEqual(list(review["parts"]), ["sec-skills"])
         self.assertRegex(review["parts"]["sec-skills"][0], r"needs a Poise rank")
         self.assertEqual(review["own"], {})
+
+    def test_a_skill_over_the_limit_for_its_coins_is_flagged_with_the_bots_own_words(self):
+        review = self.review["tooStrongForItsCoins"]
+        self.assertFalse(review["ok"])
+        mine = review["parts"]["sec-skills"]
+        self.assertEqual(len(mine), 1)                                                # the 1-coin skill at 4/2 is fine
+        self.assertIn(skill_power_problem(6, 4, 2, 3), mine[0])                        # same sentence the skill form says
+        self.assertTrue(mine[0].endswith(" A higher Power stat raises the limit."))
+        self.assertEqual(review["problems"], [])                                       # check_build's own list keeps the plain ceiling (saved skills are grandfathered)
+
+    def test_the_example_skills_pass_the_sites_check_for_a_starting_character(self):
+        self.assertTrue(self.review["examples"]["ok"], self.review["examples"]["parts"])
 
     def test_a_status_with_no_keyword_is_as_strong_as_the_larger_of_its_two_numbers(self):
         keywordless = [(got["keywordless"], got["strength"]) for got in self.js["strength"]]
@@ -419,6 +435,8 @@ class SkillExamples(unittest.TestCase):
                 self.assertTrue(report.ok, report.problems)
                 self.assertEqual(report.skill_problems, [])
                 self.assertLessEqual(len(item["blurb"]), 30)
+                # and the skill form's stricter limit for its coin count (more coins, lower numbers)
+                self.assertEqual(skill_coin_excess(c.power, item["base"], item["coin"], item["coins"]), 0, item["name"])
 
 
 @unittest.skipUnless(NODE, "node is not installed")
@@ -1203,6 +1221,12 @@ class PageInABrowser(unittest.TestCase):
         self.assertTrue(behaviour["known"])
         self.assertEqual(behaviour["tagOptions"], ["None"] + behaviour["known"] + ["Other (write your own)"])
         self.assertTrue(behaviour["tagOther"])
+
+    def test_the_skill_card_and_the_stats_tab_say_what_the_limits_are_for_the_coins(self):
+        behaviour = self.found["behaviour"]
+        self.assertEqual(behaviour["limit"], ["At Power 6 with 3 coins: Base Power up to 2, Coin Power up to 1.",
+                                              "At Power 6 with 4 coins: Base Power up to 1, Coin Power up to 1."])
+        self.assertIn("Each coin after the first lowers both limits by 1 (Base / Coin): 2 coins 3 / 1, 3 coins 2 / 1, 4 coins 1 / 1.", behaviour["statsHint"])
 
     def test_nothing_runs_off_the_side_of_a_phone_on_any_tab(self):
         self.assertEqual(self.found["behaviour"]["phone"], [True] * 10)

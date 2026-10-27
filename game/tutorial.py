@@ -157,7 +157,7 @@ STEPS = (
         "skill", PART_1, "Teach it a skill",
         "Run `/character addskill name:{char}`. A form opens. Fill it in like this:\n"
         "- Skill Name: `Quick Jab`\n"
-        "- Base Power, Coin Power, Coins, Damage Type: `4, 2, 2, Blunt`\n"
+        "- Base Power, Coin Power, Coins, Damage Type: `3, 1, 2, Blunt`\n"
         "- Per-coin statuses: `none`\n"
         "Leave the rest empty, submit it, then press **Confirm** within a minute.",
         "{char} learned a skill.",

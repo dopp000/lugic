@@ -184,9 +184,9 @@ async def main():
         await pcog.on_skill_saved(i3, session.bot_char)
         return None
 
-    refusal = await add_skill("Two Line", "4, 2, 2, Slash", "none", "[On Use] Coin Power +1\n[On Use] Deal +10% damage\n[Attack End] Heal 4 HP")
+    refusal = await add_skill("Two Line", "3, 1, 2, Slash", "none", "[On Use] Coin Power +1\n[On Use] Deal +10% damage\n[Attack End] Heal 4 HP")
     assert refusal and "skill_points" in refusal and "/charadmin" not in refusal, refusal
-    assert (await add_skill("Chop", "4, 2, 2, Slash", "none", "[On Use] Coin Power +1\n[On Use] Deal +10% damage")) is None
+    assert (await add_skill("Chop", "3, 1, 2, Slash", "none", "[On Use] Coin Power +1\n[On Use] Deal +10% damage")) is None
     assert "chop" in foe.skills and foe.has_declared(), "the new skill did not give the bot a move"
     assert any(p and "Bot is going to do this" in p for p in PUBLIC), PUBLIC
     print("ok  the skill form checks the bot's Skill Points, and a saved skill gives it a move at once")

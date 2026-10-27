@@ -50,6 +50,15 @@ async function behaviour(root) {
     typeSelect: [].some.call(document.querySelectorAll('#sec-skills select'), (s) => [].some.call(s.options, (o) => o.textContent.trim() === 'Blunt')),
   }), types);
 
+  // the limits for the skill's coins are written on the card, and follow the coin count
+  const limitText = () => page.evaluate(() => [].map.call(document.querySelectorAll('#sec-skills .note'), (n) => n.textContent).filter((t) => /^At Power/.test(t))[0]);
+  found.limit = [await limitText()];
+  await page.locator('#sec-skills select').first().selectOption('4');
+  await page.waitForTimeout(200);
+  found.limit.push(await limitText());
+  await page.locator('#sec-skills select').first().selectOption('3');
+  await page.waitForTimeout(200);
+
   // a coin status with no keyword has a Potency and no Count
   const row = page.locator('#sec-skills .coin-row').nth(1);
   await row.locator('[role=combobox]').first().click();
@@ -70,6 +79,10 @@ async function behaviour(root) {
   await typed.fill('My Own Crew');
   await page.waitForTimeout(200);
   found.tagOther = await page.evaluate(() => document.getElementById('card').innerText.includes('My Own Crew'));
+
+  // the Stats tab says it too
+  await open('Stats');
+  found.statsHint = await page.evaluate(() => document.getElementById('sec-stats').innerText.replace(/\s+/g, ' '));
 
   // a phone: nothing runs off the side on any tab
   await page.setViewportSize({ width: 390, height: 800 });

@@ -2773,6 +2773,7 @@
       ]
     },
     "skills": {
+      "coinCapStep": 1,
       "damageTypes": [
         "slash",
         "blunt",
@@ -2780,16 +2781,16 @@
       ],
       "examples": [
         {
-          "base": 4,
+          "base": 3,
           "blurb": "2 coins, Blunt",
-          "coin": 2,
+          "coin": 1,
           "coins": 2,
           "name": "Quick Jab",
           "triggers": "",
           "type": "blunt"
         },
         {
-          "base": 4,
+          "base": 2,
           "blurb": "3 coins, Slash",
           "coin": 1,
           "coins": 3,
@@ -2807,9 +2808,9 @@
           "type": "pierce"
         },
         {
-          "base": 4,
+          "base": 3,
           "blurb": "bonus vs Burn",
-          "coin": 2,
+          "coin": 1,
           "coins": 2,
           "name": "Opening Blow",
           "triggers": "[On Use] If the target has 3+ Burn, Deal +3 damage",
@@ -2861,7 +2862,8 @@
         }
       ],
       "max": 12,
-      "maxCoins": 4
+      "maxCoins": 4,
+      "minCoinCap": 1
     },
     "sp": {
       "perExtraLine": 1

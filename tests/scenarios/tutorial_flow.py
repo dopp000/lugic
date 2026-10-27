@@ -110,7 +110,7 @@ async def main():
 
     # ---- step 3: the skill form, with exactly the values the step tells the player to type
     character = load_character("Rook")
-    text = await confirm_skill(character, ("Quick Jab", "4, 2, 2, Blunt", "none"), on_saved=lambda: cc.save_character(character))
+    text = await confirm_skill(character, ("Quick Jab", "3, 1, 2, Blunt", "none"), on_saved=lambda: cc.save_character(character))
     assert "✅" in text and "Step 4 of 10: Check your Build Points" in text, text
     assert load_character("Rook").skills, "skill was not saved to the character"
     problems = check_build(load_character("Rook")).all_problems()
@@ -134,7 +134,7 @@ async def main():
     assert "Step 8" not in text, text           # no skill on Dummy yet
     battle = battle_cog.battles[CHANNEL]
     dummy = battle.get_fighter("Dummy")
-    text = await confirm_skill(dummy, ("Quick Jab", "4, 2, 2, Blunt", "none"))
+    text = await confirm_skill(dummy, ("Quick Jab", "3, 1, 2, Blunt", "none"))
     assert "✅" in text and "Step 8 of 10: Pick your moves" in text, text
     assert "fighter:Rook slot:1 skill_name:Quick Jab target:Dummy target_slot:1" in text, text
     print("ok  joining, adding Dummy and its skill finish steps 6 and 7")

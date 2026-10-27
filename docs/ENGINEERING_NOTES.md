@@ -2075,6 +2075,16 @@ a new status gets an icon.
   note). Characters saved before this patch (flat Speed 10, etc.) are flagged
   until an admin fixes them; `/charadmin recheck` tells their owners.
 - Owner notices go by DM through `dm_owner`, which swallows closed-DM errors.
+- Per-coin limit on skill numbers (`COIN_CAP_STEP`, `MIN_COIN_CAP` in `game/build_points.py`): each coin after the first lowers the Base Power and
+  Coin Power limits by 1, never below 1. Why: Coin Power carries on to the coins after it, so a skill's expected total power is
+  `n x base + coin x p x n(n+1)/2` for `n` coins, which grows faster than `n`; with one flat limit a 4-coin skill did about 5x a 1-coin skill
+  (26 against 5 at Power 6, 50% heads) and more coins was strictly better. With the step it is 5, 7.5, 9, 9 at Power 6 and 7.5, 13, 15, 17
+  at Power 12. Change the two constants to tune it. `max_base_power(power, coins)`, `max_coin_power(power, coins)` and
+  `skill_power_problem(power, base, coin, coins)` take the coin count (default 1 = the plain ceiling).
+  Grandfathering: `check_build` still holds saved skills to the plain 1-coin ceiling (so no existing character is suddenly blocked from
+  battle); the per-coin limit is enforced in `AddSkillModal.on_submit` for a new skill, and for an edit only if the edit ends up further
+  over (`skill_coin_excess`) than the skill it replaces. Admins and `bp_exempt` skip it, Supermoves are priced instead. The builder site
+  mirrors it in `engine.js` (`review`, per skill) and the practice bot (`_give_skills`) follows it.
 - Supermove slots: the Sanity cost per use stays (`game/supermoves.py`, top);
   owning the slot costs BP (same file, bottom section). `supermove_bp(skill,
   tiers)` = tier price (Low 10 / Mid 16 / High 22 from `skill_severity`, bands at

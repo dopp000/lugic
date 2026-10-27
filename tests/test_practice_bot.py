@@ -537,7 +537,7 @@ class Glue(InTempDir):
 
     def test_adding_a_skill_gives_the_bot_a_move(self):
         self.manual()
-        _, done = self.submit_skill(("Chop", "4, 2, 2, Slash", "none"))
+        _, done = self.submit_skill(("Chop", "3, 1, 2, Slash", "none"))
         self.assertIsNotNone(done)
         self.assertIn("chop", self.session().bot_char.skills)
         self.assertIn("chop", self.foe().skills)
@@ -547,14 +547,14 @@ class Glue(InTempDir):
 
     def test_nothing_the_bot_learns_is_written_to_disk(self):
         self.manual(passive_points=2)
-        self.submit_skill(("Chop", "4, 2, 2, Slash", "none"))
+        self.submit_skill(("Chop", "3, 1, 2, Slash", "none"))
         self.passive("Thick Skin", 1)
         self.assertIsNone(load_character("Bot"))
         self.assertFalse(os.path.exists(os.path.join("data", "characters")) and os.listdir(os.path.join("data", "characters")))
 
     def test_a_practice_skill_never_reaches_the_admin_log(self):
         self.manual()
-        _, done = self.submit_skill(("Chop", "4, 2, 2, Slash", "none"))
+        _, done = self.submit_skill(("Chop", "3, 1, 2, Slash", "none"))
         done.client.get_channel.assert_not_called()
 
     def test_a_skill_above_the_bots_power_is_refused_with_a_practice_hint(self):
@@ -568,14 +568,14 @@ class Glue(InTempDir):
         self.manual()
         char = self.session().bot_char
         char.status_ranks = {}
-        i, done = self.submit_skill(("Torch", "4, 2, 2, Pierce", "Burn:1:1"))
+        i, done = self.submit_skill(("Torch", "3, 1, 2, Pierce", "Burn:1:1"))
         self.assertIsNone(done)
         self.assertNotIn("torch", char.skills)
         self.assertNotIn("/charadmin", said(i))
 
     def test_extra_trigger_lines_cost_the_bots_skill_points(self):
         self.manual(skill_points=0)
-        modal = self.fill_skill_form(("Twin", "4, 2, 2, Slash", "none"))
+        modal = self.fill_skill_form(("Twin", "3, 1, 2, Slash", "none"))
         modal.triggers_input._value = "[On Use] Coin Power +1\n[On Use] Deal +10% damage"
         i = fake_interaction()
         asyncio.run(modal.on_submit(i))
@@ -585,7 +585,7 @@ class Glue(InTempDir):
 
     def test_extra_trigger_lines_work_with_skill_points(self):
         self.manual(skill_points=2)
-        modal = self.fill_skill_form(("Twin", "4, 2, 2, Slash", "none"))
+        modal = self.fill_skill_form(("Twin", "3, 1, 2, Slash", "none"))
         modal.triggers_input._value = "[On Use] Coin Power +1\n[On Use] Deal +10% damage"
         i = fake_interaction()
         asyncio.run(modal.on_submit(i))
@@ -623,8 +623,8 @@ class Glue(InTempDir):
 
     def test_remove_skill_updates_the_fighter_and_replans(self):
         self.manual()
-        self.submit_skill(("Chop", "4, 2, 2, Slash", "none"))
-        self.submit_skill(("Stab", "4, 2, 2, Pierce", "none"))
+        self.submit_skill(("Chop", "3, 1, 2, Slash", "none"))
+        self.submit_skill(("Stab", "3, 1, 2, Pierce", "none"))
         foe = self.foe()
         self.assertTrue(foe.has_declared())
         i = self.call(self.cog.removeskill, skill_name="Chop")
@@ -636,7 +636,7 @@ class Glue(InTempDir):
 
     def test_removing_the_last_skill_leaves_nothing_declared_and_says_so(self):
         self.manual()
-        self.submit_skill(("Chop", "4, 2, 2, Slash", "none"))
+        self.submit_skill(("Chop", "3, 1, 2, Slash", "none"))
         i = self.call(self.cog.removeskill, skill_name="chop")
         self.assertFalse(self.foe().skills)
         self.assertFalse(self.foe().has_declared())
@@ -696,7 +696,7 @@ class Glue(InTempDir):
     def test_the_bots_passives_and_skills_survive_the_battle_embed_refresh(self):
         self.manual(passive_points=3)
         self.passive("Thick Skin", 1)
-        self.submit_skill(("Chop", "4, 2, 2, Slash", "none"))
+        self.submit_skill(("Chop", "3, 1, 2, Slash", "none"))
         self.assertEqual(len(self.foe().passive_skills), 1)
         self.assertIn("chop", self.foe().skills)
 

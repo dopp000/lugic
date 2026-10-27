@@ -581,6 +581,13 @@
     ]);
   }
 
+  // "With 2 coins 3 / 1, with 3 coins 2 / 1 ..." for the Power chosen: the limits a skill has once it has more than one coin.
+  function coinLimits(power) {
+    var parts = [];
+    for (var n = 2; n <= R.skills.maxCoins; n++) { parts.push(n + ' coins ' + E.maxBasePower(power, n) + ' / ' + E.maxCoinPower(power, n)); }
+    return 'Each coin after the first lowers both limits by ' + R.skills.coinCapStep + ' (Base / Coin): ' + parts.join(', ') + '.';
+  }
+
   function buildStats() {
     var s = state.stats;
     var hp = sliderRow('HP', R.hp.base, R.hp.max, R.hp.step, function () { return s.hp; }, function (n) { s.hp = n; },
@@ -588,7 +595,7 @@
     var power = sliderRow('Power', R.power.base, R.power.max, 1, function () { return s.power; }, function (n) { s.power = n; },
       function (v) {
         return { value: 'Power ' + v, cost: bp(E.checkBuild(state).breakdown.Power) +
-          '. Skills can have Base Power up to ' + E.maxBasePower(v) + ' and Coin Power up to ' + E.maxCoinPower(v) + '.' };
+          '. Skills can have Base Power up to ' + E.maxBasePower(v) + ' and Coin Power up to ' + E.maxCoinPower(v) + ' with 1 coin. ' + coinLimits(v) };
       });
     var off = sliderRow('Offense Level', 0, R.offdef.max, 1, function () { return s.offense; }, function (n) { s.offense = n; },
       function (v) { return { value: v ? '+' + v * R.offdef.percentPerStep + '% damage dealt' : 'None', cost: bp(v ? E.checkBuild(state).breakdown['Offense Level'] : 0) }; });
@@ -1676,6 +1683,7 @@
         return el('button', { type: 'button', class: 'tagbtn line', text: t.label, title: t.line, onclick: function () { addLine(t.line); } });
       });
       var spNote = el('p', { class: 'note' });
+      var limitNote = el('p', { class: 'note' });          // what this skill's numbers can be, for its Power and its coins
       var preview = el('div', { class: 'pv-wrap', 'aria-label': 'How the skill will look' });
       var picture = pictureControls(skill, function () { paintPreview(); queueSave(); });
       var border = frameControls(skill, function () { paintPreview(); picture.refreshEditor(); queueSave(); });
@@ -1689,6 +1697,9 @@
         paintPreview();
         border.refresh();
         paintIssues(issues, r.perSkill[index] || []);
+        var n = Math.max(1, Math.min(R.skills.maxCoins, parseInt(skill.coins, 10) || 1));
+        limitNote.textContent = 'At Power ' + state.stats.power + ' with ' + n + (n > 1 ? ' coins' : ' coin') + ': Base Power up to ' +
+          E.maxBasePower(state.stats.power, n) + ', Coin Power up to ' + E.maxCoinPower(state.stats.power, n) + '.';
         var read = E.readTriggers(skill.triggers);
         spNote.textContent = read.lines.length > 1
           ? read.lines.length + ' trigger lines: the first is free, the other ' + (read.lines.length - 1) + ' cost ' + (read.lines.length - 1) * R.sp.perExtraLine + ' Skill Point' + (read.lines.length - 1 > 1 ? 's' : '') + '.'
@@ -1711,6 +1722,7 @@
           ])
         ]),
         el('div', { class: 'skill-numbers' }, [field('Base Power', base), field('Coin Power', coinPower), field('Coins', coins)]),
+        limitNote,
         el('div', { class: 'type-pick' }, [el('span', { class: 'label-like', text: 'Attack type' }), typeGroup]),
         preview,
         picture,
@@ -1751,7 +1763,7 @@
         renderSkills();
       });
     example.setAttribute('aria-label', 'Add a skill from an example');
-    var node = section('Skills', 'Up to ' + R.skills.max + '. Each skill shows a live preview the way it reads on the wiki. Skills are yours to add, so a build that only has skills needs no admin. Coin Power and Base Power are capped by your Power.', [
+    var node = section('Skills', 'Up to ' + R.skills.max + '. Each skill shows a live preview the way it reads on the wiki. Skills are yours to add, so a build that only has skills needs no admin. Coin Power and Base Power are capped by your Power, and each coin after the first lowers both caps by ' + R.skills.coinCapStep + '.', [
       list, el('div', { class: 'row' }, [add, example]), summary
     ]);
     renderSkills();

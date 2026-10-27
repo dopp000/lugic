@@ -318,19 +318,28 @@ def stagger_cost(tiers_enabled: list[bool] | None) -> int:
 
 
 # --- Power ceiling on skills -------------------------------------------------
-def max_base_power(power: int) -> int:
-    """floor(2 + 0.4 x Power), in whole-number math."""
-    return (20 + 4 * power) // 10
+# A skill's Base Power and Coin Power are capped by the character's Power, and by how many coins the skill has: each coin after the first
+# lowers both limits by COIN_CAP_STEP (never below MIN_COIN_CAP). Coin Power carries on to the coins after it, so without this a 4-coin
+# skill did about five times what a 1-coin skill did for the same Power, and more coins was simply better.
+COIN_CAP_STEP = 1
+MIN_COIN_CAP = 1
 
 
-def max_coin_power(power: int) -> int:
-    """floor(1 + 0.2 x Power), in whole-number math."""
-    return (5 + power) // 5
+def max_base_power(power: int, coins: int = 1) -> int:
+    """floor(2 + 0.4 x Power) for a 1-coin skill, less COIN_CAP_STEP for each extra coin (never below MIN_COIN_CAP). Whole-number math."""
+    return max(MIN_COIN_CAP, (20 + 4 * power) // 10 - COIN_CAP_STEP * (max(1, coins) - 1))
 
 
-def skill_power_problem(power: int, base_power: int, coin_power: int) -> str | None:
-    """Plain-words reason a skill's numbers are too high for this Power, or None."""
-    max_base, max_coin = max_base_power(power), max_coin_power(power)
+def max_coin_power(power: int, coins: int = 1) -> int:
+    """floor(1 + 0.2 x Power) for a 1-coin skill, less COIN_CAP_STEP for each extra coin (never below MIN_COIN_CAP). Whole-number math."""
+    return max(MIN_COIN_CAP, (5 + power) // 5 - COIN_CAP_STEP * (max(1, coins) - 1))
+
+
+def skill_power_problem(power: int, base_power: int, coin_power: int, coins: int = 1) -> str | None:
+    """Plain-words reason a skill's numbers are too high for this Power (and this many coins), or None.
+
+    With `coins` left at 1 this is the plain ceiling a character's Power gives, which is what check_build holds saved skills to."""
+    max_base, max_coin = max_base_power(power, coins), max_coin_power(power, coins)
     parts = []
     if base_power > max_base:
         parts.append(f"Base Power {base_power} is above the limit of {max_base}")
@@ -338,7 +347,16 @@ def skill_power_problem(power: int, base_power: int, coin_power: int) -> str | N
         parts.append(f"Coin Power {coin_power} is above the limit of {max_coin}")
     if not parts:
         return None
-    return " and ".join(parts) + f" for Power {power}."
+    message = " and ".join(parts) + f" for Power {power}"
+    if coins > 1:
+        message += f" with {coins} coins (each coin after the first lowers both limits by {COIN_CAP_STEP})"
+    return message + "."
+
+
+def skill_coin_excess(power: int, base_power: int, coin_power: int, coins: int) -> int:
+    """How far a skill is over the limits its coin count gives (0 when it fits): Base Power over plus Coin Power over."""
+    return (max(0, base_power - max_base_power(power, coins))
+            + max(0, coin_power - max_coin_power(power, coins)))
 
 
 # --- The check ---------------------------------------------------------------
@@ -541,6 +559,8 @@ def check_build(c) -> BuildReport:
     for skill in c.skills.values():
         if "supermove" in skill.tags:
             continue  # priced in BP instead, see game/supermoves.py
+        # Skills saved before the per-coin limit are grandfathered: this holds every saved skill to the plain ceiling its Power gives
+        # (1 coin), and the per-coin limit is checked when a skill is added or edited (see AddSkillModal and skill_coin_excess).
         issue = skill_power_problem(c.power, skill.base_power, skill.coin_power)
         if issue:
             report.skill_problems.append(f"Skill '{skill.name}': {issue}")

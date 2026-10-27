@@ -108,8 +108,10 @@
     return cost;
   }
   function offdefCost(steps) { return R.offdef.costs[Math.max(0, Math.min(steps, R.offdef.max))]; }
-  function maxBasePower(power) { return Math.floor((20 + 4 * power) / 10); }
-  function maxCoinPower(power) { return Math.floor((5 + power) / 5); }
+  // The limits on a skill's numbers: what its Power gives for 1 coin, less coinCapStep for each coin after the first (never below minCoinCap).
+  function coinCut(coins) { return R.skills.coinCapStep * (Math.max(1, coins || 1) - 1); }
+  function maxBasePower(power, coins) { return Math.max(R.skills.minCoinCap, Math.floor((20 + 4 * power) / 10) - coinCut(coins)); }
+  function maxCoinPower(power, coins) { return Math.max(R.skills.minCoinCap, Math.floor((5 + power) / 5) - coinCut(coins)); }
   function defenseLabel(key) { return title(key); }
 
   function nonkeywordCost(status, size) {
@@ -194,13 +196,16 @@
     return problems;
   }
 
-  function skillPowerProblem(power, base, coin) {
-    var maxBase = maxBasePower(power), maxCoin = maxCoinPower(power);
+  // With `coins` left out this is the plain ceiling the Power gives (what check_build holds a saved skill to); with it, the limit for that many coins.
+  function skillPowerProblem(power, base, coin, coins) {
+    var maxBase = maxBasePower(power, coins), maxCoin = maxCoinPower(power, coins);
     var parts = [];
     if (base > maxBase) { parts.push('Base Power ' + base + ' is above the limit of ' + maxBase); }
     if (coin > maxCoin) { parts.push('Coin Power ' + coin + ' is above the limit of ' + maxCoin); }
     if (!parts.length) { return null; }
-    return parts.join(' and ') + ' for Power ' + power + '.';
+    var text = parts.join(' and ') + ' for Power ' + power;
+    if (coins > 1) { text += ' with ' + coins + ' coins (each coin after the first lowers both limits by ' + R.skills.coinCapStep + ')'; }
+    return text + '.';
   }
 
   // ---- the check (port of check_build) -------------------------------------------------------
@@ -481,7 +486,8 @@
       if (read.flags.indexOf('supermove') >= 0) {
         list.push('A [Supermove] is bought with Build Points, so only an admin can add one. Take it out.');
       } else {
-        var issue = skillPowerProblem(state.stats.power, intOr(skill.base, 0), intOr(skill.coin, 0));
+        // The popup holds a new skill to the limit for its coin count (the site only makes new characters, so nothing is grandfathered here).
+        var issue = skillPowerProblem(state.stats.power, intOr(skill.base, 0), intOr(skill.coin, 0), coins >= 1 ? coins : 1);
         if (issue) { list.push(issue + ' A higher Power stat raises the limit.'); }
         skillRankProblems(state.ranks || {}, grants).forEach(function (p) { list.push(p); });
         var key = skillArchetype(read.flags);

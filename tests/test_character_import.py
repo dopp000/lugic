@@ -29,8 +29,8 @@ from game.character_import import (  # noqa: E402
 )
 
 SKILLS = [
-    {"name": "Quick Jab", "stats": "4, 2, 2, Blunt"},
-    {"name": "Chop", "stats": "4, 2, 2, Slash", "triggers": "[On Use] Coin Power +1"},
+    {"name": "Quick Jab", "stats": "3, 1, 2, Blunt"},
+    {"name": "Chop", "stats": "3, 1, 2, Slash", "triggers": "[On Use] Coin Power +1"},
 ]
 
 
@@ -173,7 +173,7 @@ class ImportFlows(InTempDir):
     def test_a_build_that_costs_points_goes_to_the_admins_and_applies_on_approval(self):
         spec = {
             "v": 1, "name": "Kane", "stats": {"hp": 140, "power": 8, "speed": [2, 5]}, "ranks": {"bleed": 2},
-            "skills": [{"name": "Rend", "stats": "5, 2, 2, Slash", "statuses": "Bleed:2:2,none"}],
+            "skills": [{"name": "Rend", "stats": "4, 1, 2, Slash", "statuses": "Bleed:2:2,none"}],
         }
         reply = run(do_import(spec, note="please"))
         self.assertIn("request #1", reply)
@@ -203,12 +203,12 @@ class ImportFlows(InTempDir):
 
     def test_a_skill_the_form_would_refuse_creates_nothing(self):
         cases = {
-            "Torch": ({"name": "Torch", "stats": "4, 2, 2, Pierce", "statuses": "Burn:1:1,none"}, "needs a Burn rank"),
-            "Twin": ({"name": "Twin", "stats": "4, 2, 2, Slash", "triggers": "[On Use] Coin Power +1\n[On Use] Deal +10% damage"}, "Skill Point"),
+            "Torch": ({"name": "Torch", "stats": "3, 1, 2, Pierce", "statuses": "Burn:1:1,none"}, "needs a Burn rank"),
+            "Twin": ({"name": "Twin", "stats": "3, 1, 2, Slash", "triggers": "[On Use] Coin Power +1\n[On Use] Deal +10% damage"}, "Skill Point"),
             "Mighty": ({"name": "Mighty", "stats": "9, 2, 2, Slash"}, "above the limit"),
             "Shield": ({"name": "Shield", "stats": "4, 2, 1, Blunt", "triggers": "[Guard]"}, "defense archetype"),
-            "Nuke": ({"name": "Nuke", "stats": "4, 2, 2, Blunt", "triggers": "[Supermove]"}, "admin"),
-            "Wide": ({"name": "Wide", "stats": "4, 2, 2, Blunt", "weight": "3"}, "Supermove"),
+            "Nuke": ({"name": "Nuke", "stats": "3, 1, 2, Blunt", "triggers": "[Supermove]"}, "admin"),
+            "Wide": ({"name": "Wide", "stats": "3, 1, 2, Blunt", "weight": "3"}, "Supermove"),
         }
         for name, (skill, expect) in cases.items():
             with self.subTest(skill=name):
@@ -224,7 +224,7 @@ class ImportFlows(InTempDir):
 
     def test_a_skill_can_use_a_rank_the_same_build_buys(self):
         reply = run(do_import({"v": 1, "name": "Hex", "ranks": {"burn": 2}, "skills": [
-            {"name": "Torch", "stats": "4, 2, 2, Pierce", "statuses": "Burn:2:1,none"}]}))
+            {"name": "Torch", "stats": "3, 1, 2, Pierce", "statuses": "Burn:2:1,none"}]}))
         self.assertIn("request #1", reply)
 
     def test_a_defense_type_the_build_buys_covers_its_skill(self):

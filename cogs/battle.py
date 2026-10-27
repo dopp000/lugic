@@ -25,7 +25,7 @@ from game.skills import Skill, SkillResult, ClashOutcome, resolve_skill, resolve
 from game.conditions import Trigger, TriggerContext, parse_trigger_text, TriggerParseError
 from game.character import Character, load_character, list_character_summaries
 from game.build_points import (
-    OFFDEF_PERCENT_PER_STEP, SP_PER_EXTRA_LINE, check_build, skill_points_spent, skill_power_problem, skill_rank_problems,
+    OFFDEF_PERCENT_PER_STEP, SP_PER_EXTRA_LINE, check_build, skill_coin_excess, skill_points_spent, skill_power_problem, skill_rank_problems,
     skill_archetype, skill_defense_problem, nonkeyword_grants,
 )
 from game.passives import PASSIVE_ONLY_TIMINGS, tag_warnings
@@ -491,6 +491,23 @@ class AddSkillModal(discord.ui.Modal, title="New Skill"):
                     ephemeral=True,
                 )
                 return
+            # More coins lower both limits (game/build_points.py, COIN_CAP_STEP). Skills saved before that rule are
+            # grandfathered: an edit is only refused if it ends up further over the limit than the skill it replaces,
+            # so renaming or re-wording an old 4-coin skill still works but giving a skill more coins does not.
+            fitting = getattr(self, "existing_skill", None)
+            over = skill_coin_excess(self.target_fighter.power, base_power, coin_power, coins)
+            if over:
+                over_before = (
+                    skill_coin_excess(self.target_fighter.power, fitting.base_power, fitting.coin_power, fitting.coins)
+                    if fitting is not None and "supermove" not in fitting.tags else 0
+                )
+                if over > over_before:
+                    await interaction.response.send_message(
+                        f"{skill_power_problem(self.target_fighter.power, base_power, coin_power, coins)} "
+                        "Lower the numbers, use fewer coins, or ask an admin for a higher Power.",
+                        ephemeral=True,
+                    )
+                    return
 
         # Supermoves are bought with Build Points, so an admin adds them for now.
         if is_super and not privileged:

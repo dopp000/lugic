@@ -45,14 +45,15 @@ SKILL_LINE_TEMPLATES = [
 SKILL_FLAG_BUTTONS = list(line_spec.FLAG_LABELS)
 
 # Whole skills for "Add from an example". They need no status rank, and their Base Power and Coin Power fit a
-# starting character (Power 6). tests/test_builder_site.py checks every one against the bot's own rules.
+# starting character (Power 6) for their number of coins (4/2 for 1 coin, 3/1 for 2, 2/1 for 3, 1/1 for 4).
+# tests/test_builder_site.py checks every one against the bot's own rules.
 SKILL_EXAMPLES = [
-    {"name": "Quick Jab", "blurb": "2 coins, Blunt", "base": 4, "coin": 2, "coins": 2, "type": "blunt", "triggers": ""},
-    {"name": "Rending Slash", "blurb": "3 coins, Slash", "base": 4, "coin": 1, "coins": 3, "type": "slash",
+    {"name": "Quick Jab", "blurb": "2 coins, Blunt", "base": 3, "coin": 1, "coins": 2, "type": "blunt", "triggers": ""},
+    {"name": "Rending Slash", "blurb": "3 coins, Slash", "base": 2, "coin": 1, "coins": 3, "type": "slash",
      "triggers": "[On Use] Deal +10% damage"},
     {"name": "Piercing Shot", "blurb": "1 coin, Pierce", "base": 4, "coin": 2, "coins": 1, "type": "pierce",
      "triggers": "[On Use] Coin Power +1"},
-    {"name": "Opening Blow", "blurb": "bonus vs Burn", "base": 4, "coin": 2, "coins": 2, "type": "blunt",
+    {"name": "Opening Blow", "blurb": "bonus vs Burn", "base": 3, "coin": 1, "coins": 2, "type": "blunt",
      "triggers": "[On Use] If the target has 3+ Burn, Deal +3 damage"},
 ]
 
@@ -218,6 +219,7 @@ def rules() -> dict:
         "tags": {"max": MAX_TAGS, "maxLength": MAX_TAG_LENGTH, "suggested": SUGGESTED_TAGS},
         "skills": {
             "max": MAX_SKILLS, "maxCoins": MAX_COINS, "damageTypes": list(DAMAGE_TYPES),
+            "coinCapStep": bp.COIN_CAP_STEP, "minCoinCap": bp.MIN_COIN_CAP,
             "flagTags": dict(SKILL_FLAG_TAGS), "flagButtons": SKILL_FLAG_BUTTONS,
             "lineTemplates": SKILL_LINE_TEMPLATES, "examples": SKILL_EXAMPLES,
         },

@@ -263,18 +263,19 @@ def _parse(lines: list[str]):
 def _give_skills(c, rng, count: int | None = None):
     level = level_for(c.bp_total)
     count = count or (3 if level <= 2 else 4)
-    max_base, max_coin = max_base_power(c.power), max_coin_power(c.power)
     types = list(DAMAGE_TYPES)
     rng.shuffle(types)
     used_names: set[str] = set()
     skills = []
     for i in range(count):
         dtype = types[i % len(types)]
+        coins = rng.choice((1, 2, 2, 3, 3, 4))
+        max_base, max_coin = max_base_power(c.power, coins), max_coin_power(c.power, coins)     # fewer numbers for more coins, like a player's
         skills.append(Skill(
             _skill_name(dtype, used_names, rng),
             base_power=rng.randint(max(1, max_base - 2), max_base),
             coin_power=rng.randint(1, max_coin),
-            coins=rng.choice((1, 2, 2, 3, 3, 4)),
+            coins=coins,
             damage_type=dtype,
         ))
     # Every status rank the bot paid for goes on at least one skill, otherwise it is wasted.
