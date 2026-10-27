@@ -45,7 +45,7 @@
   // The pictures are kept apart from the settings, since they are big and the settings are not.
   var VIZ_KEY = 'lugic-character-builder-visualizer-v1';
   var VIZ_PICTURES_KEY = 'lugic-character-builder-visualizer-pictures-v1';
-  var VIZ_DEFAULTS = { view: 'skills', strength: 55, zoom: 1, x: 0, y: 0, title: '', strip: 'WARNING', marks: 3, boxes: true, accent: '#aeb7bf', iconSize: 300 };
+  var VIZ_DEFAULTS = { view: 'skills', strength: 55, zoom: 1, x: 0, y: 0, title: '', strip: 'WARNING', boxes: true, accent: '#aeb7bf', iconSize: 300 };
   var vizSettings = loadViz();
   var vizImages = loadVizImages();
   var viz = null;          // the drawing, made again each time the page is built
@@ -1813,7 +1813,6 @@
       }
     } catch (e) { /* no storage, or nothing saved: the defaults */ }
     out.view = out.view === 'passives' ? 'passives' : 'skills';
-    out.marks = Math.max(0, Math.min(3, Math.floor(out.marks)));
     out.strength = Math.max(0, Math.min(100, out.strength));
     out.zoom = Math.max(1, Math.min(window.LugicPreview.maxZoom, out.zoom));
     out.iconSize = Math.max(60, Math.min(700, out.iconSize));
@@ -1972,9 +1971,6 @@
     var strip = el('input', { type: 'text', maxlength: '14', autocomplete: 'off', spellcheck: 'false' });
     strip.value = vizSettings.strip;
     strip.addEventListener('input', function () { vizSettings.strip = strip.value; changed(); });
-    var marks = el('select', { id: nextId('viz-marks') }, [['3', 'Three'], ['2', 'Two'], ['1', 'One'], ['0', 'None']].map(function (o) { return el('option', { value: o[0], text: o[1] }); }));
-    marks.value = String(vizSettings.marks);
-    marks.addEventListener('change', function () { vizSettings.marks = parseInt(marks.value, 10); changed(); });
     var accent = el('input', { type: 'color', id: nextId('viz-accent'), 'aria-label': 'Accent colour' });
     accent.value = vizSettings.accent;
     accent.addEventListener('input', function () { vizSettings.accent = accent.value; changed(); });
@@ -1991,7 +1987,7 @@
     });
     back.addEventListener('click', function () {
       Object.keys(VIZ_DEFAULTS).forEach(function (k) { if (k !== 'view') { vizSettings[k] = VIZ_DEFAULTS[k]; } });
-      title.value = vizSettings.title; strip.value = vizSettings.strip; marks.value = String(vizSettings.marks); accent.value = vizSettings.accent; boxes.checked = true;
+      title.value = vizSettings.title; strip.value = vizSettings.strip; accent.value = vizSettings.accent; boxes.checked = true;
       positionSync();
       changed();
     });
@@ -2021,8 +2017,7 @@
         field('Line above the name', title, 'Optional.'),
         field('Strip words', strip, 'Repeats along the top and the bottom. Letters and numbers only.')
       ]),
-      el('div', { class: 'grid three' }, [
-        field('Marks next to the name', marks),
+      el('div', { class: 'grid two' }, [
         el('div', { class: 'field' }, [el('label', { for: accent.id, text: 'Accent colour' }), accent]),
         el('div', { class: 'checks' }, [el('label', { class: 'check', for: boxes.id }, [boxes, el('span', {}, ['Boxes behind each part'])])])
       ])

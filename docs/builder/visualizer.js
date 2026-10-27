@@ -25,7 +25,6 @@
   var LINE = 38;
   var HEADER_BOTTOM = 356;    // where the first block starts
   var EMBLEM = 200;           // the skill frame
-  var RARITY_MAX = 3;
 
   // ---- colours -------------------------------------------------------------------------------------------------
   // Read off the identity teasers: cream body text, yellow for what helps, red for what hurts, brown for the rest, and the timing
@@ -192,7 +191,7 @@
 
   // create(canvas, source) -> { draw, redraw, download, height }
   // source.data()      -> { view, name, level, lines: [two small lines], skills: [{ model, art }], passives: [passiveModel] }
-  // source.settings()  -> { strength, zoom, x, y, title, strip, marks, boxes, accent, iconSize }
+  // source.settings()  -> { strength, zoom, x, y, title, strip, boxes, accent, iconSize }
   // source.images()    -> { bg, icon, logo }: { src, a } or null
   // source.iconFile(name) -> a path for the bot's own icon (slash, blunt, pierce, coin_base), or null
   function create(canvas, source) {
@@ -288,7 +287,7 @@
       }
     }
 
-    // -- the plate with the character's name, the line above it, and the rarity marks
+    // -- the plate with the character's name, and the line above it
     function drawPlate(ctx, F, x, y, w, h, accent, name) {
       var skew = 46;
       ctx.save();
@@ -336,38 +335,6 @@
       ctx.restore();
       speckle(ctx, x - 6, y - 6, w + 18, 20, 5, 90, 'rgba(30,36,44,A)', 'rgba(255,255,255,A)');
       text(ctx, label, x, y, F.head(size), INK.brown, { shadow: [2, 2, 'rgba(0,0,0,0.85)'] });
-    }
-    function drawRarity(ctx, cx, cy, count) {
-      var w = 38, h = 66, step = 36;
-      var x0 = cx - ((count - 1) * step) / 2;
-      for (var i = 0; i < count; i++) {
-        var x = x0 + i * step;
-        ctx.save();
-        ctx.shadowColor = '#ff9a1a';
-        ctx.shadowBlur = 16;
-        ctx.beginPath();
-        ctx.moveTo(x, cy - h / 2);
-        ctx.quadraticCurveTo(x + w * 0.62, cy - h * 0.2, x, cy + h / 2);
-        ctx.quadraticCurveTo(x - w * 0.62, cy - h * 0.2 + 0, x, cy - h / 2);
-        ctx.closePath();
-        var g = ctx.createLinearGradient(x, cy - h / 2, x, cy + h / 2);
-        g.addColorStop(0, '#ffd75e');
-        g.addColorStop(1, '#ff8a12');
-        ctx.fillStyle = g;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = '#ffe596';
-        ctx.stroke();
-        ctx.lineWidth = 5;
-        ctx.strokeStyle = '#b84f00';
-        ctx.beginPath();
-        ctx.ellipse(x, cy, 6.5, 12, 0, 0, Math.PI * 2);
-        ctx.moveTo(x - 9, cy + 15);
-        ctx.lineTo(x + 9, cy - 15);
-        ctx.stroke();
-        ctx.restore();
-      }
     }
 
     // -- the strips along the top and the bottom
@@ -698,9 +665,9 @@
 
       var accent = S.accent || '#aeb7bf';
 
-      // the header: logo and the big dim title on the left; title, name plate and rarity on the right
+      // the header: logo and the big dim title on the left; the line above the name and the name plate on the right
       var right = WIDTH - MARGIN;
-      var plate = { x: right - 560, y: 176, w: 450, h: 86 };
+      var plate = { x: right - 450, y: 176, w: 450, h: 86 };      // its top right corner sits on the same margin as the boxes
       var iconImg = images.icon ? picture(images.icon.src) : null;
       if (iconImg) {
         var side = Math.max(40, S.iconSize || 300);
@@ -733,10 +700,8 @@
         }
         text(ctx, shown, leftX + 4, 238 + i * 30, F.body(small), '#8d6a43');
       });
-      if ((S.title || '').trim()) { drawTitle(ctx, F, plate.x + 18, 150, S.title.trim(), accent, plate.w + 90); }
+      if ((S.title || '').trim()) { drawTitle(ctx, F, plate.x + 18, 150, S.title.trim(), accent, plate.w - 40); }
       drawPlate(ctx, F, plate.x, plate.y, plate.w, plate.h, accent, data.name);
-      var marks = Math.max(0, Math.min(RARITY_MAX, S.marks === undefined ? RARITY_MAX : S.marks));
-      if (marks) { drawRarity(ctx, right - 46, 132, marks); }
 
       // the blocks
       var y = HEADER_BOTTOM;

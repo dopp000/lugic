@@ -54,6 +54,11 @@ class VisualizerIsPartOfTheSite(unittest.TestCase):
             self.assertIn(family, script, family)
         self.assertIn("mikodacs.ttf", read(os.path.join("fonts", "README.txt")))
 
+    def test_there_are_no_rarity_marks(self):
+        # taken out on request: they are not a thing for now, so no drawing, no control and no saved setting for them
+        for name in ("app.js", "visualizer.js"):
+            self.assertNotRegex(read(name), r"(?i)rarity|\bmarks\b", name)
+
     def test_the_picture_never_asks_the_network_for_anything(self):
         script = read("visualizer.js")
         self.assertNotRegex(script, r"https?://")
