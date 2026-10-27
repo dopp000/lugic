@@ -250,7 +250,7 @@ def write_rules_js(path: str = RULES_JS_PATH) -> None:
 # page breaks. Each file's address in index.html therefore carries a short fingerprint of its content (preview.js?v=3fa9...), so a
 # changed file is always fetched fresh and a page is never made of two versions.
 SITE_FOLDER = os.path.dirname(RULES_JS_PATH)
-VERSIONED_FILES = ["style.css", "rules.js", "tags.js", "engine.js", "preview.js", "lines.js", "app.js"]
+VERSIONED_FILES = ["style.css", "rules.js", "tags.js", "engine.js", "preview.js", "lines.js", "visualizer.js", "app.js"]
 INDEX_HTML_PATH = os.path.join(SITE_FOLDER, "index.html")
 TAGS_JS_PATH = os.path.join(SITE_FOLDER, "tags.js")
 

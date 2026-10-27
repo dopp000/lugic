@@ -7,7 +7,7 @@
 
   // The scripts are cached by the browser for a few minutes, so right after a new version goes online a visitor can end up with the
   // page made of two versions. If a whole script is missing, say so with a way out, instead of leaving an empty page.
-  if (!window.LugicEngine || !window.LugicEngine.rules || !window.LugicPreview || !window.LugicLines) {
+  if (!window.LugicEngine || !window.LugicEngine.rules || !window.LugicPreview || !window.LugicLines || !window.LugicVisualizer) {
     trouble('a script did not load', new Error('the page files do not match'));
     return;
   }
@@ -39,6 +39,17 @@
     { id: 'banner', label: 'Banner 16:9', ratio: 16 / 9 }
   ];
   var portraitFit = loadPortraitFit();
+
+  // The Visualizer: a tall picture of the skills or the passives, in the look of the identity teasers. How it looks (the picture behind it, the
+  // strip's words, the line above the name...) belongs to this page, like the portrait's size: it stays in this browser and is not in the code.
+  // The pictures are kept apart from the settings, since they are big and the settings are not.
+  var VIZ_KEY = 'lugic-character-builder-visualizer-v1';
+  var VIZ_PICTURES_KEY = 'lugic-character-builder-visualizer-pictures-v1';
+  var VIZ_DEFAULTS = { view: 'skills', strength: 55, zoom: 1, x: 0, y: 0, title: '', strip: 'WARNING', marks: 3, boxes: true, accent: '#aeb7bf', iconSize: 300 };
+  var vizSettings = loadViz();
+  var vizImages = loadVizImages();
+  var viz = null;          // the drawing, made again each time the page is built
+  var vizReport = null;    // the last review's report (level and points), for the lines under the title
 
   var state = loadSaved() || E.defaultState();
   var syncs = [];          // functions that repaint one thing when the review changes
@@ -113,6 +124,7 @@
       var spent = document.querySelectorAll('.ico[data-done]');   // slots that ran out of pictures before these lists arrived
       for (var i = 0; i < spent.length; i++) { spent[i].removeAttribute('data-done'); }
       fillIcons();
+      if (viz) { viz.redraw(); }
     });
   }
 
@@ -280,7 +292,7 @@
     [
       ['Identity', buildIdentity], ['Your points', buildPoints], ['Stats', buildStats], ['Resistances', buildResistances],
       ['Status ranks', buildRanks], ['Defense types', buildDefense], ['Group tags', buildTags], ['Skills', buildSkills],
-      ['Passives', buildPassives], ['Status effects', buildReference]
+      ['Passives', buildPassives], ['Status effects', buildReference], ['Visualizer', buildVisualizer]
     ].forEach(function (part) {
       sheet.appendChild(attempt(part[0], part[1]) || section(part[0], null, [el('p', { class: 'note', text: 'This part could not be drawn.' })]));
     });
@@ -314,6 +326,7 @@
       if (on && userDriven && tab.scrollIntoView) { tab.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
     });
     rememberTab(id, userDriven);
+    if (id === 'sec-visualizer' && viz) { viz.redraw(); }
     if (userDriven) {
       var nav = document.getElementById('nav');
       var top = document.getElementById('sheet').getBoundingClientRect().top + window.pageYOffset - nav.offsetHeight - 12;
@@ -1367,7 +1380,11 @@
   var PICTURE_SIDE = 640;       // longest side after shrinking
   var PICTURE_LIMIT = 20 * 1024 * 1024;
 
-  function shrinkPicture(file) {
+  // opts: { side } the longest side to shrink to (a skill's picture is small; the Visualizer's is big), { alpha } keep the see-through
+  // parts and save a PNG (an icon or a logo) instead of a JPEG on a dark ground.
+  function shrinkPicture(file, opts) {
+    var side = (opts && opts.side) || PICTURE_SIDE;
+    var alpha = !!(opts && opts.alpha);
     return new Promise(function (resolve, reject) {
       if (!file || !/^image\//.test(file.type)) { reject(new Error('That is not a picture file.')); return; }
       if (file.size > PICTURE_LIMIT) { reject(new Error('That picture is too big. Pick one under 20 MB.')); return; }
@@ -1377,15 +1394,14 @@
         URL.revokeObjectURL(url);
         var w = img.naturalWidth, h = img.naturalHeight;
         if (!w || !h) { reject(new Error('The browser could not read that picture.')); return; }
-        var scale = Math.min(1, PICTURE_SIDE / Math.max(w, h));
+        var scale = Math.min(1, side / Math.max(w, h));
         var canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(w * scale));
         canvas.height = Math.max(1, Math.round(h * scale));
         var ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#050506';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (!alpha) { ctx.fillStyle = '#050506'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve({ src: canvas.toDataURL('image/jpeg', 0.86), a: canvas.width / canvas.height, x: 0, y: 0, zoom: 1 });
+        resolve({ src: alpha ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.86), a: canvas.width / canvas.height, x: 0, y: 0, zoom: 1 });
       };
       img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('The browser could not read that picture.')); };
       img.src = url;
@@ -1783,6 +1799,243 @@
 
   // The status list reads the same way for every status: WHEN it acts, what it DOES, THEN what happens to it. Colour says the rest
   // (see colourKey). The bot's full wording sits in one fold-out at the end, so the page itself stays short.
+  // ---- the Visualizer ----------------------------------------------------------------------------------------------
+  // One tall picture of the skills (or the passives), drawn by visualizer.js on a canvas: the picture the player adds is dimmed behind
+  // everything and shows again, in full colour and inverted, through the letters of the WARNING strip along the top and the bottom. The
+  // sinner icon sits faintly behind the name. It starts square and only grows taller when there is more to show.
+  function loadViz() {
+    var out = {};
+    Object.keys(VIZ_DEFAULTS).forEach(function (k) { out[k] = VIZ_DEFAULTS[k]; });
+    try {
+      var saved = JSON.parse(window.localStorage.getItem(VIZ_KEY) || 'null');
+      if (saved && typeof saved === 'object') {
+        Object.keys(VIZ_DEFAULTS).forEach(function (k) { if (typeof saved[k] === typeof VIZ_DEFAULTS[k] && (typeof saved[k] !== 'number' || isFinite(saved[k]))) { out[k] = saved[k]; } });
+      }
+    } catch (e) { /* no storage, or nothing saved: the defaults */ }
+    out.view = out.view === 'passives' ? 'passives' : 'skills';
+    out.marks = Math.max(0, Math.min(3, Math.floor(out.marks)));
+    out.strength = Math.max(0, Math.min(100, out.strength));
+    out.zoom = Math.max(1, Math.min(window.LugicPreview.maxZoom, out.zoom));
+    out.iconSize = Math.max(60, Math.min(700, out.iconSize));
+    out.title = String(out.title).slice(0, 60);
+    out.strip = String(out.strip).slice(0, 14);
+    if (!/^#[0-9a-f]{6}$/i.test(out.accent)) { out.accent = VIZ_DEFAULTS.accent; }
+    return out;
+  }
+  function loadVizImages() {
+    var out = { bg: null, icon: null, logo: null };
+    try {
+      var saved = JSON.parse(window.localStorage.getItem(VIZ_PICTURES_KEY) || 'null');
+      Object.keys(out).forEach(function (k) {
+        var one = saved && saved[k];
+        if (one && typeof one.src === 'string' && /^data:image\/(png|jpeg);base64,/.test(one.src) && one.a > 0) { out[k] = { src: one.src, a: one.a }; }
+      });
+    } catch (e) { /* nothing kept */ }
+    return out;
+  }
+  var vizSaveTimer = null;
+  var vizStorageMsg = null;
+  function queueVizSave() {
+    clearTimeout(vizSaveTimer);
+    vizSaveTimer = setTimeout(function () {
+      try { window.localStorage.setItem(VIZ_KEY, JSON.stringify(vizSettings)); } catch (e) { /* private window */ }
+      var kept = true;
+      try { window.localStorage.setItem(VIZ_PICTURES_KEY, JSON.stringify(vizImages)); } catch (e) { kept = false; }
+      if (vizStorageMsg) { vizStorageMsg.textContent = kept ? '' : 'These pictures did not fit in this browser\'s storage, so they only last until the page is closed.'; }
+    }, 400);
+  }
+
+  function buildVisualizer() {
+    var V = window.LugicVisualizer;
+    var Pv = window.LugicPreview;
+    var canvas = el('canvas', { class: 'viz-canvas', width: String(V.width), height: String(V.minHeight), role: 'img' });
+    var status = el('p', { class: 'note viz-status', role: 'status' });
+    vizStorageMsg = el('p', { class: 'msg bad', role: 'status' });
+    var drawing = V.create(canvas, {
+      data: vizData,
+      settings: function () { return vizSettings; },
+      images: function () { return vizImages; },
+      iconFile: function (name) { return botFiles[name] || null; }
+    });
+    viz = drawing;
+
+    function vizData() {
+      var report = vizReport || {};
+      var s = state.stats;
+      var name = (state.name || '').trim();
+      return {
+        view: vizSettings.view,
+        name: name,
+        lines: [
+          'HP ' + s.hp + '  ·  Power ' + s.power + '  ·  Speed ' + Math.min(s.speed[0], s.speed[1]) + '–' + Math.max(s.speed[0], s.speed[1]) + '  ·  Offense ' + s.offense + ' / Defense ' + s.defense,
+          'Lv ' + (report.level || 1) + '  ·  ' + (report.spent || 0) + ' of ' + (report.total || 0) + ' Build Points'
+        ],
+        skills: state.skills.map(function (skill) { return { model: Pv.model(skill), art: skill.art || null }; }),
+        passives: state.passives.map(function (p) { return Pv.passiveModel(p); })
+      };
+    }
+    function describe() {
+      var n = vizSettings.view === 'passives' ? state.passives.length : state.skills.length;
+      var word = vizSettings.view === 'passives' ? 'passive' : 'skill';
+      canvas.setAttribute('aria-label', (state.name || 'The character') + ': ' + n + ' ' + word + (n === 1 ? '' : 's') + ', as a picture');
+    }
+    function changed() { describe(); drawing.redraw(); queueVizSave(); }
+
+    // the picture can be moved by dragging it on the preview; the sliders do the same for a keyboard or a finger
+    function place() {
+      var bg = vizImages.bg;
+      if (!bg) { return; }
+      var r = V.artRect({ src: bg.src, a: bg.a, x: vizSettings.x, y: vizSettings.y, zoom: vizSettings.zoom }, V.width, canvas.height);
+      vizSettings.x = r.art.x; vizSettings.y = r.art.y; vizSettings.zoom = r.art.zoom;
+    }
+    var drag = null;
+    canvas.addEventListener('pointerdown', function (e) {
+      if (!vizImages.bg || e.pointerType === 'touch' || e.button > 0) { return; }
+      drag = { x: e.clientX, y: e.clientY };
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
+      canvas.classList.add('dragging');
+      e.preventDefault();
+    });
+    canvas.addEventListener('pointermove', function (e) {
+      if (!drag) { return; }
+      var box = canvas.getBoundingClientRect();
+      vizSettings.x += (e.clientX - drag.x) / box.width;
+      vizSettings.y += (e.clientY - drag.y) / box.height;
+      drag = { x: e.clientX, y: e.clientY };
+      place();
+      positionSync();
+      changed();
+    });
+    function stop() { drag = null; canvas.classList.remove('dragging'); }
+    canvas.addEventListener('pointerup', stop);
+    canvas.addEventListener('pointercancel', stop);
+
+    // -- what the picture shows
+    var viewGroup = el('div', { class: 'segments wide', role: 'radiogroup', 'aria-label': 'What the picture shows' });
+    [['skills', 'Skills'], ['passives', 'Passives']].forEach(function (option) {
+      var input = el('input', { type: 'radio', name: 'viz-view', value: option[0], id: nextId('viz') });
+      input.checked = vizSettings.view === option[0];
+      input.addEventListener('change', function () { vizSettings.view = option[0]; changed(); });
+      viewGroup.appendChild(el('label', { class: 'segment', for: input.id }, [input, el('span', { text: option[1] })]));
+    });
+
+    // -- pictures: the one behind everything, the sinner icon behind the name, and a logo in the corner
+    function pictureField(kind, labelText, opts, note) {
+      var input = el('input', { type: 'file', accept: 'image/*', id: nextId('viz-pic') });
+      var pick = el('label', { class: 'btn', for: input.id });
+      var remove = el('button', { type: 'button', class: 'btn quiet', text: 'Remove' });
+      var msg = el('span', { class: 'msg bad', role: 'status' });
+      function sync() {
+        pick.textContent = vizImages[kind] ? 'Change' : 'Add a picture';
+        remove.hidden = !vizImages[kind];
+        if (kind === 'bg') { positionSync(); }
+      }
+      input.addEventListener('change', function () {
+        var file = input.files && input.files[0];
+        msg.textContent = '';
+        if (!file) { return; }
+        shrinkPicture(file, opts).then(function (art) {
+          vizImages[kind] = { src: art.src, a: art.a };
+          if (kind === 'bg') { vizSettings.x = 0; vizSettings.y = 0; vizSettings.zoom = 1; }
+          input.value = '';
+          sync();
+          changed();
+        }, function (err) { msg.textContent = err.message; input.value = ''; });
+      });
+      remove.addEventListener('click', function () { vizImages[kind] = null; sync(); changed(); });
+      pictureSyncs.push(sync);
+      sync();
+      return el('div', { class: 'field' }, [
+        el('span', { class: 'label-like', text: labelText }),
+        el('div', { class: 'art-row' }, [input, pick, remove, msg]),
+        note ? el('p', { class: 'note', text: note }) : null
+      ]);
+    }
+    var pictureSyncs = [];
+
+    // -- numbers
+    var rangeSyncs = [];
+    function positionSync() { rangeSyncs.forEach(function (fn) { fn(); }); }
+    function rangeField(labelText, min, max, step, get, set, show, onlyWithPicture) {
+      var input = el('input', { type: 'range', min: String(min), max: String(max), step: String(step), id: nextId('viz-r') });
+      var out = el('output', { class: 'cost', for: input.id });
+      function sync() { input.value = String(get()); out.textContent = show(get()); input.disabled = !!onlyWithPicture && !vizImages.bg; }
+      input.addEventListener('input', function () { set(parseFloat(input.value)); place(); sync(); changed(); });
+      rangeSyncs.push(sync);
+      sync();
+      return el('div', { class: 'field' }, [el('label', { for: input.id, text: labelText }), el('div', { class: 'viz-range' }, [input, out])]);
+    }
+
+    var title = el('input', { type: 'text', maxlength: '60', autocomplete: 'off', spellcheck: 'false', placeholder: 'A group, an epithet, a title' });
+    title.value = vizSettings.title;
+    title.addEventListener('input', function () { vizSettings.title = title.value; changed(); });
+    var strip = el('input', { type: 'text', maxlength: '14', autocomplete: 'off', spellcheck: 'false' });
+    strip.value = vizSettings.strip;
+    strip.addEventListener('input', function () { vizSettings.strip = strip.value; changed(); });
+    var marks = el('select', { id: nextId('viz-marks') }, [['3', 'Three'], ['2', 'Two'], ['1', 'One'], ['0', 'None']].map(function (o) { return el('option', { value: o[0], text: o[1] }); }));
+    marks.value = String(vizSettings.marks);
+    marks.addEventListener('change', function () { vizSettings.marks = parseInt(marks.value, 10); changed(); });
+    var accent = el('input', { type: 'color', id: nextId('viz-accent'), 'aria-label': 'Accent colour' });
+    accent.value = vizSettings.accent;
+    accent.addEventListener('input', function () { vizSettings.accent = accent.value; changed(); });
+    var boxes = el('input', { type: 'checkbox', id: nextId('viz-boxes') });
+    boxes.checked = vizSettings.boxes !== false;
+    boxes.addEventListener('change', function () { vizSettings.boxes = boxes.checked; changed(); });
+
+    var save = el('button', { type: 'button', class: 'btn primary', text: 'Download picture' });
+    var back = el('button', { type: 'button', class: 'btn quiet', text: 'Reset the look' });
+    save.addEventListener('click', function () {
+      status.textContent = 'Making the picture...';
+      var file = ((state.name || 'character').trim().replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'character') + '-' + vizSettings.view + '.png';
+      drawing.download(file).then(function () { status.textContent = 'Saved ' + file + '.'; }, function (err) { status.textContent = 'Could not save the picture: ' + err.message; });
+    });
+    back.addEventListener('click', function () {
+      Object.keys(VIZ_DEFAULTS).forEach(function (k) { if (k !== 'view') { vizSettings[k] = VIZ_DEFAULTS[k]; } });
+      title.value = vizSettings.title; strip.value = vizSettings.strip; marks.value = String(vizSettings.marks); accent.value = vizSettings.accent; boxes.checked = true;
+      positionSync();
+      changed();
+    });
+
+    syncs.push(function (r) { vizReport = r.report; if (!document.getElementById('sec-visualizer') || !document.getElementById('sec-visualizer').hidden) { describe(); drawing.redraw(); } });
+    describe();
+
+    var controls = el('div', { class: 'viz-controls' }, [
+      el('div', { class: 'field' }, [el('span', { class: 'label-like', text: 'Show' }), viewGroup]),
+      el('div', { class: 'grid two' }, [
+        pictureField('bg', 'Picture behind everything', { side: 2000 }, 'Dimmed behind the page, and shown again at full colour, inverted, through the letters of the strips. Drag the preview to move it.'),
+        pictureField('icon', 'Sinner icon (optional)', { side: 512, alpha: true }, 'Shows faintly behind the name, top right.')
+      ]),
+      el('div', { class: 'grid two' }, [
+        rangeField('Picture strength', 0, 100, 1, function () { return vizSettings.strength; }, function (v) { vizSettings.strength = v; }, function (v) { return v + '%'; }, true),
+        rangeField('Picture zoom', 1, Pv.maxZoom, 0.01, function () { return vizSettings.zoom; }, function (v) { vizSettings.zoom = v; }, function (v) { return Math.round(v * 100) + '%'; }, true)
+      ]),
+      el('div', { class: 'grid two' }, [
+        rangeField('Picture left and right', -100, 100, 1, function () { return Math.round(vizSettings.x * 100); }, function (v) { vizSettings.x = v / 100; }, function (v) { return v + '%'; }, true),
+        rangeField('Picture up and down', -100, 100, 1, function () { return Math.round(vizSettings.y * 100); }, function (v) { vizSettings.y = v / 100; }, function (v) { return v + '%'; }, true)
+      ]),
+      el('div', { class: 'grid two' }, [
+        rangeField('Sinner icon size', 60, 700, 10, function () { return vizSettings.iconSize; }, function (v) { vizSettings.iconSize = v; }, function (v) { return v + ' px'; }, false),
+        pictureField('logo', 'Logo (optional)', { side: 512, alpha: true }, 'Top left, before the big title.')
+      ]),
+      el('div', { class: 'grid two' }, [
+        field('Line above the name', title, 'Optional.'),
+        field('Strip words', strip, 'Repeats along the top and the bottom. Letters and numbers only.')
+      ]),
+      el('div', { class: 'grid three' }, [
+        field('Marks next to the name', marks),
+        el('div', { class: 'field' }, [el('label', { for: accent.id, text: 'Accent colour' }), accent]),
+        el('div', { class: 'checks' }, [el('label', { class: 'check', for: boxes.id }, [boxes, el('span', {}, ['Boxes behind each part'])])])
+      ])
+    ]);
+
+    return section('Visualizer', 'The skills or the passives as one picture, in the look of an identity teaser. It starts square and only grows taller when there is more to show. Everything here stays in your browser and is not part of the code.', [
+      controls,
+      el('div', { class: 'row viz-actions' }, [save, back, status]),
+      vizStorageMsg,
+      el('div', { class: 'viz-frame' }, [canvas])
+    ]);
+  }
+
   function buildReference() {
     var byKey = {};
     R.statusGuide.forEach(function (s) { byKey[s.key] = s; });

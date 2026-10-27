@@ -811,9 +811,9 @@ class WikiLook(unittest.TestCase):
     def test_every_part_of_the_form_is_its_own_tab(self):
         build = re.search(r"  function build\(\) \{.*?\n  \}\n", self.app, re.S).group(0)
         listed = re.findall(r"\['([^']+)', (build\w+)\]", build)
-        self.assertEqual([name for _, name in listed], ["buildIdentity", "buildPoints", "buildStats", "buildResistances", "buildRanks", "buildDefense", "buildTags", "buildSkills", "buildPassives", "buildReference"])
+        self.assertEqual([name for _, name in listed], ["buildIdentity", "buildPoints", "buildStats", "buildResistances", "buildRanks", "buildDefense", "buildTags", "buildSkills", "buildPassives", "buildReference", "buildVisualizer"])
         titles = re.findall(r"section\(\s*'([^']+)'", self.app)
-        self.assertEqual(sorted(titles), sorted(["Identity", "Your points", "Stats", "Resistances", "Status ranks", "Defense types", "Group tags", "Passives", "Skills", "Status effects"]))
+        self.assertEqual(sorted(titles), sorted(["Identity", "Your points", "Stats", "Resistances", "Status ranks", "Defense types", "Group tags", "Passives", "Skills", "Status effects", "Visualizer"]))
         self.assertEqual(sorted(title for title, _ in listed), sorted(titles))        # the name shown if a part fails to draw is the part's own
         self.assertIn("tablist", self.app)
         for needed in ("aria-selected", "aria-controls", "ArrowRight", "ArrowLeft", "Home", "End", "hashchange"):
@@ -950,7 +950,8 @@ class PageShape(unittest.TestCase):
         families = re.findall(r"font-family:\s*([^;}]+)[;}]", self.css)
         self.assertTrue(families)
         for family in families:
-            self.assertTrue(family.strip() in ("var(--font)", "inherit", '"Mikodacs"', '"Nunito"'), family)   # no monospace, no private stack
+            # Pretendard and Bebas Neue are only the Visualizer's picture lettering (declared as faces, never used by the page's own text)
+            self.assertTrue(family.strip() in ("var(--font)", "inherit", '"Mikodacs"', '"Nunito"', '"Pretendard"', '"Bebas Neue"'), family)   # no monospace, no private stack
         self.assertNotIn("monospace", self.css)
 
     def test_bold_text_is_white_and_inline_code_is_not_gold(self):
@@ -1190,8 +1191,8 @@ class PageInABrowser(unittest.TestCase):
 
     def test_every_part_is_a_tab_and_only_one_is_open(self):
         fresh = self.found["fresh"]
-        self.assertEqual(len(fresh["tabs"]), 10)
-        self.assertEqual(fresh["parts"], 10)
+        self.assertEqual(len(fresh["tabs"]), 11)
+        self.assertEqual(fresh["parts"], 11)
         self.assertEqual(fresh["open"], ["sec-identity"])
         self.assertEqual(fresh["box"], "")
 
@@ -1229,13 +1230,13 @@ class PageInABrowser(unittest.TestCase):
         self.assertIn("Each coin after the first lowers both limits by 1 (Base / Coin): 2 coins 3 / 1, 3 coins 2 / 1, 4 coins 1 / 1.", behaviour["statsHint"])
 
     def test_nothing_runs_off_the_side_of_a_phone_on_any_tab(self):
-        self.assertEqual(self.found["behaviour"]["phone"], [True] * 10)
+        self.assertEqual(self.found["behaviour"]["phone"], [True] * 11)
 
     def test_an_older_copy_of_one_script_still_leaves_the_tabs_and_a_way_to_fix_it(self):
         stale = self.found["stale"]
-        self.assertEqual(len(stale["tabs"]), 10)
+        self.assertEqual(len(stale["tabs"]), 11)
         self.assertEqual(stale["open"], ["sec-identity"])
-        self.assertEqual(stale["parts"], 10)
+        self.assertEqual(stale["parts"], 11)
         self.assertTrue(stale["button"])
         self.assertIn("Part of this page could not be drawn", stale["box"])
         self.assertIn("Fetch fresh copies", stale["box"])
